@@ -1,0 +1,392 @@
+
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../supabaseClient';
+import { Geral } from '../types';
+import StoryCircle from '../components/StoryCircle';
+import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+interface ServiceItem {
+  id: number;
+  title: string;
+  date: string;
+  status: string;
+  color: string;
+  timestamp: string;
+}
+
+interface TopProfessional {
+  uuid: string;
+  nome: string;
+  fotoperfil: string;
+  serviceCount: number;
+  rating: number;
+}
+
+const Home: React.FC = () => {
+  const [categories, setCategories] = useState<Geral[]>([]);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  // Dashboard States
+  const [agendamentosCount, setAgendamentosCount] = useState(0);
+  const [servicosAtivosCount, setServicosAtivosCount] = useState(0);
+  const [recentServices, setRecentServices] = useState<ServiceItem[]>([]);
+  const [topProfessionals, setTopProfessionals] = useState<TopProfessional[]>([]);
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // 1. Get User (Auth or Demo Fallback)
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      let userUuid = authUser?.id;
+
+      if (!userUuid) {
+        // Demo fallback to show real data interaction
+        const { data: demoUsers } = await supabase.from('users').select('*').eq('ativo', true).limit(1);
+        if (demoUsers && demoUsers.length > 0) userUuid = demoUsers[0].uuid;
+      }
+
+      // 2. Fetch Categories (Stories)
+      const { data: catData } = await supabase
+        .from('geral')
+        .select('*')
+        .eq('primaria', true)
+        .eq('ativa', true)
+        .order('id', { ascending: true });
+      setCategories(catData || []);
+
+      // 3. Fetch Top Professionals Logic
+      // a. Get all active professionals
+      const { data: pros } = await supabase
+        .from('users')
+        .select('uuid, nome, fotoperfil')
+        .ilike('tipo', 'profissional')
+        .eq('ativo', true);
+
+      if (pros && pros.length > 0) {
+          // b. Get aggregated data (Agenda count and Ratings)
+          // Ideally this should be a DB View, but we do it client side for now
+          const { data: agendaData } = await supabase.from('agenda').select('profissional');
+          const { data: ratingsData } = await supabase.from('avaliacoes').select('profissional, nota');
+
+          const stats = pros.map(p => {
+              // Count services
+              const count = agendaData?.filter(a => a.profissional === p.uuid).length || 0;
+              
+              // Calculate Average Rating
+              const pRatings = ratingsData?.filter(r => r.profissional === p.uuid) || [];
+              const avg = pRatings.length > 0 
+                ? pRatings.reduce((acc, curr) => acc + curr.nota, 0) / pRatings.length 
+                : 0;
+
+              return {
+                  uuid: p.uuid,
+                  nome: p.nome,
+                  fotoperfil: p.fotoperfil,
+                  serviceCount: count,
+                  rating: avg
+              };
+          });
+
+          // Sort: 1st by Service Count (DESC), 2nd by Rating (DESC)
+          const sortedPros = stats.sort((a, b) => {
+              if (b.serviceCount !== a.serviceCount) {
+                  return b.serviceCount - a.serviceCount;
+              }
+              return b.rating - a.rating;
+          });
+
+          setTopProfessionals(sortedPros.slice(0, 5)); // Top 5
+      }
+
+      if (userUuid) {
+        // 4. Get "Agendamentos" Count (In Agenda, not concluded)
+        const { count: countAgendamentos } = await supabase
+          .from('agenda')
+          .select('*', { count: 'exact', head: true })
+          .eq('cliente', userUuid)
+          .is('dataconclusao', null);
+        
+        setAgendamentosCount(countAgendamentos || 0);
+
+        // 5. Get "Serviços Ativos" Count (Active Keys)
+        const { count: countAtivos } = await supabase
+          .from('chaves')
+          .select('*', { count: 'exact', head: true })
+          .eq('cliente', userUuid)
+          .neq('status', 'concluido')
+          .neq('status', 'cancelado');
+          
+        setServicosAtivosCount(countAtivos || 0);
+
+        // 6. Get Recent Services List
+        // We join agenda -> chaves -> geral to get the service name
+        const { data: agendaData } = await supabase
+          .from('agenda')
+          .select(`
+            id,
+            execucao,
+            dataconclusao,
+            chaves (
+              status,
+              geral (
+                nome
+              )
+            )
+          `)
+          .eq('cliente', userUuid)
+          .order('execucao', { ascending: false })
+          .limit(6); 
+
+        if (agendaData) {
+          const formattedServices: ServiceItem[] = agendaData.map((item: any) => {
+            const dateObj = new Date(item.execucao);
+            const now = new Date();
+            const isConcluded = !!item.dataconclusao;
+            const serviceName = item.chaves?.geral?.nome || 'Serviço Geral';
+            
+            let status = 'Agendado';
+            let color = 'bg-blue-100 text-blue-700';
+
+            if (isConcluded) {
+              status = 'Concluído';
+              color = 'bg-gray-100 text-gray-600';
+            } else if (dateObj < now) {
+              status = 'Pendente';
+              color = 'bg-yellow-100 text-yellow-700';
+            } else {
+              status = 'Confirmado';
+              color = 'bg-green-100 text-green-700';
+            }
+
+            const dateStr = new Intl.DateTimeFormat('pt-BR', { 
+              day: '2-digit', 
+              month: 'short', 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            }).format(dateObj).replace('.', '');
+
+            return {
+              id: item.id,
+              title: serviceName,
+              date: dateStr,
+              status: status,
+              color: color,
+              timestamp: item.execucao
+            };
+          });
+          setRecentServices(formattedServices);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F2F4F8]">
+      {/* Header - Adaptive padding for desktop */}
+      <header className="px-5 pt-12 md:pt-8 pb-4 flex justify-between items-center md:bg-transparent md:backdrop-blur-none vitrified md:border-none md:shadow-none sticky md:static top-0 z-30 rounded-b-[2rem] md:rounded-none shadow-sm mb-4">
+        <div>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Bem-vindo</h2>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
+        </div>
+        <div className="flex items-center space-x-3">
+            <span className="hidden md:block text-sm font-medium text-gray-500">Olá, Usuário</span>
+            <button className="relative p-2.5 rounded-full bg-white shadow-sm border border-gray-100 hover:scale-105 transition-transform">
+            <Bell size={20} className="text-gray-700" />
+            <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
+            </button>
+        </div>
+      </header>
+
+      {/* Stories Section */}
+      <div className="mt-2 md:mt-0">
+        <div className="flex space-x-4 overflow-x-auto px-5 pb-4 no-scrollbar">
+          {loading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex flex-col items-center space-y-1 min-w-[72px]">
+                <div className="w-[68px] h-[68px] rounded-full bg-white animate-pulse"></div>
+                <div className="w-12 h-2 bg-gray-200 rounded animate-pulse mt-2"></div>
+              </div>
+            ))
+          ) : (
+            categories.map((cat) => (
+              <StoryCircle key={cat.id} item={cat} />
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="px-5 space-y-6 mt-2 md:mt-6">
+        
+        {/* Dashboard Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-[2rem] shadow-vitrified flex flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
+            <div className="absolute -top-6 -right-6 w-24 h-24 bg-blue-50/50 rounded-full transition-transform group-hover:scale-125"></div>
+            <div className="relative z-10">
+              <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-4">
+                <CalendarCheck size={20} />
+              </div>
+              <span className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">
+                {loading ? '...' : agendamentosCount}
+              </span>
+              <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mt-2">Agendamentos</p>
+            </div>
+          </div>
+
+          <div className="bg-white p-5 rounded-[2rem] shadow-vitrified flex flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
+            <div className="absolute -top-6 -right-6 w-24 h-24 bg-purple-50/50 rounded-full transition-transform group-hover:scale-125"></div>
+            <div className="relative z-10">
+              <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-4">
+                <TrendingUp size={20} />
+              </div>
+              <span className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">
+                 {loading ? '...' : servicosAtivosCount}
+              </span>
+              <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mt-2">Serviços Ativos</p>
+            </div>
+          </div>
+
+          <div className="hidden md:flex bg-white p-5 rounded-[2rem] shadow-vitrified flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
+            <div className="absolute -top-6 -right-6 w-24 h-24 bg-green-50/50 rounded-full transition-transform group-hover:scale-125"></div>
+            <div className="relative z-10">
+              <div className="w-10 h-10 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center mb-4">
+                <Star size={20} />
+              </div>
+              <span className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">4.9</span>
+              <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mt-2">Avaliação Média</p>
+            </div>
+          </div>
+
+          <div className="hidden md:flex bg-white p-5 rounded-[2rem] shadow-vitrified flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
+             <div className="relative z-10 flex items-center justify-center h-full">
+                <p className="text-gray-400 text-sm font-medium">Mais métricas em breve</p>
+             </div>
+          </div>
+        </div>
+
+        {/* TOP PROFESSIONALS SECTION */}
+        {topProfessionals.length > 0 && (
+            <div>
+                <div className="flex items-center space-x-2 mb-4 px-1">
+                    <Trophy size={18} className="text-yellow-500" />
+                    <h3 className="text-lg font-bold text-gray-900">Top Profissionais</h3>
+                </div>
+                
+                <div className="flex space-x-4 overflow-x-auto no-scrollbar pb-2">
+                    {topProfessionals.map((pro, index) => (
+                        <div 
+                            key={pro.uuid} 
+                            onClick={() => navigate(`/professional/${pro.uuid}`)}
+                            className="bg-white p-4 rounded-[1.8rem] shadow-sm border border-gray-50 min-w-[160px] flex flex-col items-center relative overflow-hidden cursor-pointer hover:shadow-md transition-all group"
+                        >
+                            {/* Rank Badge */}
+                            <div className={`absolute top-0 left-0 px-3 py-1.5 rounded-br-2xl text-[10px] font-bold text-white z-10 ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-400' : 'bg-gray-800'}`}>
+                                #{index + 1}
+                            </div>
+
+                            <div className="w-16 h-16 rounded-full p-1 bg-gradient-to-tr from-gray-100 to-gray-200 mb-3 mt-2 group-hover:scale-105 transition-transform">
+                                <img 
+                                    src={pro.fotoperfil || `https://ui-avatars.com/api/?name=${pro.nome}&background=random`} 
+                                    alt={pro.nome} 
+                                    className="w-full h-full rounded-full object-cover border-2 border-white"
+                                />
+                            </div>
+                            
+                            <h4 className="font-bold text-gray-900 text-sm text-center truncate w-full mb-1">{pro.nome}</h4>
+                            
+                            <div className="flex items-center space-x-1 mb-2">
+                                <Star size={10} className="text-yellow-500 fill-yellow-500" />
+                                <span className="text-xs font-bold text-gray-700">{pro.rating.toFixed(1)}</span>
+                            </div>
+
+                            <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-[10px] font-bold flex items-center w-full justify-center">
+                                <Briefcase size={10} className="mr-1" />
+                                {pro.serviceCount} serviços
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
+        {/* Banner Section */}
+        <div className="bg-gray-900 rounded-[2rem] p-6 md:p-10 text-white shadow-lg relative overflow-hidden group w-full">
+          <div className="absolute right-0 bottom-0 opacity-10 transform translate-y-4 translate-x-4 transition-transform group-hover:scale-110 duration-700">
+             <Star size={140} />
+          </div>
+          <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-md border border-white/10 px-2.5 py-1 rounded-lg">
+             <span className="text-[10px] font-bold text-white uppercase tracking-wider">Em Breve</span>
+          </div>
+          <div className="relative z-10 max-w-lg">
+            <h3 className="text-xl md:text-3xl font-bold mb-2">Assinatura Premium</h3>
+            <p className="text-sm md:text-base text-gray-400 mb-6 font-medium">Tenha prioridade na busca, suporte dedicado e descontos exclusivos em todos os serviços.</p>
+            <button className="bg-white text-gray-900 px-6 py-3 rounded-[1.2rem] text-xs md:text-sm font-bold shadow-lg hover:bg-gray-100 transition-colors">
+                Saiba Mais
+            </button>
+          </div>
+        </div>
+
+        {/* Recent Services List */}
+        <div>
+          <div className="flex justify-between items-center mb-4 px-1">
+            <h3 className="text-lg font-bold text-gray-900">Últimos Serviços</h3>
+            <button 
+              onClick={() => navigate('/calendar')}
+              className="text-ios-blue text-xs font-bold uppercase tracking-wide hover:opacity-70 transition-opacity"
+            >
+              Ver todos
+            </button>
+          </div>
+          
+          <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">
+            {loading ? (
+               <div className="flex flex-col space-y-3 col-span-full">
+                 {[1, 2].map(i => <div key={i} className="h-20 bg-white rounded-[1.5rem] animate-pulse"></div>)}
+               </div>
+            ) : recentServices.length > 0 ? (
+              recentServices.map((service) => (
+                <div key={service.id} className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-50 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer group active:scale-[0.98]">
+                  <div className="flex items-center space-x-4">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${service.color}`}>
+                       <Clock size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-sm">{service.title}</h4>
+                      <p className="text-xs text-gray-400 font-medium mt-0.5">{service.date}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center">
+                    <ChevronRight size={18} className="text-gray-300 group-hover:text-gray-400 transition-colors" />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-full text-center py-10 bg-white rounded-[2rem] border border-dashed border-gray-200">
+                <p className="text-gray-400 text-sm font-medium">Nenhum serviço agendado.</p>
+                <button 
+                  onClick={() => navigate('/search')}
+                  className="mt-3 text-ios-blue text-sm font-bold"
+                >
+                  Agendar agora
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Home;

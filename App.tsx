@@ -1,0 +1,97 @@
+
+
+
+import React, { useEffect, useState } from 'react';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { supabase } from './supabaseClient';
+import { Session } from '@supabase/supabase-js';
+import Layout from './components/Layout';
+import Home from './pages/Home';
+import Search from './pages/Search';
+import SubCategory from './pages/SubCategory';
+import ProfessionalList from './pages/ProfessionalList';
+import ProfessionalProfile from './pages/ProfessionalProfile';
+import Planning from './pages/Planning';
+import Profile from './pages/Profile';
+import Settings from './pages/Settings';
+import Login from './pages/Login';
+import Chamados from './pages/Chamados';
+import { Loader2 } from 'lucide-react';
+
+// Placeholder components
+const CalendarPage = () => (
+  <div className="pt-20 px-5 text-center">
+    <h1 className="text-2xl font-bold text-gray-900 mb-2">Agenda</h1>
+    <p className="text-gray-500">Seus próximos agendamentos aparecerão aqui.</p>
+  </div>
+);
+
+const App: React.FC = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // 1. Check active session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    // 2. Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ios-bg">
+        <Loader2 className="animate-spin text-ios-blue" size={32} />
+      </div>
+    );
+  }
+
+  return (
+    <HashRouter>
+      <Routes>
+        {/* Public Route: Login */}
+        <Route 
+          path="/login" 
+          element={!session ? <Login /> : <Navigate to="/" replace />} 
+        />
+
+        {/* Protected Routes: Require Session */}
+        <Route
+          path="/*"
+          element={
+            session ? (
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/search" element={<Search />} />
+                  <Route path="/category/:id" element={<SubCategory />} />
+                  <Route path="/professionals/:serviceId" element={<ProfessionalList />} />
+                  <Route path="/professional/:uuid" element={<ProfessionalProfile />} />
+                  <Route path="/planning/:uuid" element={<Planning />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/chamados" element={<Chamados />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Layout>
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+      </Routes>
+    </HashRouter>
+  );
+};
+
+export default App;
