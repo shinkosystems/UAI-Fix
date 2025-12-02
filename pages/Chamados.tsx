@@ -6,7 +6,7 @@ import {
     Loader2, Search, Filter, Plus, X, Save, Send, FileText, 
     User as UserIcon, Calendar, DollarSign, CheckCircle, 
     AlertTriangle, ChevronRight, Ban, Clock, Briefcase, MapPin,
-    Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator
+    Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator, Lock, ArrowRightCircle
 } from 'lucide-react';
 
 interface ChamadoExtended extends Chave {
@@ -21,6 +21,9 @@ const Chamados: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'novos' | 'orcamentos' | 'execucao' | 'historico'>('novos');
     const [tickets, setTickets] = useState<ChamadoExtended[]>([]);
     const [loading, setLoading] = useState(true);
+    
+    // User Role State
+    const [currentUserRole, setCurrentUserRole] = useState<string>('');
     
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -63,10 +66,40 @@ const Chamados: React.FC = () => {
     // Lists for selectors
     const [professionals, setProfessionals] = useState<User[]>([]);
 
+    const allTabs = [
+        { id: 'novos', label: 'Novos / Pendentes', icon: AlertTriangle },
+        { id: 'orcamentos', label: 'Orçamentos', icon: DollarSign },
+        { id: 'execucao', label: 'Em Execução', icon: Clock },
+        { id: 'historico', label: 'Histórico', icon: FileText }
+    ];
+
+    // Filter visible tabs based on Role
+    const visibleTabs = allTabs.filter(tab => {
+        if (currentUserRole === 'planejista') {
+            // Planner sees Inbox (Novos)
+            return tab.id === 'novos';
+        }
+        if (currentUserRole === 'orcamentista') {
+            // Estimator sees Inbox (Novos - for 'analise' items), Sent Proposals (Orcamentos), and Running (Execucao)
+            return tab.id === 'novos' || tab.id === 'orcamentos' || tab.id === 'execucao';
+        }
+        // Gestor sees all
+        return true;
+    });
+
     useEffect(() => {
+        fetchUserRole();
         fetchData();
         fetchProfessionals();
     }, []);
+
+    // Force active tab switch when role loads to prevent showing unauthorized tabs
+    useEffect(() => {
+        if (currentUserRole === 'planejista' || currentUserRole === 'orcamentista') {
+            // Both start at 'novos' now (Planner for 'pendente', Estimator for 'analise')
+            setActiveTab('novos');
+        }
+    }, [currentUserRole]);
 
     // Automatic Price Calculation Effect
     useEffect(() => {
@@ -91,6 +124,16 @@ const Chamados: React.FC = () => {
         formData.orcamentoImposto, 
         formData.orcamentoLucro
     ]);
+
+    const fetchUserRole = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data: userData } = await supabase.from('users').select('tipo').eq('uuid', user.id).single();
+            if (userData) {
+                setCurrentUserRole(userData.tipo.toLowerCase());
+            }
+        }
+    };
 
     const fetchData = async () => {
         setLoading(true);
@@ -166,11 +209,21 @@ const Chamados: React.FC = () => {
     const getFilteredTickets = () => {
         let filtered = tickets;
         
-        // Tab Filter
+        // Tab Filter Logic based on Role
         if (activeTab === 'novos') {
-            filtered = filtered.filter(t => t.status === 'pendente');
+            if (currentUserRole === 'planejista') {
+                // Planejista sees 'pendente' (To Plan)
+                filtered = filtered.filter(t => t.status === 'pendente');
+            } else if (currentUserRole === 'orcamentista') {
+                // Orcamentista sees 'analise' (To Budget)
+                filtered = filtered.filter(t => t.status === 'analise');
+            } else {
+                // Gestor sees both
+                filtered = filtered.filter(t => t.status === 'pendente' || t.status === 'analise');
+            }
         } else if (activeTab === 'orcamentos') {
-            filtered = filtered.filter(t => t.status === 'analise' || t.status === 'aguardando_aprovacao' || t.status === 'reprovado');
+            // Orcamentos Sent / Waiting Approval
+            filtered = filtered.filter(t => t.status === 'aguardando_aprovacao' || t.status === 'reprovado');
         } else if (activeTab === 'execucao') {
             filtered = filtered.filter(t => t.status === 'aprovado' || t.status === 'executando');
         } else if (activeTab === 'historico') {
@@ -188,6 +241,47 @@ const Chamados: React.FC = () => {
         }
 
         return filtered;
+    };
+
+    // --- PERMISSION HELPERS ---
+    const hasExistingBudget = () => {
+        return editingItem?.orcamentos && editingItem.orcamentos.length > 0;
+    };
+
+    const isExecutingOrDone = () => {
+        const s = formData.status?.toLowerCase();
+        return s === 'executando' || s === 'concluido' || s === 'cancelado';
+    };
+
+    const canEditPlanning = () => {
+        if (currentUserRole === 'gestor') return true;
+        if (currentUserRole === 'planejista') {
+            // Planejista can update ONLY IF no budget exists
+            return !hasExistingBudget();
+        }
+        return false; // Orcamentista cannot edit planning
+    };
+
+    const canEditBudget = () => {
+        if (currentUserRole === 'gestor') return true;
+        if (currentUserRole === 'orcamentista') {
+            // Orcamentista can edit budget IF service is not executing/done
+            // And mostly when status is 'analise' or 'aguardando_aprovacao'
+            return !isExecutingOrDone();
+        }
+        return false; // Planejista cannot edit budget
+    };
+
+    const canEditStatus = () => {
+        if (currentUserRole === 'gestor') return true;
+        if (currentUserRole === 'orcamentista') {
+            return !isExecutingOrDone();
+        }
+        if (currentUserRole === 'planejista') {
+            // Planejista can only update status if no budget exists (e.g. initial setup)
+            return !hasExistingBudget();
+        }
+        return false;
     };
 
     const handleEdit = (ticket: ChamadoExtended) => {
@@ -276,20 +370,65 @@ const Chamados: React.FC = () => {
         }));
     };
 
+    const handleSendToBudget = async () => {
+        if (!editingItem) return;
+        setSaving(true);
+        try {
+            // 1. Atualizar status para 'analise'
+            const { error: chaveError } = await supabase
+                .from('chaves')
+                .update({ status: 'analise' })
+                .eq('id', editingItem.id);
+            
+            if (chaveError) throw chaveError;
+
+            // 2. Salvar detalhes do planejamento, se houver
+            if (editingItem.planejamento && editingItem.planejamento.length > 0) {
+                const planUpdate: any = { 
+                    descricao: formData.planejamentoDesc,
+                    recursos: formData.planejamentoRecursos,
+                    pagamento: formData.planejamentoPagamento
+                };
+                
+                if (formData.planejamentoData) {
+                    planUpdate.execucao = new Date(formData.planejamentoData).toISOString();
+                }
+                
+                if (formData.planejamentoVisita) {
+                    planUpdate.visita = new Date(formData.planejamentoVisita).toISOString();
+                } else {
+                    planUpdate.visita = null;
+                }
+
+                await supabase.from('planejamento').update(planUpdate).eq('id', editingItem.planejamento[0].id);
+            }
+
+            await fetchData();
+            setIsModalOpen(false);
+            alert('Enviado para o Orçamentista com sucesso!');
+        } catch (error: any) {
+            alert('Erro: ' + (error.message || JSON.stringify(error)));
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleSave = async () => {
         if (!editingItem) return;
         setSaving(true);
         try {
             // 1. Update Chave (Status & Profissional)
-            const { error: chaveError } = await supabase.from('chaves').update({
-                profissional: formData.profissionalUuid || null,
-                status: formData.status
-            }).eq('id', editingItem.id);
-            
-            if (chaveError) throw chaveError;
+            // Only update if allowed
+            if (canEditStatus()) {
+                const { error: chaveError } = await supabase.from('chaves').update({
+                    profissional: formData.profissionalUuid || null,
+                    status: formData.status
+                }).eq('id', editingItem.id);
+                if (chaveError) throw chaveError;
+            }
 
-            // 2. Upsert Budget (ONLY if form is visible)
-            if (showBudgetForm) {
+            // 2. Upsert Budget (ONLY if form is visible AND user has permission)
+            if (showBudgetForm && canEditBudget()) {
                 const budgetPayload = {
                     chave: editingItem.id,
                     preco: parseFloat(formData.orcamentoPreco.toString()),
@@ -311,8 +450,8 @@ const Chamados: React.FC = () => {
                 }
             }
 
-            // 3. Update Planning Description/Date/Resources/Payment/Visit
-            if (editingItem.planejamento && editingItem.planejamento.length > 0) {
+            // 3. Update Planning (ONLY if user has permission)
+            if (canEditPlanning() && editingItem.planejamento && editingItem.planejamento.length > 0) {
                 const planUpdate: any = { 
                     descricao: formData.planejamentoDesc,
                     recursos: formData.planejamentoRecursos,
@@ -353,7 +492,7 @@ const Chamados: React.FC = () => {
             }).eq('id', editingItem.id);
             if (chaveError) throw chaveError;
 
-            if (showBudgetForm) {
+            if (showBudgetForm && canEditBudget()) {
                 const budgetPayload = {
                     chave: editingItem.id,
                     preco: parseFloat(formData.orcamentoPreco.toString()),
@@ -403,20 +542,23 @@ const Chamados: React.FC = () => {
         <div className="min-h-screen bg-ios-bg pb-20">
              {/* Header */}
             <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-20 border-b border-gray-200">
-                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Chamados</h1>
-                <p className="text-gray-500 text-sm mt-1">Gestão de serviços e orçamentos.</p>
+                <div className="flex justify-between items-start">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Chamados</h1>
+                        <p className="text-gray-500 text-sm mt-1">Gestão de serviços e orçamentos.</p>
+                    </div>
+                    {/* Role Badge */}
+                    <div className="px-3 py-1 bg-gray-100 rounded-full text-xs font-bold uppercase text-gray-500 border border-gray-200">
+                        {currentUserRole || 'Carregando...'}
+                    </div>
+                </div>
             </div>
 
             <div className="p-5 max-w-7xl mx-auto space-y-6">
                 
                 {/* Tabs */}
                 <div className="flex space-x-2 overflow-x-auto no-scrollbar pb-1">
-                    {[
-                        { id: 'novos', label: 'Novos / Pendentes', icon: AlertTriangle },
-                        { id: 'orcamentos', label: 'Orçamentos', icon: DollarSign },
-                        { id: 'execucao', label: 'Em Execução', icon: Clock },
-                        { id: 'historico', label: 'Histórico', icon: FileText }
-                    ].map(tab => (
+                    {visibleTabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
@@ -536,8 +678,9 @@ const Chamados: React.FC = () => {
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Pedido</label>
                                     <div className="relative">
                                         <select 
-                                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold outline-none capitalize focus:ring-2 focus:ring-black/10"
+                                            className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold outline-none capitalize focus:ring-2 focus:ring-black/10 ${!canEditStatus() ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             value={formData.status}
+                                            disabled={!canEditStatus()}
                                             onChange={(e) => setFormData({...formData, status: e.target.value})}
                                         >
                                             <option value="pendente">Pendente</option>
@@ -554,8 +697,9 @@ const Chamados: React.FC = () => {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional</label>
                                     <select 
-                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold outline-none"
+                                        className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold outline-none ${!canEditPlanning() ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         value={formData.profissionalUuid}
+                                        disabled={!canEditPlanning()}
                                         onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
                                     >
                                         <option value="">Selecione...</option>
@@ -566,8 +710,13 @@ const Chamados: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Planning Info (Full Editing) */}
-                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3">
+                            {/* Planning Info (Controlled by Role) */}
+                            <div className={`bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3 relative ${!canEditPlanning() ? 'opacity-90' : ''}`}>
+                                {!canEditPlanning() && (
+                                    <div className="absolute top-2 right-2 text-gray-400" title="Somente leitura">
+                                        <Lock size={14} />
+                                    </div>
+                                )}
                                 <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center">
                                     <FileText size={12} className="mr-1"/> Detalhes do Planejamento
                                 </h4>
@@ -577,7 +726,8 @@ const Chamados: React.FC = () => {
                                         <label className="text-[10px] font-bold text-gray-400 ml-1">Execução (Data Desejada)</label>
                                         <input 
                                             type="datetime-local" 
-                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-100"
+                                            disabled={!canEditPlanning()}
+                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                                             value={formData.planejamentoData}
                                             onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})}
                                         />
@@ -586,7 +736,8 @@ const Chamados: React.FC = () => {
                                         <label className="text-[10px] font-bold text-gray-400 ml-1">Visita Técnica</label>
                                         <input 
                                             type="datetime-local" 
-                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-100"
+                                            disabled={!canEditPlanning()}
+                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                                             value={formData.planejamentoVisita}
                                             onChange={(e) => setFormData({...formData, planejamentoVisita: e.target.value})}
                                         />
@@ -596,7 +747,8 @@ const Chamados: React.FC = () => {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-gray-400 ml-1">Tipo de Pagamento</label>
                                     <select 
-                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-gray-900 outline-none"
+                                        disabled={!canEditPlanning()}
+                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-gray-900 outline-none disabled:bg-gray-100"
                                         value={formData.planejamentoPagamento}
                                         onChange={(e) => setFormData({...formData, planejamentoPagamento: e.target.value})}
                                     >
@@ -609,7 +761,8 @@ const Chamados: React.FC = () => {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-gray-400 ml-1">Descrição do Problema</label>
                                     <textarea 
-                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs resize-none text-gray-700 outline-none focus:ring-2 focus:ring-blue-100"
+                                        disabled={!canEditPlanning()}
+                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs resize-none text-gray-700 outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                                         rows={3}
                                         value={formData.planejamentoDesc}
                                         onChange={(e) => setFormData({...formData, planejamentoDesc: e.target.value})}
@@ -618,27 +771,31 @@ const Chamados: React.FC = () => {
                                 
                                 <div className="space-y-2">
                                      <label className="text-[10px] font-bold text-gray-400 uppercase flex items-center"><Package size={10} className="mr-1"/>Recursos / Materiais</label>
-                                     <div className="flex gap-2 mb-2">
-                                         <input 
-                                             type="text"
-                                             placeholder="Adicionar recurso..."
-                                             className="flex-1 bg-white border border-gray-200 rounded-lg p-2 text-xs outline-none"
-                                             value={newResource}
-                                             onChange={(e) => setNewResource(e.target.value)}
-                                             onKeyDown={(e) => e.key === 'Enter' && handleAddResource()}
-                                         />
-                                         <button onClick={handleAddResource} className="bg-gray-200 hover:bg-gray-300 text-gray-700 p-2 rounded-lg">
-                                             <Plus size={14} />
-                                         </button>
-                                     </div>
+                                     {canEditPlanning() && (
+                                         <div className="flex gap-2 mb-2">
+                                             <input 
+                                                 type="text"
+                                                 placeholder="Adicionar recurso..."
+                                                 className="flex-1 bg-white border border-gray-200 rounded-lg p-2 text-xs outline-none"
+                                                 value={newResource}
+                                                 onChange={(e) => setNewResource(e.target.value)}
+                                                 onKeyDown={(e) => e.key === 'Enter' && handleAddResource()}
+                                             />
+                                             <button onClick={handleAddResource} className="bg-gray-200 hover:bg-gray-300 text-gray-700 p-2 rounded-lg">
+                                                 <Plus size={14} />
+                                             </button>
+                                         </div>
+                                     )}
                                      {formData.planejamentoRecursos.length > 0 ? (
                                         <div className="flex flex-wrap gap-1">
                                             {formData.planejamentoRecursos.map((r, i) => (
                                                 <div key={i} className="flex items-center text-[10px] bg-white border border-gray-200 px-2 py-1 rounded-lg text-gray-600 font-medium">
                                                     <span>{r}</span>
-                                                    <button onClick={() => handleRemoveResource(i)} className="ml-1 text-red-400 hover:text-red-600">
-                                                        <Trash2 size={10} />
-                                                    </button>
+                                                    {canEditPlanning() && (
+                                                        <button onClick={() => handleRemoveResource(i)} className="ml-1 text-red-400 hover:text-red-600">
+                                                            <Trash2 size={10} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
@@ -656,18 +813,27 @@ const Chamados: React.FC = () => {
                                     </div>
                                     <h4 className="font-bold text-gray-900 text-sm">Nenhum orçamento criado</h4>
                                     <p className="text-xs text-gray-500 mb-4 mt-1">Este pedido ainda não possui valores definidos.</p>
-                                    <button 
-                                        onClick={handleCreateBudget}
-                                        className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
-                                    >
-                                        Gerar Orçamento
-                                    </button>
+                                    
+                                    {/* Only show create budget if permission allowed */}
+                                    {canEditBudget() && (
+                                        <button 
+                                            onClick={handleCreateBudget}
+                                            className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all active:scale-95"
+                                        >
+                                            Gerar Orçamento
+                                        </button>
+                                    )}
                                 </div>
                             ) : (
-                                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in fade-in slide-in-from-bottom-4">
+                                <div className={`bg-blue-50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in fade-in slide-in-from-bottom-4 relative ${!canEditBudget() ? 'opacity-90' : ''}`}>
+                                    {!canEditBudget() && (
+                                        <div className="absolute top-2 right-2 text-blue-400" title="Somente leitura">
+                                            <Lock size={14} />
+                                        </div>
+                                    )}
                                     <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center justify-between">
                                         <span className="flex items-center"><DollarSign size={12} className="mr-1"/> Composição do Preço</span>
-                                        <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">Editando</span>
+                                        {canEditBudget() && <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">Editando</span>}
                                     </h4>
                                     
                                     {/* Cost Breakdown Inputs */}
@@ -676,7 +842,8 @@ const Chamados: React.FC = () => {
                                             <label className="text-[10px] font-bold text-blue-500 ml-1">Custo Fixo (R$)</label>
                                             <input 
                                                 type="number"
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs disabled:bg-gray-100"
                                                 value={formData.orcamentoCusto}
                                                 onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value)})}
                                             />
@@ -685,7 +852,8 @@ const Chamados: React.FC = () => {
                                             <label className="text-[10px] font-bold text-blue-500 ml-1">Custo Variável (R$)</label>
                                             <input 
                                                 type="number"
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs disabled:bg-gray-100"
                                                 value={formData.orcamentoCustoVariavel}
                                                 onChange={(e) => setFormData({...formData, orcamentoCustoVariavel: parseFloat(e.target.value)})}
                                             />
@@ -694,7 +862,8 @@ const Chamados: React.FC = () => {
                                             <label className="text-[10px] font-bold text-blue-500 ml-1">H.H. (Mão de Obra)</label>
                                             <input 
                                                 type="number"
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs disabled:bg-gray-100"
                                                 value={formData.orcamentoHH}
                                                 onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value)})}
                                             />
@@ -703,7 +872,8 @@ const Chamados: React.FC = () => {
                                             <label className="text-[10px] font-bold text-blue-500 ml-1">Impostos (R$)</label>
                                             <input 
                                                 type="number"
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs disabled:bg-gray-100"
                                                 value={formData.orcamentoImposto}
                                                 onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value)})}
                                             />
@@ -715,7 +885,8 @@ const Chamados: React.FC = () => {
                                             <label className="text-[10px] font-bold text-green-600 ml-1 flex items-center"><DollarSign size={10} className="mr-0.5"/> Margem de Lucro (R$)</label>
                                             <input 
                                                 type="number"
-                                                className="w-full bg-white border border-green-200 rounded-xl p-2 text-xs font-bold text-green-700"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-green-200 rounded-xl p-2 text-xs font-bold text-green-700 disabled:bg-gray-100"
                                                 value={formData.orcamentoLucro}
                                                 onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value)})}
                                             />
@@ -732,7 +903,8 @@ const Chamados: React.FC = () => {
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-blue-500 ml-1">Tipo Pagamento</label>
                                             <select 
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs disabled:bg-gray-100"
                                                 value={formData.orcamentoTipoPgto}
                                                 onChange={(e) => setFormData({...formData, orcamentoTipoPgto: e.target.value})}
                                             >
@@ -747,7 +919,8 @@ const Chamados: React.FC = () => {
                                             <input 
                                                 type="number"
                                                 min="1"
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs disabled:bg-gray-100"
                                                 value={formData.orcamentoParcelas}
                                                 onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value)})}
                                             />
@@ -757,7 +930,8 @@ const Chamados: React.FC = () => {
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-blue-500 ml-1">Obs. para Cliente</label>
                                         <textarea 
-                                            className="w-full bg-white border border-blue-200 rounded-xl p-3 text-xs resize-none"
+                                            disabled={!canEditBudget()}
+                                            className="w-full bg-white border border-blue-200 rounded-xl p-3 text-xs resize-none disabled:bg-gray-100"
                                             rows={2}
                                             value={formData.orcamentoObs}
                                             onChange={(e) => setFormData({...formData, orcamentoObs: e.target.value})}
@@ -771,8 +945,25 @@ const Chamados: React.FC = () => {
                         {/* Footer Actions */}
                         <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto space-y-3">
                             
+                            {/* SEND TO BUDGET BUTTON (For Planner/Manager when Status is Pending) */}
+                            {formData.status === 'pendente' && (currentUserRole === 'planejista' || currentUserRole === 'gestor') && (
+                                <button 
+                                    onClick={handleSendToBudget}
+                                    disabled={saving}
+                                    className="w-full bg-purple-600 text-white hover:bg-purple-700 py-3.5 rounded-2xl font-bold shadow-lg shadow-purple-200 active:scale-[0.98] transition-all flex justify-center items-center space-x-2"
+                                >
+                                    {saving ? <Loader2 className="animate-spin" size={18}/> : (
+                                        <>
+                                            <ArrowRightCircle size={18} />
+                                            <span>Enviar para Orçamento</span>
+                                        </>
+                                    )}
+                                </button>
+                            )}
+
                             {/* Send Proposal Button (Only in Budget Tab and if status permits) */}
                             {showBudgetForm && 
+                             canEditBudget() && // Requires Budget Permission
                              editingItem?.status !== 'aguardando_aprovacao' && 
                              editingItem?.status !== 'aprovado' && 
                              editingItem?.status !== 'executando' && 
@@ -787,13 +978,16 @@ const Chamados: React.FC = () => {
                                 </button>
                             )}
                             
-                            <button 
-                                onClick={handleSave}
-                                disabled={saving}
-                                className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center disabled:opacity-70 disabled:scale-100 space-x-2"
-                            >
-                                {saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}
-                            </button>
+                            {/* Save Button (Show only if user can edit something) */}
+                            {(canEditPlanning() || canEditBudget() || canEditStatus()) && (
+                                <button 
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                    className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center disabled:opacity-70 disabled:scale-100 space-x-2"
+                                >
+                                    {saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}
+                                </button>
+                            )}
                         </div>
 
                     </div>

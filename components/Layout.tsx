@@ -77,6 +77,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   
   const normType = userType?.toLowerCase() || '';
   const isManager = !loadingUserType && normType === 'gestor';
+  // Internal users (Gestor, Planejista, Orcamentista)
+  const isInternal = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista');
   
   // Logic for Agenda vs Execution
   // Agenda: Everyone EXCEPT Consumidor and Profissional
@@ -196,23 +198,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <span>Meu Perfil</span>
           </button>
           
+          {isInternal && (
+            <button 
+              onClick={() => navigate('/chamados')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/chamados')}`}
+            >
+              <FileText size={20} />
+              <span>Chamados</span>
+            </button>
+          )}
+
           {isManager && (
-            <>
-              <button 
-                onClick={() => navigate('/chamados')}
-                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/chamados')}`}
-              >
-                <FileText size={20} />
-                <span>Chamados</span>
-              </button>
-              <button 
-                onClick={() => navigate('/settings')}
-                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/settings')}`}
-              >
-                <Settings size={20} />
-                <span>Configurações</span>
-              </button>
-            </>
+            <button 
+              onClick={() => navigate('/settings')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/settings')}`}
+            >
+              <Settings size={20} />
+              <span>Configurações</span>
+            </button>
           )}
         </nav>
 
