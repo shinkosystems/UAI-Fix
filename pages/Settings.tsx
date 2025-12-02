@@ -15,6 +15,11 @@ const Settings: React.FC = () => {
   const [cities, setCities] = useState<City[]>([]);
   const [states, setStates] = useState<Estado[]>([]);
   
+  // Filter States for Services
+  const [serviceFilterName, setServiceFilterName] = useState('');
+  const [serviceFilterStatus, setServiceFilterStatus] = useState('all');
+  const [serviceFilterParent, setServiceFilterParent] = useState('all');
+
   // Filter States for Users
   const [filterName, setFilterName] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -382,15 +387,39 @@ const Settings: React.FC = () => {
       }
   };
 
+  // --- SERVICES FILTER LOGIC ---
   const displayedServices = services.filter(s => {
-      if (serviceSubTab === 'primary') return s.primaria === true;
-      return s.primaria === false;
+      // 1. Sub-tab filter
+      if (serviceSubTab === 'primary' && !s.primaria) return false;
+      if (serviceSubTab === 'secondary' && s.primaria) return false;
+
+      // 2. Name search
+      const sName = normalizeStr(s.nome);
+      const fName = normalizeStr(serviceFilterName);
+      if (!sName.includes(fName)) return false;
+
+      // 3. Status filter
+      if (serviceFilterStatus !== 'all') {
+          const isActive = serviceFilterStatus === 'active';
+          if (s.ativa !== isActive) return false;
+      }
+
+      // 4. Parent category filter (Secondary Only)
+      if (serviceSubTab === 'secondary' && serviceFilterParent !== 'all') {
+          const parentId = parseInt(serviceFilterParent);
+          if (s.dependencia !== parentId) return false;
+      }
+
+      return true;
   });
   
-  // Filter services for Activity Selector
+  // Filter services for Activity Selector (Modal)
   const filteredActivities = services.filter(s => 
       s.nome.toLowerCase().includes(activitySearchTerm.toLowerCase())
   );
+
+  // Get list of primary categories for the Parent Filter dropdown
+  const primaryCategories = services.filter(s => s.primaria).sort((a, b) => a.nome.localeCompare(b.nome));
 
   return (
     <div className="min-h-screen bg-ios-bg pb-20 md:pb-0 font-sans">
@@ -471,6 +500,53 @@ const Settings: React.FC = () => {
                         <option value="inactive">Inativos</option>
                      </select>
                 </div>
+             </div>
+        )}
+
+        {/* --- SERVICES FILTERS --- */}
+        {activeTab === 'services' && (
+             <div className="bg-white rounded-[1.5rem] p-5 shadow-vitrified border border-white/50 grid grid-cols-1 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-4">
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Buscar Serviço</label>
+                    <div className="relative">
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <input 
+                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                            placeholder="Buscar..."
+                            value={serviceFilterName}
+                            onChange={(e) => setServiceFilterName(e.target.value)}
+                        />
+                    </div>
+                </div>
+                
+                <div className="space-y-1">
+                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Status</label>
+                     <select 
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                        value={serviceFilterStatus}
+                        onChange={(e) => setServiceFilterStatus(e.target.value)}
+                     >
+                        <option value="all">Todos</option>
+                        <option value="active">Ativos</option>
+                        <option value="inactive">Inativos</option>
+                     </select>
+                </div>
+
+                {serviceSubTab === 'secondary' && (
+                    <div className="space-y-1 md:col-span-2">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Categoria Pai</label>
+                        <select 
+                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                            value={serviceFilterParent}
+                            onChange={(e) => setServiceFilterParent(e.target.value)}
+                        >
+                            <option value="all">Todas as categorias</option>
+                            {primaryCategories.map(cat => (
+                                <option key={cat.id} value={cat.id}>{cat.nome}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
              </div>
         )}
 
