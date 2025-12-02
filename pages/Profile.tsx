@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, City, Estado } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { User as UserIcon, Phone, LogOut, Camera, Save, Loader2, AlertCircle, Search, MapPin, X, Edit2, FileText, Home, Navigation } from 'lucide-react';
+import { User as UserIcon, Phone, LogOut, Camera, Save, Loader2, AlertCircle, Search, MapPin, X, Edit2, FileText, Home, Navigation, Users } from 'lucide-react';
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
@@ -23,6 +23,7 @@ const Profile: React.FC = () => {
   const [nome, setNome] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [cpf, setCpf] = useState('');
+  const [sexo, setSexo] = useState('');
   
   // Address
   const [cep, setCep] = useState('');
@@ -122,6 +123,7 @@ const Profile: React.FC = () => {
           setNome(userData.nome || '');
           setWhatsapp(formatPhone(userData.whatsapp || ''));
           setCpf(formatCpf(userData.cpf || ''));
+          setSexo(userData.sexo || '');
           
           setCep(formatCep(userData.cep || ''));
           setRua(userData.rua || '');
@@ -146,9 +148,9 @@ const Profile: React.FC = () => {
         }
       }
 
-    } catch (error) {
-      console.error('Erro ao carregar perfil:', error);
-      setMessage({ type: 'error', text: 'Não foi possível carregar os dados.' });
+    } catch (error: any) {
+      console.error('Erro ao carregar perfil:', error.message || error);
+      setMessage({ type: 'error', text: 'Não foi possível carregar os dados. ' + (error.message || '') });
     } finally {
       setLoading(false);
     }
@@ -246,6 +248,7 @@ const Profile: React.FC = () => {
         nome,
         whatsapp: cleanPhone,
         cpf: cleanCpf,
+        sexo: sexo || 'Outro',
         cep: cleanCep,
         rua,
         numero,
@@ -377,6 +380,23 @@ const Profile: React.FC = () => {
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
                     placeholder="(00) 00000-0000"
                 />
+                </div>
+              </div>
+
+               <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Sexo</label>
+                <div className="relative">
+                <Users className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                <select 
+                    value={sexo}
+                    onChange={(e) => setSexo(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 appearance-none"
+                >
+                    <option value="">Selecione...</option>
+                    <option value="Masculino">Masculino</option>
+                    <option value="Feminino">Feminino</option>
+                    <option value="Outro">Outro</option>
+                </select>
                 </div>
               </div>
           </div>

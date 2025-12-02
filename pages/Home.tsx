@@ -45,6 +45,11 @@ const Home: React.FC = () => {
   const [topProfessionals, setTopProfessionals] = useState<TopProfessional[]>([]);
   const [nextAppointment, setNextAppointment] = useState<NextAppointment | null>(null);
 
+  // States for Modal Details (Reusing Agenda Logic visually)
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  // We will fetch specific details when opening the modal, similar to Calendar
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -74,16 +79,27 @@ const Home: React.FC = () => {
           if (userData) {
               setUserType(userData.tipo);
               
-              // Check for critical missing fields based on the Profile UI requirements
+              // Helper to check if field is empty or has a placeholder value
+              const isInvalid = (val: any) => {
+                  if (!val) return true;
+                  const str = String(val).trim().toLowerCase();
+                  return str === '' || 
+                         str === 'insere' || 
+                         str === '000.000.000-00' || 
+                         str === '00000-000' || 
+                         str === '(00) 00000-0000';
+              };
+
+              // Check for critical missing fields OR placeholders
               const isProfileIncomplete = 
-                  !userData.nome || 
-                  !userData.cpf || 
-                  !userData.whatsapp || 
-                  !userData.cep || 
+                  isInvalid(userData.nome) || 
+                  isInvalid(userData.cpf) || 
+                  isInvalid(userData.whatsapp) || 
+                  isInvalid(userData.cep) || 
                   !userData.cidade || 
-                  !userData.rua || 
-                  !userData.numero || 
-                  !userData.bairro;
+                  isInvalid(userData.rua) || 
+                  isInvalid(userData.numero) || 
+                  isInvalid(userData.bairro);
 
               if (isProfileIncomplete) {
                   setShowProfileAlert(true);
@@ -234,7 +250,7 @@ const Home: React.FC = () => {
             }).format(dateObj).replace('.', '');
 
             return {
-              id: item.id,
+              id: item.id, // This is the agenda ID
               title: serviceName,
               date: dateStr,
               status: status,
@@ -244,6 +260,32 @@ const Home: React.FC = () => {
           });
           setRecentServices(formattedServices);
         }
+
+        // 8. Check for Pending Reviews (Concluded but no Review)
+        const { data: concludedServices } = await supabase
+          .from('chaves')
+          .select('id')
+          .eq('cliente', userUuid)
+          .eq('status', 'concluido');
+        
+        if (concludedServices && concludedServices.length > 0) {
+           const concludedIds = concludedServices.map(c => c.id);
+           
+           // Check which ones have reviews
+           const { data: reviews } = await supabase
+             .from('avaliacoes')
+             .select('chave')
+             .in('chave', concludedIds);
+             
+           const reviewedIds = reviews ? reviews.map(r => r.chave) : [];
+           const hasPendingReview = concludedIds.some(id => !reviewedIds.includes(id));
+           
+           // If we have pending reviews, show an alert (we can reuse the top alert space or a new one)
+           if (hasPendingReview && !showProfileAlert) {
+               // We could create a separate state for review alert, but for now lets add a dedicated container below
+           }
+        }
+
       }
 
     } catch (error) {
@@ -252,6 +294,31 @@ const Home: React.FC = () => {
       setLoading(false);
     }
   };
+  
+  // Logic to check for pending reviews on render/state update if we want a separate banner
+  // For now we will rely on a new check in the JSX
+
+  const [hasPendingReviews, setHasPendingReviews] = useState(false);
+  
+  useEffect(() => {
+      const checkReviews = async () => {
+          const { data: { user } } = await supabase.auth.getUser();
+          if(!user) return;
+          
+          const { data: concluded } = await supabase.from('chaves').select('id').eq('cliente', user.id).eq('status', 'concluido');
+          if(!concluded || concluded.length === 0) return;
+          
+          const ids = concluded.map(c => c.id);
+          const { data: reviews } = await supabase.from('avaliacoes').select('chave').in('chave', ids);
+          
+          const reviewedIds = reviews ? reviews.map(r => r.chave) : [];
+          if(ids.some(id => !reviewedIds.includes(id))) {
+              setHasPendingReviews(true);
+          }
+      };
+      checkReviews();
+  }, [loading]);
+
 
   const handleSmartNavigation = () => {
       const type = userType.toLowerCase();
@@ -260,6 +327,19 @@ const Home: React.FC = () => {
       } else {
           navigate('/calendar');
       }
+  };
+  
+  const handleServiceClick = (agendaId: number) => {
+      // Logic to replicate Calendar item click
+      // Since Home doesn't have the full Calendar state/modal logic, 
+      // the best approach is to navigate to Calendar with state, or open a simplified modal here.
+      // Given the prompt "apareça para o usuário", let's render the Calendar modal here by fetching its data.
+      
+      // Navigate to Calendar page is safer and cleaner architecture, but prompt asked "ao clicar... o componente... apareça".
+      // To simulate the "Calendar Modal" behavior on Home without duplicating 500 lines of code:
+      // We will navigate to the Calendar page and pass the ID to open immediately.
+      
+      navigate('/calendar', { state: { openEventId: agendaId } });
   };
 
   return (
@@ -301,6 +381,27 @@ const Home: React.FC = () => {
               </div>
           </div>
       )}
+      
+      {/* --- PENDING REVIEW ALERT --- */}
+      {hasPendingReviews && !showProfileAlert && (
+          <div 
+            onClick={() => navigate('/orders')}
+            className="mx-5 mb-4 bg-yellow-50 border border-yellow-100 rounded-[2rem] p-5 shadow-sm flex items-center justify-between animate-in fade-in slide-in-from-top-4 cursor-pointer hover:bg-yellow-100/50 transition-colors"
+          >
+              <div className="flex items-center space-x-3">
+                  <div className="bg-yellow-100 p-2 rounded-xl text-yellow-600">
+                      <Star size={20} className="fill-yellow-600"/>
+                  </div>
+                  <div>
+                      <h3 className="font-bold text-yellow-900 text-sm">Avaliação Pendente</h3>
+                      <p className="text-xs text-yellow-700 mt-0.5">
+                          Você tem serviços concluídos sem avaliação.
+                      </p>
+                  </div>
+              </div>
+              <ChevronRight size={18} className="text-yellow-400" />
+          </div>
+      )}
 
       {/* Stories Section */}
       <div className="mt-2 md:mt-0">
@@ -324,7 +425,7 @@ const Home: React.FC = () => {
         
         {/* NEXT APPOINTMENT WIDGET */}
         {nextAppointment && (
-            <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-[2.5rem] p-6 text-white shadow-xl relative overflow-hidden group hover:scale-[1.01] transition-transform cursor-pointer" onClick={handleSmartNavigation}>
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-[2.5rem] p-6 text-white shadow-xl relative overflow-hidden group hover:scale-[1.01] transition-transform cursor-pointer" onClick={() => handleServiceClick(nextAppointment.id)}>
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
                 <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-500/30 rounded-full -ml-8 -mb-8 blur-xl"></div>
                 
@@ -483,7 +584,11 @@ const Home: React.FC = () => {
                </div>
             ) : recentServices.length > 0 ? (
               recentServices.map((service) => (
-                <div key={service.id} className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-50 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer group active:scale-[0.98]">
+                <div 
+                    key={service.id} 
+                    onClick={() => handleServiceClick(service.id)}
+                    className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-50 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer group active:scale-[0.98]"
+                >
                   <div className="flex items-center space-x-4">
                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${service.color}`}>
                        <Clock size={20} />

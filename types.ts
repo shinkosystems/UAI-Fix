@@ -1,4 +1,5 @@
 
+
 export interface Geral {
   id: number;
   primaria: boolean;
@@ -40,6 +41,7 @@ export interface User {
   fotoperfil: string;
   uuid: string;
   tipo: string;
+  sexo: string; // Added field to match DB constraint
   
   // Address Fields
   rua?: string;
@@ -99,7 +101,7 @@ export interface Chave {
   geral?: { nome: string; imagem?: string };
   // cliente object might be injected manually or via join
   clienteData?: User; 
-  profissional?: User; // Depending on how we map it
+  profissional?: string | User | null; // Depending on how we map it
 }
 
 export interface Planejamento {

@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText, ShoppingBag, PlayCircle } from 'lucide-react';
+import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText, ShoppingBag, PlayCircle, CalendarCheck } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface LayoutProps {
@@ -82,7 +82,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Agenda: Everyone EXCEPT Consumidor and Profissional
   const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor' && normType !== 'profissional';
   
-  // Execution: ONLY Consumidor and Profissional
+  // Execution (Now labeled Agenda for Pros/Clients): ONLY Consumidor and Profissional
   const showExecution = !loadingUserType && (normType === 'consumidor' || normType === 'profissional');
 
 
@@ -181,8 +181,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               onClick={() => navigate('/execution')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/execution')}`}
             >
-              <PlayCircle size={20} />
-              <span>Execução</span>
+              <CalendarCheck size={20} />
+              <span>Agenda</span>
             </button>
           )}
 
@@ -277,7 +277,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/execution')}`}
                     >
                     <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/execution' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                        <PlayCircle size={22} strokeWidth={location.pathname === '/execution' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
+                        <CalendarCheck size={22} strokeWidth={location.pathname === '/execution' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
                     </div>
                     </button>
                 ) : (

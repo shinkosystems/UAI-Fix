@@ -218,7 +218,7 @@ const Chamados: React.FC = () => {
         }
 
         setFormData({
-            profissionalUuid: ticket.profissional || '',
+            profissionalUuid: (ticket.profissional as string) || '',
             status: (ticket.status || 'pendente').toLowerCase(), // Force lowercase for Select matching
             
             // Populate all budget fields

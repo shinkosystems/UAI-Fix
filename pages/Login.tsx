@@ -27,12 +27,60 @@ const Login: React.FC = () => {
             throw new Error("A senha deve ter pelo menos 6 caracteres.");
         }
 
-        const { error } = await supabase.auth.signUp({
+        // 1. Criar usuário na Autenticação do Supabase
+        const { data: authData, error: authError } = await supabase.auth.signUp({
           email,
           password,
         });
-        if (error) throw error;
-        alert('Cadastro realizado! Verifique seu e-mail ou faça login.');
+
+        if (authError) throw authError;
+
+        if (authData.user) {
+            // 2. Buscar uma cidade/estado padrão para satisfazer a constraint NOT NULL do banco
+            // O usuário será forçado a atualizar isso depois pelo alerta na Home
+            const { data: defaultCity } = await supabase
+                .from('cidades')
+                .select('id, uf')
+                .limit(1)
+                .maybeSingle();
+            
+            // Fallbacks seguros para evitar erro de Foreign Key
+            const cityId = defaultCity?.id || 1;
+            const stateId = defaultCity?.uf || 1;
+
+            // 3. Inserir o registro na tabela pública 'users' com DADOS FICTÍCIOS OBRIGATÓRIOS
+            // Isso evita erro de coluna NOT NULL no banco
+            const { error: profileError } = await supabase
+                .from('users')
+                .insert({
+                    uuid: authData.user.id,
+                    email: email,
+                    nome: 'Insere', // Placeholder solicitado
+                    tipo: 'consumidor', // Padrão Cliente
+                    sexo: 'Outro', // Padrão para satisfazer constraint NOT NULL
+                    cidade: cityId,
+                    estado: stateId,
+                    ativo: true,
+                    atividade: [], // Array vazio inicial
+                    fotoperfil: '',
+                    // Preenchimento de campos obrigatórios com placeholders
+                    cpf: '000.000.000-00',
+                    rua: 'Insere',
+                    numero: 'Insere',
+                    bairro: 'Insere',
+                    complemento: 'Insere',
+                    cep: '00000-000',
+                    whatsapp: '(00) 00000-0000'
+                });
+
+            if (profileError) {
+                console.error("Erro ao criar perfil público:", JSON.stringify(profileError));
+                // Tenta mostrar mensagem mais amigável
+                throw new Error(`Erro ao criar perfil: ${profileError.message}. Verifique os campos obrigatórios.`);
+            }
+        }
+
+        alert('Cadastro realizado com sucesso! Faça login para continuar.');
         setIsSignUp(false);
       } else {
         const { error } = await supabase.auth.signInWithPassword({
@@ -43,6 +91,7 @@ const Login: React.FC = () => {
         // O App.tsx detectará a mudança de sessão e redirecionará
       }
     } catch (error: any) {
+      console.error(error);
       setErrorMsg(error.message || 'Ocorreu um erro. Tente novamente.');
     } finally {
       setLoading(false);
