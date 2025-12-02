@@ -1,6 +1,4 @@
 
-
-
 import React, { useEffect, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
@@ -16,15 +14,10 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Chamados from './pages/Chamados';
+import ClientOrders from './pages/ClientOrders';
+import CalendarPage from './pages/Calendar'; 
+import Execution from './pages/Execution'; // New Page
 import { Loader2 } from 'lucide-react';
-
-// Placeholder components
-const CalendarPage = () => (
-  <div className="pt-20 px-5 text-center">
-    <h1 className="text-2xl font-bold text-gray-900 mb-2">Agenda</h1>
-    <p className="text-gray-500">Seus próximos agendamentos aparecerão aqui.</p>
-  </div>
-);
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
@@ -78,9 +71,11 @@ const App: React.FC = () => {
                   <Route path="/professional/:uuid" element={<ProfessionalProfile />} />
                   <Route path="/planning/:uuid" element={<Planning />} />
                   <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/execution" element={<Execution />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/chamados" element={<Chamados />} />
+                  <Route path="/orders" element={<ClientOrders />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Layout>

@@ -1,7 +1,4 @@
 
-
-
-
 export interface Geral {
   id: number;
   primaria: boolean;
@@ -17,7 +14,10 @@ export interface Agenda {
   observacoes: string | null;
   profissional: string | null; // uuid
   cliente: string | null; // uuid
-  // Add other fields as necessary
+  chave?: number; // Link to the ticket
+  dataconclusao?: string | null;
+  // Nested relation
+  chaves?: Chave;
 }
 
 export interface Estado {
@@ -40,9 +40,17 @@ export interface User {
   fotoperfil: string;
   uuid: string;
   tipo: string;
+  
+  // Address Fields
+  rua?: string;
+  numero?: string;
+  complemento?: string;
   bairro?: string;
-  atividade?: number[]; // Changed to number array (int8[])
   cidade: number; // Keep as number for backward compatibility and saving
+  estado: number;
+
+  atividade?: number[]; // Changed to number array (int8[])
+  
   // For nested data
   cidades?: City; // For nested queries
   // Aliased Nested object from JOIN to avoid conflicts
@@ -50,7 +58,7 @@ export interface User {
     cidade: string;
     uf: number;
   };
-  estado: number;
+  
   whatsapp?: string;
   rating?: number; // Optional derived field for UI
   reviewCount?: number; // Optional derived field for UI
@@ -73,15 +81,21 @@ export interface Avaliacao {
 
 export interface Chave {
   id: number;
+  cliente: string; // uuid
   planejista: string | null; // uuid
   orcamentista: string | null; // uuid
   chaveunica: string;
   status: string;
+  atividade: number;
   created_at: string;
+  // Execution Photos
+  fotoantes?: string[];
+  fotodepois?: string[];
   // Nested data from JOINs
-  geral?: { nome: string };
-  cliente?: User;
-  profissional?: User;
+  geral?: { nome: string; imagem?: string };
+  // cliente object might be injected manually or via join
+  clienteData?: User; 
+  profissional?: User; // Depending on how we map it
 }
 
 export interface Planejamento {
@@ -126,6 +140,7 @@ export interface OrdemServico {
   datafim: string | null;
   status: string;
   chave: number;
+  pdf?: string; // Link to the PDF in storage
   // Nested relation from JOIN
   chaves?: Chave;
 }

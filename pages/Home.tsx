@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Geral } from '../types';
 import StoryCircle from '../components/StoryCircle';
-import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase } from 'lucide-react';
+import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase, Calendar, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ServiceItem {
@@ -23,9 +23,18 @@ interface TopProfessional {
   rating: number;
 }
 
+interface NextAppointment {
+    id: number;
+    serviceName: string;
+    date: Date;
+    proName: string;
+    proPhoto: string;
+}
+
 const Home: React.FC = () => {
   const [categories, setCategories] = useState<Geral[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userType, setUserType] = useState<string>('');
   const navigate = useNavigate();
 
   // Dashboard States
@@ -33,6 +42,7 @@ const Home: React.FC = () => {
   const [servicosAtivosCount, setServicosAtivosCount] = useState(0);
   const [recentServices, setRecentServices] = useState<ServiceItem[]>([]);
   const [topProfessionals, setTopProfessionals] = useState<TopProfessional[]>([]);
+  const [nextAppointment, setNextAppointment] = useState<NextAppointment | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -52,6 +62,12 @@ const Home: React.FC = () => {
         if (demoUsers && demoUsers.length > 0) userUuid = demoUsers[0].uuid;
       }
 
+      if (userUuid) {
+          // Fetch User Type
+          const { data: typeData } = await supabase.from('users').select('tipo').eq('uuid', userUuid).single();
+          if (typeData) setUserType(typeData.tipo);
+      }
+
       // 2. Fetch Categories (Stories)
       const { data: catData } = await supabase
         .from('geral')
@@ -62,7 +78,6 @@ const Home: React.FC = () => {
       setCategories(catData || []);
 
       // 3. Fetch Top Professionals Logic
-      // a. Get all active professionals
       const { data: pros } = await supabase
         .from('users')
         .select('uuid, nome, fotoperfil')
@@ -70,16 +85,11 @@ const Home: React.FC = () => {
         .eq('ativo', true);
 
       if (pros && pros.length > 0) {
-          // b. Get aggregated data (Agenda count and Ratings)
-          // Ideally this should be a DB View, but we do it client side for now
           const { data: agendaData } = await supabase.from('agenda').select('profissional');
           const { data: ratingsData } = await supabase.from('avaliacoes').select('profissional, nota');
 
           const stats = pros.map(p => {
-              // Count services
               const count = agendaData?.filter(a => a.profissional === p.uuid).length || 0;
-              
-              // Calculate Average Rating
               const pRatings = ratingsData?.filter(r => r.profissional === p.uuid) || [];
               const avg = pRatings.length > 0 
                 ? pRatings.reduce((acc, curr) => acc + curr.nota, 0) / pRatings.length 
@@ -94,7 +104,6 @@ const Home: React.FC = () => {
               };
           });
 
-          // Sort: 1st by Service Count (DESC), 2nd by Rating (DESC)
           const sortedPros = stats.sort((a, b) => {
               if (b.serviceCount !== a.serviceCount) {
                   return b.serviceCount - a.serviceCount;
@@ -102,11 +111,11 @@ const Home: React.FC = () => {
               return b.rating - a.rating;
           });
 
-          setTopProfessionals(sortedPros.slice(0, 5)); // Top 5
+          setTopProfessionals(sortedPros.slice(0, 5)); 
       }
 
       if (userUuid) {
-        // 4. Get "Agendamentos" Count (In Agenda, not concluded)
+        // 4. Get "Agendamentos" Count
         const { count: countAgendamentos } = await supabase
           .from('agenda')
           .select('*', { count: 'exact', head: true })
@@ -115,7 +124,7 @@ const Home: React.FC = () => {
         
         setAgendamentosCount(countAgendamentos || 0);
 
-        // 5. Get "Serviços Ativos" Count (Active Keys)
+        // 5. Get "Serviços Ativos" Count
         const { count: countAtivos } = await supabase
           .from('chaves')
           .select('*', { count: 'exact', head: true })
@@ -125,8 +134,37 @@ const Home: React.FC = () => {
           
         setServicosAtivosCount(countAtivos || 0);
 
-        // 6. Get Recent Services List
-        // We join agenda -> chaves -> geral to get the service name
+        // 6. Get Next Appointment (Upcoming)
+        const nowISO = new Date().toISOString();
+        const { data: nextAgenda } = await supabase
+            .from('agenda')
+            .select(`
+                id,
+                execucao,
+                chaves (
+                    geral (nome),
+                    profissional (nome, fotoperfil)
+                )
+            `)
+            .eq('cliente', userUuid)
+            .gt('execucao', nowISO)
+            .is('dataconclusao', null)
+            .order('execucao', { ascending: true })
+            .limit(1)
+            .single();
+
+        if (nextAgenda) {
+             const key: any = nextAgenda.chaves; // Type casting for convenience
+             setNextAppointment({
+                 id: nextAgenda.id,
+                 serviceName: key?.geral?.nome || 'Serviço Agendado',
+                 date: new Date(nextAgenda.execucao),
+                 proName: key?.profissional?.nome || 'Profissional',
+                 proPhoto: key?.profissional?.fotoperfil || ''
+             });
+        }
+
+        // 7. Get Recent Services List
         const { data: agendaData } = await supabase
           .from('agenda')
           .select(`
@@ -192,9 +230,18 @@ const Home: React.FC = () => {
     }
   };
 
+  const handleSmartNavigation = () => {
+      const type = userType.toLowerCase();
+      if (type === 'consumidor' || type === 'profissional') {
+          navigate('/execution');
+      } else {
+          navigate('/calendar');
+      }
+  };
+
   return (
     <div className="min-h-screen bg-[#F2F4F8]">
-      {/* Header - Adaptive padding for desktop */}
+      {/* Header */}
       <header className="px-5 pt-12 md:pt-8 pb-4 flex justify-between items-center md:bg-transparent md:backdrop-blur-none vitrified md:border-none md:shadow-none sticky md:static top-0 z-30 rounded-b-[2rem] md:rounded-none shadow-sm mb-4">
         <div>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Bem-vindo</h2>
@@ -229,6 +276,40 @@ const Home: React.FC = () => {
 
       <div className="px-5 space-y-6 mt-2 md:mt-6">
         
+        {/* NEXT APPOINTMENT WIDGET */}
+        {nextAppointment && (
+            <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-[2.5rem] p-6 text-white shadow-xl relative overflow-hidden group hover:scale-[1.01] transition-transform cursor-pointer" onClick={handleSmartNavigation}>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-500/30 rounded-full -ml-8 -mb-8 blur-xl"></div>
+                
+                <div className="relative z-10 flex items-center justify-between">
+                    <div>
+                        <span className="text-blue-200 text-xs font-bold uppercase tracking-widest bg-blue-900/30 px-2 py-1 rounded-lg">Próximo Atendimento</span>
+                        <h3 className="text-xl font-bold mt-3 mb-1">{nextAppointment.serviceName}</h3>
+                        <div className="flex items-center space-x-2 text-blue-100 text-sm">
+                            <Calendar size={14} />
+                            <span>
+                                {nextAppointment.date.toLocaleDateString('pt-BR', {weekday: 'long', day: '2-digit', month: 'long'})}
+                            </span>
+                        </div>
+                         <div className="flex items-center space-x-2 text-blue-100 text-sm mt-1">
+                            <Clock size={14} />
+                            <span className="font-bold text-white">
+                                {nextAppointment.date.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col items-center">
+                        <div className="w-12 h-12 rounded-full border-2 border-white/30 bg-white/10 overflow-hidden mb-2">
+                            <img src={nextAppointment.proPhoto || `https://ui-avatars.com/api/?name=${nextAppointment.proName}`} alt="Pro" className="w-full h-full object-cover"/>
+                        </div>
+                        <span className="text-[10px] font-medium opacity-80">{nextAppointment.proName.split(' ')[0]}</span>
+                    </div>
+                </div>
+            </div>
+        )}
+
         {/* Dashboard Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-[2rem] shadow-vitrified flex flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
@@ -342,7 +423,7 @@ const Home: React.FC = () => {
           <div className="flex justify-between items-center mb-4 px-1">
             <h3 className="text-lg font-bold text-gray-900">Últimos Serviços</h3>
             <button 
-              onClick={() => navigate('/calendar')}
+              onClick={handleSmartNavigation}
               className="text-ios-blue text-xs font-bold uppercase tracking-wide hover:opacity-70 transition-opacity"
             >
               Ver todos

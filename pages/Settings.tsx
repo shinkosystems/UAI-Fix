@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Geral, User, City, Estado } from '../types';
-import { Loader2, Plus, Edit2, Trash2, X, Save, CheckCircle, AlertTriangle, Layers, Users, Link as LinkIcon, Image as ImageIcon, ArrowRightLeft, FolderTree, LayoutGrid, Box, CloudUpload, Search, Filter } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, X, Save, CheckCircle, AlertTriangle, Layers, Users, Link as LinkIcon, Image as ImageIcon, ArrowRightLeft, FolderTree, LayoutGrid, Box, CloudUpload, Search, Filter, Check, Briefcase } from 'lucide-react';
 
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'services' | 'users'>('services');
@@ -31,6 +31,9 @@ const Settings: React.FC = () => {
   const [citySearchTerm, setCitySearchTerm] = useState('');
   const [searchedCities, setSearchedCities] = useState<City[]>([]);
   const [searchingCity, setSearchingCity] = useState(false);
+
+  // Activity Search State (For Professional Edit)
+  const [activitySearchTerm, setActivitySearchTerm] = useState('');
 
   // Upload State
   const [uploading, setUploading] = useState(false);
@@ -64,19 +67,20 @@ const Settings: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch States for UF resolution
+      // 1. Always fetch Services (Geral) because we need them for the Professional Activity Selector
+      const { data: servicesData, error: servicesError } = await supabase.from('geral').select('*').order('nome', { ascending: true });
+      if (servicesError) throw servicesError;
+      setServices(servicesData || []);
+
+      // 2. Fetch Aux Data
       const { data: statesData } = await supabase.from('estados').select('*');
       if (statesData) setStates(statesData);
 
-      // Always fetch cities to map IDs to Names (For Edit Modal)
       const { data: citiesData } = await supabase.from('cidades').select('*').order('cidade', { ascending: true });
       if (citiesData) setCities(citiesData);
 
-      if (activeTab === 'services') {
-        const { data, error } = await supabase.from('geral').select('*').order('id', { ascending: true });
-        if (error) throw error;
-        setServices(data || []);
-      } else {
+      // 3. Fetch Users if tab is active
+      if (activeTab === 'users') {
         // USE EXPLICIT ALIAS to guarantee we get the city object, solving the ID display issue
         const { data, error } = await supabase
             .from('users')
@@ -198,6 +202,7 @@ const Settings: React.FC = () => {
 
   const handleEdit = (item: any) => {
     setFormData(item);
+    setActivitySearchTerm(''); // Reset search
     setEditingId(item.id);
     setIsModalOpen(true);
   };
@@ -221,9 +226,11 @@ const Settings: React.FC = () => {
             cidade_data: null, // Clear display data
             ativo: true,
             uuid: crypto.randomUUID(),
-            fotoperfil: ''
+            fotoperfil: '',
+            atividade: [] // Init empty array
         });
     }
+    setActivitySearchTerm('');
     setEditingId(null);
     setIsModalOpen(true);
   };
@@ -272,7 +279,7 @@ const Settings: React.FC = () => {
   };
 
   const handleSave = async () => {
-    if (activeTab === 'services' && editingId) {
+    if (activeTab === 'services' && editingItem()) {
         const originalItem = services.find(s => s.id === editingId);
         if (originalItem?.primaria && !formData.primaria) {
             setSaving(true);
@@ -297,6 +304,9 @@ const Settings: React.FC = () => {
     await executeSave(formData);
   };
 
+  // Helper just to check editing state safely
+  const editingItem = () => services.find(s => s.id === editingId);
+
   const executeSave = async (dataToSave: any) => {
     setSaving(true);
     try {
@@ -307,6 +317,8 @@ const Settings: React.FC = () => {
             delete payload.rating;
             delete payload.reviewCount;
             delete payload.cidade_data; // Remove joined object before saving to Supabase
+            // Ensure atividade is array of numbers
+            if (!payload.atividade) payload.atividade = [];
         }
 
         const query = editingId 
@@ -355,10 +367,30 @@ const Settings: React.FC = () => {
       setSearchedCities([]);
   };
 
+  const toggleActivity = (activityId: number) => {
+      const currentActivities = formData.atividade || [];
+      if (currentActivities.includes(activityId)) {
+          setFormData({
+              ...formData,
+              atividade: currentActivities.filter((id: number) => id !== activityId)
+          });
+      } else {
+          setFormData({
+              ...formData,
+              atividade: [...currentActivities, activityId]
+          });
+      }
+  };
+
   const displayedServices = services.filter(s => {
       if (serviceSubTab === 'primary') return s.primaria === true;
       return s.primaria === false;
   });
+  
+  // Filter services for Activity Selector
+  const filteredActivities = services.filter(s => 
+      s.nome.toLowerCase().includes(activitySearchTerm.toLowerCase())
+  );
 
   return (
     <div className="min-h-screen bg-ios-bg pb-20 md:pb-0 font-sans">
@@ -780,20 +812,53 @@ const Settings: React.FC = () => {
                             </div>
                             
                             {(formData.tipo === 'Profissional' || formData.tipo === 'profissional') && (
-                                <div className="space-y-2 bg-yellow-50 p-4 rounded-2xl border border-yellow-100">
-                                    <label className="text-[10px] font-bold text-yellow-700 uppercase tracking-wider">Atividades (IDs Array)</label>
-                                    <input 
-                                        className="w-full bg-white border border-yellow-200 rounded-xl p-3 text-sm font-mono" 
-                                        value={formData.atividade ? JSON.stringify(formData.atividade) : ''} 
-                                        placeholder="Ex: [1, 2, 3]"
-                                        onChange={e => {
-                                            try {
-                                                const parsed = JSON.parse(e.target.value);
-                                                setFormData({...formData, atividade: parsed});
-                                            } catch (err) {}
-                                        }}
-                                    />
-                                    <p className="text-[10px] text-yellow-600/70 mt-1">Insira os IDs dos serviços em formato JSON.</p>
+                                <div className="bg-yellow-50 p-4 rounded-2xl border border-yellow-100 space-y-3">
+                                    <label className="text-[10px] font-bold text-yellow-700 uppercase tracking-wider flex items-center">
+                                        <Briefcase size={12} className="mr-1"/> Atividades (Serviços Prestados)
+                                    </label>
+                                    
+                                    {/* Activity Selector UI */}
+                                    <div className="bg-white rounded-xl border border-yellow-200 overflow-hidden">
+                                        {/* Search Bar */}
+                                        <div className="p-2 border-b border-gray-100 bg-gray-50">
+                                            <div className="relative">
+                                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                <input 
+                                                    className="w-full bg-white border border-gray-200 rounded-lg py-2 pl-9 pr-3 text-xs font-medium focus:ring-2 focus:ring-yellow-200 outline-none"
+                                                    placeholder="Filtrar serviços..."
+                                                    value={activitySearchTerm}
+                                                    onChange={(e) => setActivitySearchTerm(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Scrollable List */}
+                                        <div className="max-h-48 overflow-y-auto p-1 space-y-1 no-scrollbar">
+                                            {filteredActivities.length > 0 ? filteredActivities.map(activity => {
+                                                const isSelected = (formData.atividade || []).includes(activity.id);
+                                                return (
+                                                    <div 
+                                                        key={activity.id}
+                                                        onClick={() => toggleActivity(activity.id)}
+                                                        className={`p-2 rounded-lg flex items-center cursor-pointer transition-colors ${isSelected ? 'bg-yellow-100 text-yellow-900' : 'hover:bg-gray-50 text-gray-700'}`}
+                                                    >
+                                                        <div className={`w-4 h-4 rounded border flex items-center justify-center mr-3 transition-colors ${isSelected ? 'bg-yellow-500 border-yellow-500' : 'border-gray-300 bg-white'}`}>
+                                                            {isSelected && <Check size={10} className="text-white" />}
+                                                        </div>
+                                                        <div className="w-6 h-6 rounded-md bg-gray-100 overflow-hidden mr-2 flex-shrink-0">
+                                                             {activity.imagem ? <img src={activity.imagem} className="w-full h-full object-cover" /> : <Box size={12} className="m-auto text-gray-400"/>}
+                                                        </div>
+                                                        <span className="text-xs font-medium truncate">{activity.nome}</span>
+                                                    </div>
+                                                );
+                                            }) : (
+                                                <p className="text-center text-xs text-gray-400 py-4">Nenhum serviço encontrado.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-yellow-600/70 text-right">
+                                        {(formData.atividade || []).length} serviços selecionados
+                                    </p>
                                 </div>
                             )}
                         </>

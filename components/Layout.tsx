@@ -1,9 +1,7 @@
 
-
-
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText } from 'lucide-react';
+import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText, ShoppingBag, PlayCircle } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface LayoutProps {
@@ -22,17 +20,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setLoadingUserType(true);
       if (user) {
         try {
-          // Fetch as an array to prevent .single() from throwing an error if the user's profile doesn't exist yet.
-          const { data, error } = await supabase.from('users').select('tipo').eq('uuid', user.id);
+          // Use maybeSingle() to handle 0 or 1 result gracefully without erroring on 0 rows
+          const { data, error } = await supabase
+            .from('users')
+            .select('tipo')
+            .eq('uuid', user.id)
+            .maybeSingle();
           
-          if (error) throw error;
+          if (error) {
+             // Fix: Log actual message instead of [object Object]
+             console.error("Supabase error fetching user type:", error.message || error);
+             throw error;
+          }
           
-          // If data is an array and has at least one result, take the type from the first one.
-          const type = (data && data.length > 0) ? data[0].tipo : null;
-          setUserType(type);
-          console.log('User type fetched:', type); 
-        } catch (error) {
-          console.error("Error fetching user type:", error);
+          setUserType(data?.tipo || null);
+        } catch (error: any) {
+          console.error("Error fetching user type:", error.message || error);
           setUserType(null);
         }
       } else {
@@ -72,7 +75,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Logic to hide Bottom Navbar on specific detail pages (Mobile Only)
   const shouldHideNav = location.pathname.includes('/professional/') || location.pathname.includes('/planning/');
   
-  const isManager = !loadingUserType && userType?.toLowerCase() === 'gestor';
+  const normType = userType?.toLowerCase() || '';
+  const isManager = !loadingUserType && normType === 'gestor';
+  
+  // Logic for Agenda vs Execution
+  // Agenda: Everyone EXCEPT Consumidor and Profissional
+  const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor' && normType !== 'profissional';
+  
+  // Execution: ONLY Consumidor and Profissional
+  const showExecution = !loadingUserType && (normType === 'consumidor' || normType === 'profissional');
 
 
   return (
@@ -148,12 +159,32 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </button>
 
           <button 
-            onClick={() => navigate('/calendar')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/calendar')}`}
+            onClick={() => navigate('/orders')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/orders')}`}
           >
-            <Calendar size={20} />
-            <span>Agenda</span>
+            <ShoppingBag size={20} />
+            <span>Meus Pedidos</span>
           </button>
+
+          {showAgenda && (
+            <button 
+              onClick={() => navigate('/calendar')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/calendar')}`}
+            >
+              <Calendar size={20} />
+              <span>Agenda</span>
+            </button>
+          )}
+
+          {showExecution && (
+            <button 
+              onClick={() => navigate('/execution')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/execution')}`}
+            >
+              <PlayCircle size={20} />
+              <span>Execução</span>
+            </button>
+          )}
 
           <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-6">Conta</p>
 
@@ -231,22 +262,34 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </button>
                 
                 <button 
-                onClick={() => navigate('/calendar')} 
-                className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/calendar')}`}
+                onClick={() => navigate('/orders')} 
+                className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/orders')}`}
                 >
-                <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/calendar' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                    <Calendar size={22} strokeWidth={location.pathname === '/calendar' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
+                <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/orders' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
+                    <ShoppingBag size={22} strokeWidth={location.pathname === '/orders' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
                 </div>
                 </button>
                 
-                <button 
-                onClick={() => navigate('/profile')} 
-                className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/profile')}`}
-                >
-                <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/profile' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                    <User size={22} strokeWidth={location.pathname === '/profile' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
-                </div>
-                </button>
+                {/* Dynamic 4th Button Mobile */}
+                {showExecution ? (
+                    <button 
+                    onClick={() => navigate('/execution')} 
+                    className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/execution')}`}
+                    >
+                    <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/execution' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
+                        <PlayCircle size={22} strokeWidth={location.pathname === '/execution' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
+                    </div>
+                    </button>
+                ) : (
+                    <button 
+                    onClick={() => navigate('/profile')} 
+                    className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/profile')}`}
+                    >
+                    <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/profile' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
+                        <User size={22} strokeWidth={location.pathname === '/profile' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
+                    </div>
+                    </button>
+                )}
             </div>
             </nav>
         </div>
