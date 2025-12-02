@@ -46,8 +46,12 @@ export interface User {
   numero?: string;
   complemento?: string;
   bairro?: string;
+  cep?: string; // Added CEP
   cidade: number; // Keep as number for backward compatibility and saving
   estado: number;
+
+  // Personal Fields
+  cpf?: string;
 
   atividade?: number[]; // Changed to number array (int8[])
   
@@ -137,7 +141,7 @@ export interface OrdemServico {
   id: number;
   created_at: string;
   datainicio: string | null;
-  datafim: string | null;
+  datafim?: string | null;
   status: string;
   chave: number;
   pdf?: string; // Link to the PDF in storage

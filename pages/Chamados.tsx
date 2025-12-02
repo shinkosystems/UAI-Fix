@@ -6,7 +6,7 @@ import {
     Loader2, Search, Filter, Plus, X, Save, Send, FileText, 
     User as UserIcon, Calendar, DollarSign, CheckCircle, 
     AlertTriangle, ChevronRight, Ban, Clock, Briefcase, MapPin,
-    Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash
+    Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator
 } from 'lucide-react';
 
 interface ChamadoExtended extends Chave {
@@ -40,15 +40,21 @@ const Chamados: React.FC = () => {
     const [formData, setFormData] = useState({
         profissionalUuid: '',
         status: '',
+        
+        // Dados de Orçamento Detalhado
         orcamentoPreco: 0,
-        orcamentoCusto: 0,
+        orcamentoCusto: 0, // Custo Fixo
+        orcamentoCustoVariavel: 0,
+        orcamentoHH: 0, // Homem Hora
+        orcamentoImposto: 0,
         orcamentoLucro: 0,
+
         orcamentoTipoPgto: 'Dinheiro',
         orcamentoParcelas: 1,
         orcamentoObs: '',
+        
         planejamentoDesc: '',
         planejamentoData: '',
-        // Novos campos para exibir todos os dados do planejamento
         planejamentoRecursos: [] as string[],
         planejamentoPagamento: '',
         planejamentoVisita: ''
@@ -61,6 +67,30 @@ const Chamados: React.FC = () => {
         fetchData();
         fetchProfessionals();
     }, []);
+
+    // Automatic Price Calculation Effect
+    useEffect(() => {
+        if (showBudgetForm) {
+            const custoFixo = parseFloat(formData.orcamentoCusto.toString()) || 0;
+            const custoVariavel = parseFloat(formData.orcamentoCustoVariavel.toString()) || 0;
+            const hh = parseFloat(formData.orcamentoHH.toString()) || 0;
+            const imposto = parseFloat(formData.orcamentoImposto.toString()) || 0;
+            const lucro = parseFloat(formData.orcamentoLucro.toString()) || 0;
+
+            const total = custoFixo + custoVariavel + hh + imposto + lucro;
+            
+            // Only update if value is different to avoid loop/cursor issues, though React handles this well
+            if (total !== formData.orcamentoPreco) {
+                setFormData(prev => ({ ...prev, orcamentoPreco: total }));
+            }
+        }
+    }, [
+        formData.orcamentoCusto, 
+        formData.orcamentoCustoVariavel, 
+        formData.orcamentoHH, 
+        formData.orcamentoImposto, 
+        formData.orcamentoLucro
+    ]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -190,15 +220,21 @@ const Chamados: React.FC = () => {
         setFormData({
             profissionalUuid: ticket.profissional || '',
             status: (ticket.status || 'pendente').toLowerCase(), // Force lowercase for Select matching
+            
+            // Populate all budget fields
             orcamentoPreco: budget?.preco || 0,
             orcamentoCusto: budget?.custofixo || 0,
+            orcamentoCustoVariavel: budget?.custovariavel || 0,
+            orcamentoHH: budget?.hh || 0,
+            orcamentoImposto: budget?.imposto || 0,
             orcamentoLucro: budget?.lucro || 0,
+            
             orcamentoTipoPgto: budget?.tipopagmto || 'Dinheiro',
             orcamentoParcelas: budget?.parcelas || 1,
             orcamentoObs: budget?.observacaocliente || '',
+            
             planejamentoDesc: plan?.descricao || '',
             planejamentoData: formattedDate,
-            // New fields population
             planejamentoRecursos: plan?.recursos || [],
             planejamentoPagamento: plan?.pagamento || 'hora',
             planejamentoVisita: formattedVisita
@@ -213,6 +249,9 @@ const Chamados: React.FC = () => {
             ...prev,
             orcamentoPreco: 0,
             orcamentoCusto: 0,
+            orcamentoCustoVariavel: 0,
+            orcamentoHH: 0,
+            orcamentoImposto: 0,
             orcamentoLucro: 0,
             orcamentoTipoPgto: 'Dinheiro',
             orcamentoParcelas: 1,
@@ -255,6 +294,9 @@ const Chamados: React.FC = () => {
                     chave: editingItem.id,
                     preco: parseFloat(formData.orcamentoPreco.toString()),
                     custofixo: parseFloat(formData.orcamentoCusto.toString()),
+                    custovariavel: parseFloat(formData.orcamentoCustoVariavel.toString()),
+                    hh: parseFloat(formData.orcamentoHH.toString()),
+                    imposto: parseFloat(formData.orcamentoImposto.toString()),
                     lucro: parseFloat(formData.orcamentoLucro.toString()),
                     tipopagmto: formData.orcamentoTipoPgto,
                     parcelas: parseInt(formData.orcamentoParcelas.toString()),
@@ -316,6 +358,9 @@ const Chamados: React.FC = () => {
                     chave: editingItem.id,
                     preco: parseFloat(formData.orcamentoPreco.toString()),
                     custofixo: parseFloat(formData.orcamentoCusto.toString()),
+                    custovariavel: parseFloat(formData.orcamentoCustoVariavel.toString()),
+                    hh: parseFloat(formData.orcamentoHH.toString()),
+                    imposto: parseFloat(formData.orcamentoImposto.toString()),
                     lucro: parseFloat(formData.orcamentoLucro.toString()),
                     tipopagmto: formData.orcamentoTipoPgto,
                     parcelas: parseInt(formData.orcamentoParcelas.toString()),
@@ -621,22 +666,14 @@ const Chamados: React.FC = () => {
                             ) : (
                                 <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in fade-in slide-in-from-bottom-4">
                                     <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center justify-between">
-                                        <span className="flex items-center"><DollarSign size={12} className="mr-1"/> Dados do Orçamento</span>
+                                        <span className="flex items-center"><DollarSign size={12} className="mr-1"/> Composição do Preço</span>
                                         <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">Editando</span>
                                     </h4>
                                     
+                                    {/* Cost Breakdown Inputs */}
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Preço Final (R$)</label>
-                                            <input 
-                                                type="number"
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-sm font-bold text-blue-900 focus:ring-2 focus:ring-blue-300 outline-none"
-                                                value={formData.orcamentoPreco}
-                                                onChange={(e) => setFormData({...formData, orcamentoPreco: parseFloat(e.target.value)})}
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Custo Estimado (R$)</label>
+                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Custo Fixo (R$)</label>
                                             <input 
                                                 type="number"
                                                 className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
@@ -644,7 +681,52 @@ const Chamados: React.FC = () => {
                                                 onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value)})}
                                             />
                                         </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Custo Variável (R$)</label>
+                                            <input 
+                                                type="number"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
+                                                value={formData.orcamentoCustoVariavel}
+                                                onChange={(e) => setFormData({...formData, orcamentoCustoVariavel: parseFloat(e.target.value)})}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-blue-500 ml-1">H.H. (Mão de Obra)</label>
+                                            <input 
+                                                type="number"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
+                                                value={formData.orcamentoHH}
+                                                onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value)})}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Impostos (R$)</label>
+                                            <input 
+                                                type="number"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs"
+                                                value={formData.orcamentoImposto}
+                                                onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value)})}
+                                            />
+                                        </div>
                                     </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-3 items-end">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-green-600 ml-1 flex items-center"><DollarSign size={10} className="mr-0.5"/> Margem de Lucro (R$)</label>
+                                            <input 
+                                                type="number"
+                                                className="w-full bg-white border border-green-200 rounded-xl p-2 text-xs font-bold text-green-700"
+                                                value={formData.orcamentoLucro}
+                                                onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value)})}
+                                            />
+                                        </div>
+                                        <div className="bg-blue-600 text-white p-2 rounded-xl text-center shadow-lg">
+                                            <span className="text-[10px] opacity-80 uppercase font-bold block">Preço Final</span>
+                                            <span className="text-lg font-bold">R$ {formData.orcamentoPreco.toFixed(2)}</span>
+                                        </div>
+                                    </div>
+
+                                    <hr className="border-blue-200/50" />
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">

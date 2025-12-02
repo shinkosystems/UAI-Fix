@@ -2,11 +2,12 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, CheckCircle } from 'lucide-react';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -19,6 +20,13 @@ const Login: React.FC = () => {
 
     try {
       if (isSignUp) {
+        if (password !== confirmPassword) {
+            throw new Error("As senhas não coincidem.");
+        }
+        if (password.length < 6) {
+            throw new Error("A senha deve ter pelo menos 6 caracteres.");
+        }
+
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -67,14 +75,14 @@ const Login: React.FC = () => {
               <button
                 type="button"
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${!isSignUp ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                onClick={() => setIsSignUp(false)}
+                onClick={() => { setIsSignUp(false); setErrorMsg(null); }}
               >
                 Entrar
               </button>
               <button
                 type="button"
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${isSignUp ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                onClick={() => setIsSignUp(true)}
+                onClick={() => { setIsSignUp(true); setErrorMsg(null); }}
               >
                 Cadastrar
               </button>
@@ -109,6 +117,26 @@ const Login: React.FC = () => {
                 />
               </div>
             </div>
+
+            {/* Confirm Password Field */}
+            {isSignUp && (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                <label className="text-xs font-bold text-gray-400 uppercase ml-1">Confirmar Senha</label>
+                <div className="relative">
+                    <CheckCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                    <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className={`w-full bg-gray-50 border rounded-xl py-3.5 pl-11 pr-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 focus:border-ios-blue transition-all ${
+                        confirmPassword && password !== confirmPassword ? 'border-red-300 focus:border-red-500' : 'border-gray-100'
+                    }`}
+                    placeholder="Repita a senha"
+                    />
+                </div>
+                </div>
+            )}
           </div>
 
           {errorMsg && (

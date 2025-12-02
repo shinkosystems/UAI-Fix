@@ -160,6 +160,13 @@ const ClientOrders: React.FC = () => {
         };
       });
 
+      // 6. Ordenação por Data de Execução (Decrescente)
+      fullOrders.sort((a, b) => {
+          const dateA = a.planejamento?.[0]?.execucao ? new Date(a.planejamento[0].execucao).getTime() : 0;
+          const dateB = b.planejamento?.[0]?.execucao ? new Date(b.planejamento[0].execucao).getTime() : 0;
+          return dateB - dateA;
+      });
+
       setOrders(fullOrders as OrderExtended[]);
 
     } catch (error: any) {

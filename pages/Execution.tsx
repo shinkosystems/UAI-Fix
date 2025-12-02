@@ -13,7 +13,6 @@ interface AgendaExtended extends Agenda {
         id: number;
         status: string;
         datainicio: string;
-        datafim: string;
     };
     chaveData?: {
         id: number;
@@ -218,7 +217,7 @@ const Execution: React.FC = () => {
       
       // 1. Obrigatório fotos antes para mudar para Executando
       if (formData.status === 'executando' && (!formData.fotoantes || formData.fotoantes.length === 0)) {
-          alert("Atenção: Para iniciar a execução (status 'Executando'), é obrigatório registrar fotos do 'Antes'.");
+          alert("REGRA DE EXECUÇÃO:\n\nPara alterar o status para 'Executando', é obrigatório registrar fotos do 'Antes'.\n\nPor favor, acesse a aba 'Fotos' e faça o upload.");
           setActiveTab('fotos');
           setSaving(false);
           return;
@@ -226,10 +225,21 @@ const Execution: React.FC = () => {
 
       // 2. Obrigatório fotos depois para mudar para Concluído
       if (formData.status === 'concluido' && (!formData.fotodepois || formData.fotodepois.length === 0)) {
-          alert("Atenção: Para finalizar o serviço (status 'Concluído'), é obrigatório registrar fotos do 'Depois' (Conclusão).");
+          alert("REGRA DE CONCLUSÃO:\n\nPara alterar o status para 'Concluído', é obrigatório registrar fotos do 'Depois' (Conclusão).\n\nPor favor, acesse a aba 'Fotos' e faça o upload.");
           setActiveTab('fotos');
           setSaving(false);
           return;
+      }
+
+      // 3. Obrigatório motivo para Cancelado
+      if (formData.status === 'cancelado') {
+          const motivo = formData.descricao?.trim();
+          if (!motivo || motivo.length < 10) {
+              alert("REGRA DE CANCELAMENTO:\n\nPara cancelar o serviço, é obrigatório informar o motivo detalhado no campo 'Anotações'.\n\nPor favor, digite uma justificativa com pelo menos 10 caracteres.");
+              setActiveTab('obs');
+              setSaving(false);
+              return;
+          }
       }
 
       try {
@@ -242,7 +252,8 @@ const Execution: React.FC = () => {
               }).eq('id', selectedEvent.chaveData.id);
           }
 
-          // 2. Update Agenda (Observations)
+          // 2. Update Agenda (Observations/Notes)
+          // Registra as anotações (que incluem o motivo em caso de cancelamento)
           await supabase.from('agenda').update({
               observacoes: formData.descricao
           }).eq('id', selectedEvent.id);
@@ -264,7 +275,7 @@ const Execution: React.FC = () => {
 
           await fetchAgenda();
           setIsModalOpen(false);
-          alert("Dados atualizados com sucesso!");
+          alert("Dados e status atualizados com sucesso!");
       } catch (error: any) {
           console.error(error);
           alert("Erro ao salvar: " + error.message);
@@ -283,7 +294,6 @@ const Execution: React.FC = () => {
       }
   };
 
-  // ... (Reused Navigation and View Logic from Calendar) ...
   const handleNavigate = (offset: number) => {
       const newDate = new Date(currentDate);
       if (view === 'month') newDate.setMonth(newDate.getMonth() + offset);
@@ -299,6 +309,29 @@ const Execution: React.FC = () => {
       return eDate.getDate() === date.getDate() && eDate.getMonth() === date.getMonth() && eDate.getFullYear() === date.getFullYear();
   });
 
+  const getStartOfWeek = (date: Date) => {
+      const d = new Date(date);
+      const day = d.getDay();
+      const diff = d.getDate() - day; // adjust when day is sunday
+      return new Date(d.setDate(diff));
+  };
+
+  const getHeaderText = () => {
+      if (view === 'day') {
+          return currentDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+      }
+      if (view === 'week') {
+          const start = getStartOfWeek(currentDate);
+          const end = new Date(start);
+          end.setDate(end.getDate() + 6);
+          const startStr = start.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
+          const endStr = end.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
+          return `${startStr} - ${endStr}`;
+      }
+      // Month
+      return currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  };
+
   if (loading && events.length === 0) {
       return ( <div className="min-h-screen bg-ios-bg flex items-center justify-center"><Loader2 className="animate-spin text-ios-blue" size={32} /></div> );
   }
@@ -308,8 +341,8 @@ const Execution: React.FC = () => {
        {/* Header Controls */}
        <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-20 border-b border-gray-200 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
             <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">Execução do Serviço</h1>
-                <p className="text-gray-500 text-sm mt-1">Controle operacional e registro de evidências.</p>
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight capitalize truncate">{getHeaderText()}</h1>
+                <p className="text-gray-500 text-sm mt-1">Gerencie seus agendamentos.</p>
             </div>
             
             <div className="flex flex-wrap items-center gap-3">
@@ -449,7 +482,7 @@ const Execution: React.FC = () => {
                     {activeTab === 'fotos' && (
                         <div className="space-y-6">
                             <div>
-                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Fotos Antes</h4>
+                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Fotos Antes (Obrigatório para iniciar)</h4>
                                 <div className="grid grid-cols-3 gap-2">
                                     {formData.fotoantes.map((url, i) => (
                                         <div key={i} className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative group">
@@ -470,7 +503,7 @@ const Execution: React.FC = () => {
                                 </div>
                             </div>
                             <div>
-                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Fotos Depois (Conclusão)</h4>
+                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Fotos Depois (Obrigatório para concluir)</h4>
                                 <div className="grid grid-cols-3 gap-2">
                                     {formData.fotodepois.map((url, i) => (
                                         <div key={i} className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative group">
@@ -495,10 +528,10 @@ const Execution: React.FC = () => {
 
                     {activeTab === 'obs' && (
                         <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Observações da Agenda</label>
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Observações da Agenda / Motivo do Cancelamento</label>
                             <textarea 
                                 className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-4 text-sm font-medium outline-none resize-none min-h-[200px]"
-                                placeholder="Anotações gerais sobre a visita..."
+                                placeholder="Anotações gerais ou justificativa de cancelamento..."
                                 value={formData.descricao}
                                 onChange={(e) => setFormData({...formData, descricao: e.target.value})}
                             />

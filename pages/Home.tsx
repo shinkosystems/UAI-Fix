@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Geral } from '../types';
 import StoryCircle from '../components/StoryCircle';
-import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase, Calendar, MapPin } from 'lucide-react';
+import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase, Calendar, MapPin, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ServiceItem {
@@ -35,6 +35,7 @@ const Home: React.FC = () => {
   const [categories, setCategories] = useState<Geral[]>([]);
   const [loading, setLoading] = useState(true);
   const [userType, setUserType] = useState<string>('');
+  const [showProfileAlert, setShowProfileAlert] = useState(false);
   const navigate = useNavigate();
 
   // Dashboard States
@@ -63,9 +64,31 @@ const Home: React.FC = () => {
       }
 
       if (userUuid) {
-          // Fetch User Type
-          const { data: typeData } = await supabase.from('users').select('tipo').eq('uuid', userUuid).single();
-          if (typeData) setUserType(typeData.tipo);
+          // Fetch User Type and Check Profile Completeness
+          const { data: userData } = await supabase
+            .from('users')
+            .select('*')
+            .eq('uuid', userUuid)
+            .single();
+          
+          if (userData) {
+              setUserType(userData.tipo);
+              
+              // Check for critical missing fields based on the Profile UI requirements
+              const isProfileIncomplete = 
+                  !userData.nome || 
+                  !userData.cpf || 
+                  !userData.whatsapp || 
+                  !userData.cep || 
+                  !userData.cidade || 
+                  !userData.rua || 
+                  !userData.numero || 
+                  !userData.bairro;
+
+              if (isProfileIncomplete) {
+                  setShowProfileAlert(true);
+              }
+          }
       }
 
       // 2. Fetch Categories (Stories)
@@ -255,6 +278,29 @@ const Home: React.FC = () => {
             </button>
         </div>
       </header>
+
+      {/* --- PROFILE ALERT --- */}
+      {showProfileAlert && (
+          <div className="mx-5 mb-4 bg-orange-50 border border-orange-100 rounded-[2rem] p-5 shadow-sm flex items-start justify-between animate-in fade-in slide-in-from-top-4">
+              <div className="flex items-start space-x-3">
+                  <div className="bg-orange-100 p-2 rounded-xl text-orange-600 mt-1">
+                      <AlertTriangle size={20} />
+                  </div>
+                  <div>
+                      <h3 className="font-bold text-orange-900 text-sm">Perfil Incompleto</h3>
+                      <p className="text-xs text-orange-700 mt-1 mb-2 max-w-xs">
+                          Para realizar agendamentos, precisamos do seu CPF, Telefone e Endereço completo.
+                      </p>
+                      <button 
+                          onClick={() => navigate('/profile')}
+                          className="bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-orange-600 transition-colors shadow-sm"
+                      >
+                          Completar Agora
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Stories Section */}
       <div className="mt-2 md:mt-0">
