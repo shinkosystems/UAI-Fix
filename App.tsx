@@ -16,7 +16,8 @@ import Login from './pages/Login';
 import Chamados from './pages/Chamados';
 import ClientOrders from './pages/ClientOrders';
 import CalendarPage from './pages/Calendar'; 
-import Execution from './pages/Execution'; // New Page
+import Execution from './pages/Execution'; 
+import LandingPage from './pages/LandingPage';
 import { Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -51,10 +52,14 @@ const App: React.FC = () => {
   return (
     <HashRouter>
       <Routes>
-        {/* Public Route: Login */}
+        {/* Public Routes */}
+        <Route 
+          path="/" 
+          element={!session ? <LandingPage /> : <Navigate to="/home" replace />} 
+        />
         <Route 
           path="/login" 
-          element={!session ? <Login /> : <Navigate to="/" replace />} 
+          element={!session ? <Login /> : <Navigate to="/home" replace />} 
         />
 
         {/* Protected Routes: Require Session */}
@@ -64,7 +69,9 @@ const App: React.FC = () => {
             session ? (
               <Layout>
                 <Routes>
-                  <Route path="/" element={<Home />} />
+                  {/* Internal Dashboard Home */}
+                  <Route path="/home" element={<Home />} />
+                  
                   <Route path="/search" element={<Search />} />
                   <Route path="/category/:id" element={<SubCategory />} />
                   <Route path="/professionals/:serviceId" element={<ProfessionalList />} />
@@ -76,11 +83,13 @@ const App: React.FC = () => {
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/chamados" element={<Chamados />} />
                   <Route path="/orders" element={<ClientOrders />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  
+                  {/* Redirect catch-all for authenticated users */}
+                  <Route path="*" element={<Navigate to="/home" replace />} />
                 </Routes>
               </Layout>
             ) : (
-              <Navigate to="/login" replace />
+              <Navigate to="/" replace />
             )
           }
         />

@@ -20,7 +20,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setLoadingUserType(true);
       if (user) {
         try {
-          // Use maybeSingle() to handle 0 or 1 result gracefully without erroring on 0 rows
           const { data, error } = await supabase
             .from('users')
             .select('tipo')
@@ -28,7 +27,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             .maybeSingle();
           
           if (error) {
-             // Fix: Log actual message instead of [object Object]
              console.error("Supabase error fetching user type:", error.message || error);
              throw error;
           }
@@ -44,12 +42,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       setLoadingUserType(false);
     };
 
-    // Get initial user state on load
     supabase.auth.getSession().then(({ data: { session } }) => {
       fetchUserType(session?.user ?? null);
     });
 
-    // Listen for auth state changes (login, logout)
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       fetchUserType(session?.user ?? null);
     });
@@ -59,7 +55,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     };
   }, []);
 
-  // Close drawer when route changes
   useEffect(() => {
     setIsDrawerOpen(false);
   }, [location.pathname]);
@@ -72,19 +67,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return location.pathname === path ? 'text-ios-blue' : 'text-gray-400';
   };
 
-  // Logic to hide Bottom Navbar on specific detail pages (Mobile Only)
   const shouldHideNav = location.pathname.includes('/professional/') || location.pathname.includes('/planning/');
   
   const normType = userType?.toLowerCase() || '';
   const isManager = !loadingUserType && normType === 'gestor';
-  // Internal users (Gestor, Planejista, Orcamentista)
   const isInternal = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista');
-  
-  // Logic for Agenda vs Execution
-  // Agenda: Everyone EXCEPT Consumidor and Profissional
   const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor' && normType !== 'profissional';
-  
-  // Execution (Now labeled Agenda for Pros/Clients): ONLY Consumidor and Profissional
   const showExecution = !loadingUserType && (normType === 'consumidor' || normType === 'profissional');
 
 
@@ -132,7 +120,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <p className="text-xs text-gray-400 font-medium">Painel de Gestão</p>
             </div>
           </div>
-          {/* Close button for mobile */}
           <button 
             onClick={() => setIsDrawerOpen(false)}
             className="md:hidden p-2 text-gray-400 hover:text-gray-600 bg-gray-50 rounded-full"
@@ -145,8 +132,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4">Menu Principal</p>
           
           <button 
-            onClick={() => navigate('/')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/')}`}
+            onClick={() => navigate('/home')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/home')}`}
           >
             <Home size={20} />
             <span>Início</span>
@@ -221,7 +208,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         <div className="p-4 border-t border-gray-100">
             <button 
-                onClick={async () => { await supabase.auth.signOut(); navigate('/login'); }}
+                onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}
                 className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 transition-all font-medium"
             >
                 <LogOut size={20} />
@@ -239,7 +226,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </div>
       </main>
 
-      {/* --- MOBILE BOTTOM NAV (Optional: Keep for quick access to main tabs, hide if overlapping) --- */}
+      {/* --- MOBILE BOTTOM NAV --- */}
       {!isDrawerOpen && (
         <div 
             className={`md:hidden fixed bottom-6 left-6 right-6 z-40 transition-transform duration-500 ease-in-out ${shouldHideNav ? 'translate-y-[200%]' : 'translate-y-0'}`}
@@ -247,11 +234,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <nav className="vitrified rounded-[2rem] shadow-floating max-w-md mx-auto">
             <div className="flex justify-around items-center h-16 px-2">
                 <button 
-                onClick={() => navigate('/')} 
-                className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/')}`}
+                onClick={() => navigate('/home')} 
+                className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/home')}`}
                 >
-                <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                    <Home size={22} strokeWidth={location.pathname === '/' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
+                <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/home' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
+                    <Home size={22} strokeWidth={location.pathname === '/home' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
                 </div>
                 </button>
                 
@@ -273,7 +260,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </div>
                 </button>
                 
-                {/* Dynamic 4th Button Mobile */}
                 {showExecution ? (
                     <button 
                     onClick={() => navigate('/execution')} 
