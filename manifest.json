@@ -1,0 +1,22 @@
+
+{
+  "short_name": "UAI Fix",
+  "name": "UAI Fix: Serviços e Agendamentos",
+  "icons": [
+    {
+      "src": "https://uehyjyyvkrlggwmfdhgh.supabase.co/storage/v1/object/public/imagens/imagens/994ff870-5268-4a13-8378-0661a9ffe9b9.jpeg",
+      "type": "image/jpeg",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://uehyjyyvkrlggwmfdhgh.supabase.co/storage/v1/object/public/imagens/imagens/994ff870-5268-4a13-8378-0661a9ffe9b9.jpeg",
+      "type": "image/jpeg",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#007AFF",
+  "background_color": "#F2F2F7",
+  "orientation": "portrait"
+}
