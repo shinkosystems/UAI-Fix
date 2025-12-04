@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Geral } from '../types';
 import { useNavigate } from 'react-router-dom';

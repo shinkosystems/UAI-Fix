@@ -35,6 +35,7 @@ const Home: React.FC = () => {
   const [categories, setCategories] = useState<Geral[]>([]);
   const [loading, setLoading] = useState(true);
   const [userType, setUserType] = useState<string>('');
+  const [userName, setUserName] = useState<string>('Usuário'); // State for User Name
   const [showProfileAlert, setShowProfileAlert] = useState(false);
   const navigate = useNavigate();
 
@@ -78,6 +79,12 @@ const Home: React.FC = () => {
           
           if (userData) {
               setUserType(userData.tipo);
+
+              // Set Name (Format to First Name, handle 'Insere' placeholder)
+              if (userData.nome && userData.nome !== 'Insere') {
+                  const firstName = userData.nome.split(' ')[0];
+                  setUserName(firstName);
+              }
               
               // Helper to check if field is empty or has a placeholder value
               const isInvalid = (val: any) => {
@@ -347,11 +354,11 @@ const Home: React.FC = () => {
       {/* Header */}
       <header className="px-5 pt-12 md:pt-8 pb-4 flex justify-between items-center md:bg-transparent md:backdrop-blur-none vitrified md:border-none md:shadow-none sticky md:static top-0 z-30 rounded-b-[2rem] md:rounded-none shadow-sm mb-4">
         <div>
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Bem-vindo</h2>
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Bem-vindo, {userName}</h2>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
         </div>
         <div className="flex items-center space-x-3">
-            <span className="hidden md:block text-sm font-medium text-gray-500">Olá, Usuário</span>
+            <span className="hidden md:block text-sm font-medium text-gray-500">Olá, {userName}</span>
             <button className="relative p-2.5 rounded-full bg-white shadow-sm border border-gray-100 hover:scale-105 transition-transform">
             <Bell size={20} className="text-gray-700" />
             <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>

@@ -69,7 +69,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const shouldHideNav = location.pathname.includes('/professional/') || location.pathname.includes('/planning/');
   
-  const normType = userType?.toLowerCase() || '';
+  // Normalize user type to handle accents (e.g. Orçamentista -> orcamentista)
+  const normType = userType?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || '';
+  
   const isManager = !loadingUserType && normType === 'gestor';
   const isInternal = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista');
   const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor' && normType !== 'profissional';

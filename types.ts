@@ -1,5 +1,4 @@
 
-
 export interface Geral {
   id: number;
   primaria: boolean;

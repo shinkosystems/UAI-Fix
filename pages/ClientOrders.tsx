@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao } from '../types';
@@ -846,54 +845,16 @@ const ClientOrders: React.FC = () => {
                           </button>
                           <button 
                               onClick={submitRating}
-                              disabled={processingId === ratingOrder.id || ratingScore === 0}
-                              className="flex-1 bg-black text-white py-3 rounded-2xl font-bold shadow-lg transition-colors hover:bg-gray-800 disabled:opacity-70 disabled:scale-100"
+                              disabled={processingId === ratingOrder.id}
+                              className="flex-1 bg-yellow-500 text-white py-3 rounded-2xl font-bold shadow-lg shadow-yellow-200 hover:bg-yellow-600 transition-colors flex justify-center items-center"
                           >
-                              {processingId === ratingOrder.id ? <Loader2 className="animate-spin mx-auto" size={20}/> : 'Enviar'}
+                              {processingId === ratingOrder.id ? <Loader2 className="animate-spin" size={20}/> : "Enviar"}
                           </button>
                       </div>
                   </div>
               </div>
           </div>
       )}
-
-      {/* --- REJECTION MODAL --- */}
-      {isRejectModalOpen && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
-              <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-6 relative overflow-hidden">
-                  <div className="text-center mb-5">
-                      <div className="w-14 h-14 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-3">
-                          <AlertTriangle size={28} />
-                      </div>
-                      <h3 className="text-xl font-bold text-gray-900">Motivo da Reprovação</h3>
-                      <p className="text-sm text-gray-500">Ajude-nos a entender o que não ficou bom.</p>
-                  </div>
-
-                  <textarea 
-                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-red-100 outline-none resize-none min-h-[100px] mb-4"
-                      placeholder="Ex: Valor muito alto, prazo não atende..."
-                      value={rejectionReason}
-                      onChange={(e) => setRejectionReason(e.target.value)}
-                  />
-
-                  <div className="flex space-x-3">
-                      <button 
-                          onClick={() => setIsRejectModalOpen(false)}
-                          className="flex-1 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-50 transition-colors"
-                      >
-                          Cancelar
-                      </button>
-                      <button 
-                          onClick={confirmRejection}
-                          className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-600 transition-colors"
-                      >
-                          Confirmar
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
-
     </div>
   );
 };
