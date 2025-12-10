@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Agenda, Geral } from '../types';
@@ -23,7 +22,6 @@ interface AgendaExtended extends Agenda {
         datafim?: string;
         pdf: string;
     };
-    // Added full chave object for photos access
     chaveData?: {
         id: number;
         status: string;
@@ -45,14 +43,12 @@ const CalendarPage: React.FC = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<CalendarView>('month');
   
-  // Modal State
   const [selectedEvent, setSelectedEvent] = useState<AgendaExtended | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<ModalTab>('geral');
   
-  // Edit Form State
   const [formData, setFormData] = useState({
       status: '',
       datainicio: '',
@@ -66,12 +62,10 @@ const CalendarPage: React.FC = () => {
     fetchAgenda();
   }, [currentDate, view]);
 
-  // Helper to convert UTC date from DB to Local ISO String for datetime-local input
-  // This fixes the issue where GMT-3 times show up 3 hours later in the input
   const toLocalISOString = (dateStr: string) => {
       if (!dateStr) return '';
       const date = new Date(dateStr);
-      const offset = date.getTimezoneOffset() * 60000; // offset in milliseconds
+      const offset = date.getTimezoneOffset() * 60000;
       const localDate = new Date(date.getTime() - offset);
       return localDate.toISOString().slice(0, 16);
   };
@@ -82,7 +76,6 @@ const CalendarPage: React.FC = () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return; 
 
-        // 1. Fetch Agenda items
         const { data: agendaData, error: agendaError } = await supabase
             .from('agenda')
             .select('*')
@@ -95,7 +88,6 @@ const CalendarPage: React.FC = () => {
             return;
         }
 
-        // 2. Collect IDs
         const chaveIds = agendaData.map((a: any) => a.chave).filter((id: any) => id);
         const userIds = new Set<string>();
 
@@ -104,7 +96,6 @@ const CalendarPage: React.FC = () => {
             if (a.profissional) userIds.add(a.profissional);
         });
 
-        // 3. Parallel Fetch
         const [chavesRes, osRes, usersRes, estadosRes] = await Promise.all([
             chaveIds.length > 0 ? supabase.from('chaves').select('*').in('id', chaveIds) : { data: [] },
             chaveIds.length > 0 ? supabase.from('ordemservico').select('*').in('chave', chaveIds) : { data: [] },
@@ -117,7 +108,6 @@ const CalendarPage: React.FC = () => {
         const usersData = usersRes.data || [];
         const estadosData = estadosRes.data || [];
 
-        // 4. Fetch Cities
         const cityIds = new Set<number>();
         usersData.forEach((u: any) => {
             if (u.cidade) cityIds.add(u.cidade);
@@ -128,7 +118,6 @@ const CalendarPage: React.FC = () => {
             .select('*')
             .in('id', Array.from(cityIds));
 
-        // 5. Fetch Services
         const serviceIds = new Set<number>();
         chavesData.forEach((c: any) => {
             if (c.atividade) serviceIds.add(c.atividade);
@@ -139,7 +128,6 @@ const CalendarPage: React.FC = () => {
             .select('*')
             .in('id', Array.from(serviceIds));
         
-        // 6. Build Maps
         const statesMap: Record<number, string> = {};
         estadosData.forEach((e: any) => statesMap[e.id] = e.uf);
 
@@ -166,7 +154,6 @@ const CalendarPage: React.FC = () => {
         const servicesMap: Record<number, any> = {};
         servicesData?.forEach((s: any) => servicesMap[s.id] = s);
 
-        // 7. Merge
         const formattedEvents = agendaData.map((item: any) => {
             const chave = chavesMap[item.chave];
             const os = osMap[item.chave];
@@ -175,7 +162,7 @@ const CalendarPage: React.FC = () => {
             return {
                 ...item,
                 geral: service,
-                chaveData: chave, // Store full chave object
+                chaveData: chave,
                 chaveStatus: chave?.status,
                 chaveUnica: chave?.chaveunica,
                 ordemServico: os,
@@ -193,7 +180,6 @@ const CalendarPage: React.FC = () => {
     }
   };
 
-  // --- NAVIGATION ---
   const handleNavigate = (offset: number) => {
       const newDate = new Date(currentDate);
       if (view === 'month') {
@@ -207,21 +193,11 @@ const CalendarPage: React.FC = () => {
   };
 
   const getHeaderText = () => {
-      if (view === 'day') {
-          return currentDate.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
-      }
-      if (view === 'week') {
-          const start = getStartOfWeek(currentDate);
-          const end = new Date(start);
-          end.setDate(end.getDate() + 6);
-          const startStr = start.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
-          const endStr = end.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' });
-          return `${startStr} - ${endStr}`;
-      }
-      return currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      const month = currentDate.toLocaleDateString('pt-BR', { month: 'long' });
+      const year = currentDate.getFullYear();
+      return `${month.charAt(0).toUpperCase() + month.slice(1)} ${year}`;
   };
 
-  // --- HELPERS ---
   const getDaysInMonth = (date: Date) => {
       const year = date.getFullYear();
       const month = date.getMonth();
@@ -250,7 +226,6 @@ const CalendarPage: React.FC = () => {
       });
   };
 
-  // --- ACTIONS ---
   const handleEventClick = (event: AgendaExtended) => {
       setSelectedEvent(event);
       setFormData({
@@ -312,9 +287,6 @@ const CalendarPage: React.FC = () => {
       if (!selectedEvent) return;
       setSaving(true);
 
-      // --- VALIDAÇÃO DE REGRAS DE NEGÓCIO ---
-
-      // 1. Obrigatório fotos antes para mudar para Executando
       if (formData.status === 'executando' && (!formData.fotoantes || formData.fotoantes.length === 0)) {
           alert("REGRA DE EXECUÇÃO:\n\nPara alterar o status para 'Executando', é obrigatório registrar fotos do 'Antes'.\n\nPor favor, acesse a aba 'Fotos' e faça o upload.");
           setActiveTab('fotos');
@@ -322,7 +294,6 @@ const CalendarPage: React.FC = () => {
           return;
       }
 
-      // 2. Obrigatório fotos depois para mudar para Concluído
       if (formData.status === 'concluido' && (!formData.fotodepois || formData.fotodepois.length === 0)) {
           alert("REGRA DE CONCLUSÃO:\n\nPara alterar o status para 'Concluído', é obrigatório registrar fotos do 'Depois' (Conclusão).\n\nPor favor, acesse a aba 'Fotos' e faça o upload.");
           setActiveTab('fotos');
@@ -330,19 +301,14 @@ const CalendarPage: React.FC = () => {
           return;
       }
 
-      // 3. Lógica de Data Fim
       let finalDataFim = null;
       if (formData.status === 'concluido') {
-          // Se estiver concluindo, usa a data informada ou a data atual se estiver vazio
-          // Convertendo de volta para UTC ao salvar (o browser faz isso com new Date(inputVal).toISOString())
           finalDataFim = formData.datafim ? new Date(formData.datafim).toISOString() : new Date().toISOString();
       } else {
-          // Se não estiver concluído (ex: voltou para executando), limpa a data fim
           finalDataFim = null;
       }
 
       try {
-          // 1. Update Chave (Status & Photos)
           if (selectedEvent.chave) {
                const { error: chavesError } = await supabase.from('chaves').update({
                    status: formData.status,
@@ -352,13 +318,11 @@ const CalendarPage: React.FC = () => {
                if (chavesError) throw chavesError;
           }
 
-          // 2. Update Agenda (Annotations)
           const { error: agendaError } = await supabase.from('agenda').update({
               observacoes: formData.observacoes
           }).eq('id', selectedEvent.id);
           if (agendaError) throw agendaError;
 
-          // 3. Update OrdemServico (Status & Dates)
           let osId = selectedEvent.ordemServico?.id;
           const osPayload = {
               status: formData.status,
@@ -415,15 +379,6 @@ const CalendarPage: React.FC = () => {
       return 'Endereço incompleto';
   };
 
-  if (loading && events.length === 0) {
-      return (
-          <div className="min-h-screen bg-ios-bg flex items-center justify-center">
-              <Loader2 className="animate-spin text-ios-blue" size={32} />
-          </div>
-      );
-  }
-
-  // --- RENDER VIEWS --- (Kept same layout logic)
   const renderMonthView = () => {
     const daysInMonth = getDaysInMonth(currentDate);
     const firstDay = getFirstDayOfMonth(currentDate);
@@ -434,11 +389,11 @@ const CalendarPage: React.FC = () => {
         <div className="bg-white rounded-[2rem] shadow-vitrified overflow-hidden border border-gray-100">
             <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50/50">
                 {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
-                    <div key={day} className="py-3 text-center text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>
+                    <div key={day} className="py-2 md:py-3 text-center text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">{day}</div>
                 ))}
             </div>
             <div className="grid grid-cols-7 auto-rows-fr bg-gray-100 gap-[1px]">
-                {emptyDays.map(i => <div key={`empty-${i}`} className="bg-white min-h-[120px] p-2 bg-gray-50/30"></div>)}
+                {emptyDays.map(i => <div key={`empty-${i}`} className="bg-white min-h-[85px] p-2 bg-gray-50/30"></div>)}
                 {daysArray.map(day => {
                     const currentDayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
                     const dayEvents = getEventsForDate(currentDayDate);
@@ -447,18 +402,18 @@ const CalendarPage: React.FC = () => {
                                     currentDate.getFullYear() === new Date().getFullYear();
 
                     return (
-                        <div key={day} className={`bg-white min-h-[120px] p-2 transition-colors hover:bg-blue-50/30 relative group ${isToday ? 'bg-blue-50/10' : ''}`}>
-                            <span className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-ios-blue text-white shadow-md' : 'text-gray-700'}`}>
+                        <div key={day} className={`bg-white min-h-[85px] p-1 transition-colors hover:bg-blue-50/30 relative group ${isToday ? 'bg-blue-50/10' : ''}`}>
+                            <span className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-ios-blue text-white shadow-md' : 'text-gray-700'}`}>
                                 {day}
                             </span>
-                            <div className="space-y-1.5 overflow-y-auto max-h-[100px] no-scrollbar">
+                            <div className="space-y-1 overflow-y-auto max-h-[60px] no-scrollbar">
                                 {dayEvents.map(event => (
                                     <button 
                                       key={event.id}
                                       onClick={() => handleEventClick(event)}
-                                      className={`w-full text-left px-2 py-1.5 rounded-lg border text-xs font-medium truncate transition-transform hover:scale-[1.02] shadow-sm flex items-center gap-1.5 ${getStatusColor(event.chaveStatus)}`}
+                                      className={`w-full text-left px-1.5 py-1 rounded-lg border text-[10px] font-medium truncate transition-transform hover:scale-[1.02] shadow-sm flex items-center gap-1 ${getStatusColor(event.chaveStatus)}`}
                                     >
-                                        <div className={`w-1.5 h-1.5 rounded-full ${event.chaveStatus === 'concluido' ? 'bg-green-500' : 'bg-blue-500'}`}></div>
+                                        <div className={`w-1 h-1 rounded-full ${event.chaveStatus === 'concluido' ? 'bg-green-500' : 'bg-blue-500'}`}></div>
                                         <span className="truncate flex-1">{event.geral?.nome}</span>
                                     </button>
                                 ))}
@@ -520,7 +475,7 @@ const CalendarPage: React.FC = () => {
   };
 
   const renderDayView = () => {
-      const hours = Array.from({ length: 17 }, (_, i) => i + 6); // 06:00 to 22:00
+      const hours = Array.from({ length: 17 }, (_, i) => i + 6);
       const dayEvents = getEventsForDate(currentDate);
       return (
           <div className="bg-white rounded-[2rem] shadow-vitrified overflow-hidden border border-gray-100">
@@ -568,43 +523,50 @@ const CalendarPage: React.FC = () => {
       );
   };
 
+  if (loading && events.length === 0) {
+      return (
+          <div className="min-h-screen bg-ios-bg flex items-center justify-center">
+              <Loader2 className="animate-spin text-ios-blue" size={32} />
+          </div>
+      );
+  }
+
   return (
     <div className="min-h-screen bg-ios-bg pb-20">
-       <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-20 border-b border-gray-200 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-            <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight capitalize truncate">{getHeaderText()}</h1>
-                <p className="text-gray-500 text-sm mt-1">Gerencie seus agendamentos.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-                <div className="bg-gray-100 p-1 rounded-xl flex shadow-inner">
-                    <button onClick={() => setView('month')} className={`p-2 rounded-lg transition-all flex items-center gap-2 text-sm font-bold ${view === 'month' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Grid size={16} /><span className="hidden md:inline">Mês</span></button>
-                    <button onClick={() => setView('week')} className={`p-2 rounded-lg transition-all flex items-center gap-2 text-sm font-bold ${view === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Columns size={16} /><span className="hidden md:inline">Semana</span></button>
-                    <button onClick={() => setView('day')} className={`p-2 rounded-lg transition-all flex items-center gap-2 text-sm font-bold ${view === 'day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><List size={16} /><span className="hidden md:inline">Dia</span></button>
+       <div className="bg-white/80 backdrop-blur-md px-4 pt-4 pb-2 sticky top-0 z-20 border-b border-gray-200 flex flex-col justify-between gap-2">
+            <div className="flex items-start justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{getHeaderText()}</h1>
+                    <p className="text-gray-500 text-sm mt-2 hidden md:block">Gerencie seus agendamentos.</p>
                 </div>
-                <div className="flex items-center space-x-2 bg-white p-1 rounded-xl shadow-sm border border-gray-100">
-                    <button onClick={() => handleNavigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><ChevronLeft size={20} /></button>
-                    <button onClick={() => setCurrentDate(new Date())} className="text-xs font-bold uppercase px-3 py-1.5 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200">Hoje</button>
-                    <button onClick={() => handleNavigate(1)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><ChevronRight size={20} /></button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="bg-gray-100 p-1 rounded-xl flex shadow-inner">
+                        <button onClick={() => setView('month')} className={`p-1.5 rounded-lg transition-all flex items-center gap-2 text-sm font-bold ${view === 'month' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Grid size={16} /><span className="hidden md:inline">Mês</span></button>
+                        <button onClick={() => setView('week')} className={`p-1.5 rounded-lg transition-all flex items-center gap-2 text-sm font-bold ${view === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><Columns size={16} /><span className="hidden md:inline">Semana</span></button>
+                        <button onClick={() => setView('day')} className={`p-1.5 rounded-lg transition-all flex items-center gap-2 text-sm font-bold ${view === 'day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}><List size={16} /><span className="hidden md:inline">Dia</span></button>
+                    </div>
+                    <div className="flex items-center space-x-2 bg-white p-1 rounded-xl shadow-sm border border-gray-100">
+                        <button onClick={() => handleNavigate(-1)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><ChevronLeft size={20} /></button>
+                        <button onClick={() => setCurrentDate(new Date())} className="text-xs font-bold uppercase px-3 py-1.5 bg-gray-100 rounded-lg text-gray-600 hover:bg-gray-200">Hoje</button>
+                        <button onClick={() => handleNavigate(1)} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"><ChevronRight size={20} /></button>
+                    </div>
                 </div>
             </div>
+            <p className="text-gray-500 text-xs md:hidden mt-2">Gerencie seus agendamentos.</p>
       </div>
 
-      <div className="p-5 max-w-7xl mx-auto">
+      <div className="p-2 md:p-5 max-w-7xl mx-auto">
           {view === 'month' && renderMonthView()}
           {view === 'week' && renderWeekView()}
           {view === 'day' && renderDayView()}
       </div>
 
-      {/* --- EDIT EVENT MODAL --- */}
       {isModalOpen && selectedEvent && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
-                
-                {/* Header */}
                 <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
                     <div>
                         <h3 className="font-bold text-gray-900 text-lg">Detalhes do Serviço</h3>
-                        {/* Highlights Chave Unica */}
                         <div className="flex items-center mt-1">
                              <div className="bg-gray-100 px-2 py-0.5 rounded-md border border-gray-200 flex items-center">
                                  <Hash size={12} className="text-gray-400 mr-1"/>
@@ -617,7 +579,6 @@ const CalendarPage: React.FC = () => {
                     </button>
                 </div>
 
-                {/* Tabs */}
                 <div className="flex border-b border-gray-100">
                     <button onClick={() => setActiveTab('geral')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'geral' ? 'border-ios-blue text-ios-blue' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Geral</button>
                     <button onClick={() => setActiveTab('fotos')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'fotos' ? 'border-ios-blue text-ios-blue' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Fotos</button>
@@ -625,10 +586,8 @@ const CalendarPage: React.FC = () => {
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                    
                     {activeTab === 'geral' && (
                         <>
-                            {/* Info Cards */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100 flex items-center space-x-3">
                                      <div className="w-10 h-10 rounded-full bg-white flex-shrink-0 overflow-hidden border border-gray-200">
@@ -649,49 +608,6 @@ const CalendarPage: React.FC = () => {
                                      </div>
                                 </div>
                             </div>
-
-                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-start justify-between">
-                                 <div className="flex items-start space-x-3 overflow-hidden">
-                                     <div className="bg-white text-gray-500 p-2 rounded-xl border border-gray-200 mt-1">
-                                        <MapPin size={20} />
-                                     </div>
-                                     <div className="flex-1 min-w-0">
-                                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Local do Serviço</p>
-                                         <p className="font-bold text-gray-900 text-sm break-words leading-relaxed">
-                                             {formatFullAddress(selectedEvent.clienteData)}
-                                         </p>
-                                     </div>
-                                 </div>
-                            </div>
-
-                            <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 flex items-center justify-between">
-                                 <div className="flex items-center space-x-3">
-                                     <div className="bg-blue-100 text-blue-600 p-2 rounded-xl">
-                                        <FileText size={20} />
-                                     </div>
-                                     <div>
-                                         <p className="text-xs font-bold text-blue-800 uppercase">Serviço</p>
-                                         <p className="font-bold text-gray-900">{selectedEvent.geral?.nome}</p>
-                                     </div>
-                                 </div>
-                            </div>
-
-                            {selectedEvent.ordemServico?.pdf && (
-                                <div className="bg-white border border-gray-200 rounded-2xl p-4 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow">
-                                     <div className="flex items-center space-x-3">
-                                         <div className="bg-red-50 text-red-500 p-2.5 rounded-xl border border-red-100">
-                                            <FileText size={20} />
-                                         </div>
-                                         <div>
-                                             <p className="text-sm font-bold text-gray-900">Ordem de Serviço</p>
-                                             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Documento Oficial</p>
-                                         </div>
-                                     </div>
-                                     <a href={selectedEvent.ordemServico.pdf} target="_blank" rel="noreferrer" className="bg-gray-900 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md hover:bg-gray-800 transition-transform active:scale-95 flex items-center">
-                                         <ExternalLink size={14} className="mr-2"/> Abrir PDF
-                                     </a>
-                                </div>
-                            )}
 
                             <div className="space-y-4 pt-2 border-t border-gray-100">
                                 <div className="flex items-center space-x-2 text-gray-900 font-bold">
@@ -804,7 +720,6 @@ const CalendarPage: React.FC = () => {
 
                 </div>
 
-                {/* Footer */}
                 <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto">
                     <button 
                         onClick={handleSave}

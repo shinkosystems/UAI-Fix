@@ -1,9 +1,8 @@
-
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Geral } from '../types';
 import StoryCircle from '../components/StoryCircle';
-import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase, Calendar, MapPin, AlertTriangle } from 'lucide-react';
+import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase, Calendar, MapPin, AlertTriangle, X, FileText, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ServiceItem {
@@ -31,6 +30,15 @@ interface NextAppointment {
     proPhoto: string;
 }
 
+interface NotificationItem {
+  id: number;
+  title: string;
+  description: string;
+  date: string;
+  type: 'agenda' | 'planning';
+  read: boolean;
+}
+
 const Home: React.FC = () => {
   const [categories, setCategories] = useState<Geral[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,13 +54,22 @@ const Home: React.FC = () => {
   const [topProfessionals, setTopProfessionals] = useState<TopProfessional[]>([]);
   const [nextAppointment, setNextAppointment] = useState<NextAppointment | null>(null);
 
-  // States for Modal Details (Reusing Agenda Logic visually)
-  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
-  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
-  // We will fetch specific details when opening the modal, similar to Calendar
+  // Notification States
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchData();
+    
+    // Close notifications when clicking outside
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const fetchData = async () => {
@@ -78,7 +95,8 @@ const Home: React.FC = () => {
             .single();
           
           if (userData) {
-              setUserType(userData.tipo);
+              const tipo = userData.tipo || '';
+              setUserType(tipo);
 
               // Set Name (Format to First Name, handle 'Insere' placeholder)
               if (userData.nome && userData.nome !== 'Insere') {
@@ -111,6 +129,9 @@ const Home: React.FC = () => {
               if (isProfileIncomplete) {
                   setShowProfileAlert(true);
               }
+
+              // --- FETCH NOTIFICATIONS BASED ON ROLE ---
+              await fetchNotifications(tipo, userUuid);
           }
       }
 
@@ -150,11 +171,12 @@ const Home: React.FC = () => {
               };
           });
 
+          // Sorting Logic: Priority on Rating (Highest to Lowest), then Service Count
           const sortedPros = stats.sort((a, b) => {
-              if (b.serviceCount !== a.serviceCount) {
-                  return b.serviceCount - a.serviceCount;
+              if (b.rating !== a.rating) {
+                  return b.rating - a.rating; // Primary: Rating
               }
-              return b.rating - a.rating;
+              return b.serviceCount - a.serviceCount; // Secondary: Service Count
           });
 
           setTopProfessionals(sortedPros.slice(0, 5)); 
@@ -267,32 +289,6 @@ const Home: React.FC = () => {
           });
           setRecentServices(formattedServices);
         }
-
-        // 8. Check for Pending Reviews (Concluded but no Review)
-        const { data: concludedServices } = await supabase
-          .from('chaves')
-          .select('id')
-          .eq('cliente', userUuid)
-          .eq('status', 'concluido');
-        
-        if (concludedServices && concludedServices.length > 0) {
-           const concludedIds = concludedServices.map(c => c.id);
-           
-           // Check which ones have reviews
-           const { data: reviews } = await supabase
-             .from('avaliacoes')
-             .select('chave')
-             .in('chave', concludedIds);
-             
-           const reviewedIds = reviews ? reviews.map(r => r.chave) : [];
-           const hasPendingReview = concludedIds.some(id => !reviewedIds.includes(id));
-           
-           // If we have pending reviews, show an alert (we can reuse the top alert space or a new one)
-           if (hasPendingReview && !showProfileAlert) {
-               // We could create a separate state for review alert, but for now lets add a dedicated container below
-           }
-        }
-
       }
 
     } catch (error) {
@@ -301,10 +297,106 @@ const Home: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const fetchNotifications = async (role: string, uuid: string) => {
+      const normalizedRole = role.toLowerCase();
+      let notifs: NotificationItem[] = [];
+
+      try {
+          if (normalizedRole === 'planejista' || normalizedRole === 'orcamentista') {
+              // 1. Planejista/Orcamentista: Busca em 'planejamento' onde ativo = TRUE
+              // Limitamos aos 10 últimos para não sobrecarregar
+              const { data } = await supabase
+                  .from('planejamento')
+                  .select(`
+                      id, 
+                      created_at, 
+                      descricao,
+                      chaves (
+                          chaveunica,
+                          geral (nome)
+                      )
+                  `)
+                  .eq('ativo', true)
+                  .order('created_at', { ascending: false })
+                  .limit(10);
+              
+              if (data) {
+                  notifs = data.map((item: any) => ({
+                      id: item.id,
+                      title: 'Planejamento Ativo',
+                      description: `Chave: ${item.chaves?.chaveunica} - ${item.chaves?.geral?.nome}`,
+                      date: new Date(item.created_at).toLocaleDateString('pt-BR'),
+                      type: 'planning',
+                      read: false
+                  }));
+              }
+          } 
+          else if (normalizedRole === 'consumidor') {
+              // 2. Consumidor: Busca em 'agenda' onde cliente = UUID
+              const { data } = await supabase
+                  .from('agenda')
+                  .select(`
+                      id,
+                      execucao,
+                      observacoes,
+                      chaves (
+                          geral (nome),
+                          status
+                      )
+                  `)
+                  .eq('cliente', uuid)
+                  .order('execucao', { ascending: false })
+                  .limit(10);
+                  
+              if (data) {
+                  notifs = data.map((item: any) => ({
+                      id: item.id,
+                      title: item.chaves?.geral?.nome || 'Serviço Agendado',
+                      description: `Status: ${item.chaves?.status}. ${item.observacoes || ''}`,
+                      date: new Date(item.execucao).toLocaleDateString('pt-BR'),
+                      type: 'agenda',
+                      read: false
+                  }));
+              }
+          }
+          else if (normalizedRole === 'profissional') {
+              // 3. Profissional: Busca em 'agenda' onde profissional = UUID
+              const { data } = await supabase
+                  .from('agenda')
+                  .select(`
+                      id,
+                      execucao,
+                      observacoes,
+                      chaves (
+                          geral (nome),
+                          status
+                      )
+                  `)
+                  .eq('profissional', uuid)
+                  .order('execucao', { ascending: false })
+                  .limit(10);
+              
+              if (data) {
+                   notifs = data.map((item: any) => ({
+                      id: item.id,
+                      title: 'Novo Agendamento',
+                      description: `${item.chaves?.geral?.nome} - Status: ${item.chaves?.status}`,
+                      date: new Date(item.execucao).toLocaleDateString('pt-BR'),
+                      type: 'agenda',
+                      read: false
+                  }));
+              }
+          }
+          
+          setNotifications(notifs);
+
+      } catch (error) {
+          console.error("Erro ao buscar notificações:", error);
+      }
+  };
   
   // Logic to check for pending reviews on render/state update if we want a separate banner
-  // For now we will rely on a new check in the JSX
-
   const [hasPendingReviews, setHasPendingReviews] = useState(false);
   
   useEffect(() => {
@@ -337,32 +429,85 @@ const Home: React.FC = () => {
   };
   
   const handleServiceClick = (agendaId: number) => {
-      // Logic to replicate Calendar item click
-      // Since Home doesn't have the full Calendar state/modal logic, 
-      // the best approach is to navigate to Calendar with state, or open a simplified modal here.
-      // Given the prompt "apareça para o usuário", let's render the Calendar modal here by fetching its data.
-      
-      // Navigate to Calendar page is safer and cleaner architecture, but prompt asked "ao clicar... o componente... apareça".
-      // To simulate the "Calendar Modal" behavior on Home without duplicating 500 lines of code:
-      // We will navigate to the Calendar page and pass the ID to open immediately.
-      
       navigate('/calendar', { state: { openEventId: agendaId } });
+  };
+  
+  const handleNotificationClick = (notif: NotificationItem) => {
+      setShowNotifications(false);
+      // Logic to navigate based on notification type/role
+      const type = userType.toLowerCase();
+      if (type === 'planejista' || type === 'orcamentista') {
+           navigate('/chamados');
+      } else if (type === 'consumidor') {
+           navigate('/orders');
+      } else {
+           navigate('/calendar');
+      }
   };
 
   return (
     <div className="min-h-screen bg-[#F2F4F8]">
       {/* Header */}
-      <header className="px-5 pt-12 md:pt-8 pb-4 flex justify-between items-center md:bg-transparent md:backdrop-blur-none vitrified md:border-none md:shadow-none sticky md:static top-0 z-30 rounded-b-[2rem] md:rounded-none shadow-sm mb-4">
+      <header className="px-5 pt-12 md:pt-8 pb-4 flex justify-between items-center md:bg-transparent md:backdrop-blur-none vitrified md:border-none md:shadow-none sticky md:static top-0 z-30 rounded-b-[2rem] md:rounded-none shadow-sm mb-4 relative">
         <div>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Bem-vindo, {userName}</h2>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3" ref={notificationRef}>
             <span className="hidden md:block text-sm font-medium text-gray-500">Olá, {userName}</span>
-            <button className="relative p-2.5 rounded-full bg-white shadow-sm border border-gray-100 hover:scale-105 transition-transform">
-            <Bell size={20} className="text-gray-700" />
-            <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
-            </button>
+            <div className="relative">
+                <button 
+                    onClick={() => setShowNotifications(!showNotifications)}
+                    className="relative p-2.5 rounded-full bg-white shadow-sm border border-gray-100 hover:scale-105 transition-transform active:bg-gray-100"
+                >
+                    <Bell size={20} className="text-gray-700" />
+                    {notifications.length > 0 && (
+                        <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white animate-pulse"></span>
+                    )}
+                </button>
+                
+                {/* Notification Dropdown */}
+                {showNotifications && (
+                    <div className="absolute right-0 top-14 w-80 bg-white/90 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 origin-top-right">
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white/50">
+                            <h3 className="font-bold text-gray-900 text-sm">Notificações</h3>
+                            <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600">
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div className="max-h-80 overflow-y-auto">
+                            {notifications.length > 0 ? (
+                                notifications.map((notif) => (
+                                    <div 
+                                        key={notif.id}
+                                        onClick={() => handleNotificationClick(notif)}
+                                        className="p-4 border-b border-gray-50 hover:bg-blue-50/50 transition-colors cursor-pointer group"
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className="text-xs font-bold text-ios-blue bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 group-hover:bg-white transition-colors">{notif.type === 'agenda' ? 'Agenda' : 'Planejamento'}</span>
+                                            <span className="text-[10px] text-gray-400">{notif.date}</span>
+                                        </div>
+                                        <h4 className="text-sm font-bold text-gray-900 leading-tight">{notif.title}</h4>
+                                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{notif.description}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="p-8 text-center">
+                                    <div className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-2 text-gray-300">
+                                        <Bell size={18} />
+                                    </div>
+                                    <p className="text-xs text-gray-400">Nenhuma notificação nova.</p>
+                                </div>
+                            )}
+                        </div>
+                        {notifications.length > 0 && (
+                            <div className="p-2 bg-gray-50 text-center">
+                                <button className="text-xs font-bold text-gray-500 hover:text-gray-800 transition-colors">Marcar todas como lidas</button>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
         </div>
       </header>
 
