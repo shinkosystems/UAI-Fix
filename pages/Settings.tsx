@@ -1,8 +1,12 @@
-
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { createClient } from '@supabase/supabase-js'; // Importar createClient para instância temporária
 import { Geral, User, City, Estado } from '../types';
-import { Loader2, Plus, Edit2, Trash2, X, Save, CheckCircle, AlertTriangle, Layers, Users, Link as LinkIcon, Image as ImageIcon, ArrowRightLeft, FolderTree, LayoutGrid, Box, CloudUpload, Search, Filter, Check, Briefcase } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, X, Save, CheckCircle, AlertTriangle, Layers, Users, Link as LinkIcon, Image as ImageIcon, ArrowRightLeft, FolderTree, LayoutGrid, Box, CloudUpload, Search, Filter, Check, Briefcase, MapPin, Phone, FileText, Lock, Home, Navigation, User as UserIcon } from 'lucide-react';
+
+// Hardcoded keys for temp client (mesmas do supabaseClient.ts)
+const SUPABASE_URL = 'https://uehyjyyvkrlggwmfdhgh.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlaHlqeXl2a3JsZ2d3bWZkaGdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0MDEzNzUsImV4cCI6MjA1Nzk3NzM3NX0.3CKTTryjia-5nXQYk1jJxPYryDmF1hTKpHrJkVKqRJY';
 
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'services' | 'users'>('services');
@@ -50,6 +54,8 @@ const Settings: React.FC = () => {
 
   // Form State
   const [formData, setFormData] = useState<any>({});
+  const [password, setPassword] = useState(''); // Estado separado para senha
+  const [loadingCep, setLoadingCep] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -102,6 +108,82 @@ const Settings: React.FC = () => {
     }
   };
 
+  // --- HELPERS DE FORMATAÇÃO E BUSCA ---
+  const formatUserType = (type: string) => {
+      if (!type) return '';
+      return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+  };
+
+  const formatCpf = (v: string) => {
+    if (!v) return '';
+    return v.replace(/\D/g, '')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+      .slice(0, 14);
+  };
+
+  const formatCep = (v: string) => {
+    if (!v) return '';
+    return v.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2').slice(0, 9);
+  };
+
+  const formatPhone = (v: string) => {
+      if (!v) return '';
+      const r = v.replace(/\D/g, "");
+      if (r.length > 10) {
+          return r.replace(/^(\d\d)(\d{5})(\d{4}).*/, "($1) $2-$3");
+      } else if (r.length > 5) {
+          return r.replace(/^(\d\d)(\d{4})(\d{0,4}).*/, "($1) $2-$3");
+      } else if (r.length > 2) {
+          return r.replace(/^(\d\d)(\d{0,5}).*/, "($1) $2");
+      } else {
+          return v.replace(/\D/g, "");
+      }
+  };
+
+  const fetchCepData = async () => {
+      const cep = formData.cep;
+      if (!cep) return;
+      
+      const cleanCep = cep.replace(/\D/g, '');
+      if (cleanCep.length === 8) {
+          setLoadingCep(true);
+          try {
+              const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+              const data = await response.json();
+              
+              if (!data.erro) {
+                  const updates: any = {
+                      rua: data.logradouro,
+                      bairro: data.bairro
+                  };
+
+                  // Tenta encontrar a cidade na base
+                  if(data.localidade) {
+                      const { data: cityDB } = await supabase
+                        .from('cidades')
+                        .select('*')
+                        .ilike('cidade', data.localidade)
+                        .single();
+                      
+                      if(cityDB) {
+                          updates.cidade = cityDB.id;
+                          updates.estado = cityDB.uf;
+                          updates.cidade_data = { cidade: cityDB.cidade, uf: cityDB.uf };
+                      }
+                  }
+                  
+                  setFormData(prev => ({ ...prev, ...updates }));
+              }
+          } catch (error) {
+              console.error("Erro ao buscar CEP", error);
+          } finally {
+              setLoadingCep(false);
+          }
+      }
+  };
+
   const performCitySearch = async (term: string) => {
     try {
       setSearchingCity(true);
@@ -126,75 +208,49 @@ const Settings: React.FC = () => {
   };
 
   const getCityNameForDisplay = (user: User) => {
-      // Priority 1: Use the JOINED data (cidade_data)
       if (user.cidade_data) {
           const uf = getStateUf(user.cidade_data.uf);
           return uf ? `${user.cidade_data.cidade}, ${uf}` : user.cidade_data.cidade;
       }
-      
-      // Priority 2: Fallback to searching the loaded cities array (ID fallback)
       if (user.cidade) {
-          // Use loose equality to match string/int IDs
           const city = cities.find(c => c.id == user.cidade);
           if (city) {
               const uf = getStateUf(city.uf);
               return uf ? `${city.cidade}, ${uf}` : city.cidade;
           }
-          // Priority 3: Show ID if nothing found
           return `ID: ${user.cidade}`;
       }
-
       return 'Não definida';
   };
   
-  // Helper for Form display (Using formData context)
   const getFormCityDisplay = () => {
       if (!formData.cidade) return 'Selecione a cidade...';
-      
-      // Priority 1: Check embedded data (from JOIN or Manual Select)
       if (formData.cidade_data) {
           const uf = getStateUf(formData.cidade_data.uf);
-          // Fallback if UF lookup fails (e.g. state ID mismatch), though unlikely
           return uf ? `${formData.cidade_data.cidade}, ${uf}` : formData.cidade_data.cidade;
       }
-
-      // Priority 2: Lookup in loaded cities (limited list)
       const city = cities.find(c => c.id == formData.cidade);
       if (city) {
           const uf = getStateUf(city.uf);
           return uf ? `${city.cidade}, ${uf}` : city.cidade;
       }
-
       return `ID: ${formData.cidade}`;
-  };
-
-  // Deprecated for form use, but kept if needed elsewhere
-  const getCityNameFromId = (id: number | null) => {
-      if (!id) return 'Selecione a cidade...';
-      const city = cities.find(c => c.id == id);
-      if (city) {
-          const uf = getStateUf(city.uf);
-          return uf ? `${city.cidade}, ${uf}` : city.cidade;
-      }
-      return `ID: ${id}`;
   };
 
   const normalizeStr = (str: string) => {
     return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   };
 
-  // Filter Logic for Users
   const filteredUsers = users.filter(user => {
       const uName = normalizeStr(user.nome || '');
       const uEmail = normalizeStr(user.email || '');
       const fName = normalizeStr(filterName);
 
       const matchesName = uName.includes(fName) || uEmail.includes(fName);
+      // Use normalizeStr to handle accents (e.g. Orçamentista vs orcamentista)
+      const matchesType = filterType === 'all' || normalizeStr(user.tipo || '') === normalizeStr(filterType);
       
-      const matchesType = filterType === 'all' || user.tipo.toLowerCase() === filterType.toLowerCase();
-      
-      // Robust City Filtering: Check the joined data first
-      const cityResolved = user.cidade_data ? user.cidade_data.cidade : getCityNameFromId(user.cidade);
+      const cityResolved = user.cidade_data ? user.cidade_data.cidade : (cities.find(c => c.id == user.cidade)?.cidade || '');
       const fCity = normalizeStr(filterCity);
       const matchesCity = filterCity === '' || normalizeStr(cityResolved).includes(fCity);
       
@@ -206,8 +262,15 @@ const Settings: React.FC = () => {
   });
 
   const handleEdit = (item: any) => {
-    setFormData(item);
-    setActivitySearchTerm(''); // Reset search
+    // Normalizar o tipo para garantir que o select exiba a opção correta (Capitalize)
+    const normalizedItem = {
+        ...item,
+        tipo: item.tipo ? formatUserType(item.tipo) : 'Consumidor'
+    };
+    
+    setFormData(normalizedItem);
+    setActivitySearchTerm(''); 
+    setPassword(''); // Reset password field (usually keep blank on edit)
     setEditingId(item.id);
     setIsModalOpen(true);
   };
@@ -223,17 +286,28 @@ const Settings: React.FC = () => {
             ativa: true
         });
     } else {
+        // Novo Usuário: Inicializar campos completos
         setFormData({
             nome: '',
             email: '',
             tipo: 'Consumidor',
+            cpf: '',
+            whatsapp: '',
+            sexo: 'Outro',
+            cep: '',
+            rua: '',
+            numero: '',
+            bairro: '',
+            complemento: '',
             cidade: null,
-            cidade_data: null, // Clear display data
+            cidade_data: null,
+            estado: null,
             ativo: true,
-            uuid: crypto.randomUUID(),
+            uuid: '', // Será gerado pelo Auth
             fotoperfil: '',
-            atividade: [] // Init empty array
+            atividade: []
         });
+        setPassword('');
     }
     setActivitySearchTerm('');
     setEditingId(null);
@@ -256,7 +330,7 @@ const Settings: React.FC = () => {
         }
     } catch (error) {
         console.error('Error deleting:', error);
-        alert('Erro ao excluir item. Verifique se existem dependências (filhos/agendamentos) vinculados.');
+        alert('Erro ao excluir item. Verifique se existem dependências vinculadas.');
     }
   };
 
@@ -309,7 +383,6 @@ const Settings: React.FC = () => {
     await executeSave(formData);
   };
 
-  // Helper just to check editing state safely
   const editingItem = () => services.find(s => s.id === editingId);
 
   const executeSave = async (dataToSave: any) => {
@@ -318,12 +391,48 @@ const Settings: React.FC = () => {
         const table = activeTab === 'services' ? 'geral' : 'users';
         const payload = { ...dataToSave };
         
+        // --- LOGICA DE CRIAÇÃO DE USUÁRIO (AUTH + PUBLIC) ---
         if (activeTab === 'users') {
+            // Limpeza de campos virtuais
             delete payload.rating;
             delete payload.reviewCount;
-            delete payload.cidade_data; // Remove joined object before saving to Supabase
-            // Ensure atividade is array of numbers
+            delete payload.cidade_data;
             if (!payload.atividade) payload.atividade = [];
+
+            // Se for NOVO usuário, precisamos criar o Auth User primeiro
+            if (!editingId) {
+                if (!password || password.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
+                if (!payload.email) throw new Error("Email é obrigatório.");
+                if (!payload.cpf) throw new Error("CPF é obrigatório.");
+                if (!payload.cidade) throw new Error("Cidade é obrigatória.");
+
+                // 1. Criar Auth User sem deslogar o Gestor (Usando cliente temporário)
+                // Isso evita que o supabase.auth.signUp deslogue o usuário atual da sessão do navegador
+                const tempClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                    auth: {
+                        persistSession: false, // Importante: não salvar sessão no localStorage
+                        autoRefreshToken: false,
+                        detectSessionInUrl: false
+                    }
+                });
+
+                const { data: authData, error: authError } = await tempClient.auth.signUp({
+                    email: payload.email,
+                    password: password
+                });
+
+                if (authError) throw authError;
+                if (!authData.user) throw new Error("Erro ao criar usuário na autenticação.");
+
+                // 2. Usar o UUID gerado para o insert na tabela pública
+                payload.uuid = authData.user.id;
+            } 
+            else {
+                // Se for edição, removemos uuid e email do payload para evitar conflitos se não forem alteráveis
+                // (Geralmente email no Auth é separado, mas aqui atualizamos o registro público)
+                // Se a senha foi preenchida na edição, teríamos que usar uma Edge Function para atualizar, 
+                // mas como estamos no front, ignoramos senha na edição por enquanto.
+            }
         }
 
         const query = editingId 
@@ -335,6 +444,8 @@ const Settings: React.FC = () => {
 
         setIsModalOpen(false);
         fetchData(); 
+        alert(editingId ? "Atualizado com sucesso." : "Usuário criado com sucesso!");
+
     } catch (error: any) {
         console.error('Error saving:', error);
         alert(`Erro ao salvar: ${error.message}`);
@@ -364,7 +475,7 @@ const Settings: React.FC = () => {
       setFormData({
           ...formData, 
           cidade: city.id,
-          // Update display data manually so UI reflects change immediately without lookup
+          estado: city.uf,
           cidade_data: { cidade: city.cidade, uf: city.uf }
       });
       setIsCitySearchOpen(false);
@@ -389,22 +500,18 @@ const Settings: React.FC = () => {
 
   // --- SERVICES FILTER LOGIC ---
   const displayedServices = services.filter(s => {
-      // 1. Sub-tab filter
       if (serviceSubTab === 'primary' && !s.primaria) return false;
       if (serviceSubTab === 'secondary' && s.primaria) return false;
 
-      // 2. Name search
       const sName = normalizeStr(s.nome);
       const fName = normalizeStr(serviceFilterName);
       if (!sName.includes(fName)) return false;
 
-      // 3. Status filter
       if (serviceFilterStatus !== 'all') {
           const isActive = serviceFilterStatus === 'active';
           if (s.ativa !== isActive) return false;
       }
 
-      // 4. Parent category filter (Secondary Only)
       if (serviceSubTab === 'secondary' && serviceFilterParent !== 'all') {
           const parentId = parseInt(serviceFilterParent);
           if (s.dependencia !== parentId) return false;
@@ -413,12 +520,10 @@ const Settings: React.FC = () => {
       return true;
   });
   
-  // Filter services for Activity Selector (Modal)
   const filteredActivities = services.filter(s => 
       s.nome.toLowerCase().includes(activitySearchTerm.toLowerCase())
   );
 
-  // Get list of primary categories for the Parent Filter dropdown
   const primaryCategories = services.filter(s => s.primaria).sort((a, b) => a.nome.localeCompare(b.nome));
 
   return (
@@ -457,7 +562,7 @@ const Settings: React.FC = () => {
                     <div className="relative">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input 
-                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 pl-9 pr-3 text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 outline-none"
                             placeholder="Buscar..."
                             value={filterName}
                             onChange={(e) => setFilterName(e.target.value)}
@@ -467,7 +572,7 @@ const Settings: React.FC = () => {
                 <div className="space-y-1">
                      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Tipo</label>
                      <select 
-                        className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 outline-none"
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value)}
                      >
@@ -482,7 +587,7 @@ const Settings: React.FC = () => {
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Cidade (Nome)</label>
                     <input 
-                        className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 outline-none"
                         placeholder="Ex: Lafaiete"
                         value={filterCity}
                         onChange={(e) => setFilterCity(e.target.value)}
@@ -491,7 +596,7 @@ const Settings: React.FC = () => {
                 <div className="space-y-1">
                      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Status</label>
                      <select 
-                        className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 outline-none"
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
                      >
@@ -511,7 +616,7 @@ const Settings: React.FC = () => {
                     <div className="relative">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input 
-                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 pl-9 pr-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 pl-9 pr-3 text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 outline-none"
                             placeholder="Buscar..."
                             value={serviceFilterName}
                             onChange={(e) => setServiceFilterName(e.target.value)}
@@ -522,7 +627,7 @@ const Settings: React.FC = () => {
                 <div className="space-y-1">
                      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Status</label>
                      <select 
-                        className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                        className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 outline-none"
                         value={serviceFilterStatus}
                         onChange={(e) => setServiceFilterStatus(e.target.value)}
                      >
@@ -536,7 +641,7 @@ const Settings: React.FC = () => {
                     <div className="space-y-1 md:col-span-2">
                         <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Categoria Pai</label>
                         <select 
-                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-gray-900 focus:ring-2 focus:ring-blue-100 outline-none"
                             value={serviceFilterParent}
                             onChange={(e) => setServiceFilterParent(e.target.value)}
                         >
@@ -707,11 +812,10 @@ const Settings: React.FC = () => {
                                                 ? 'bg-blue-50 text-blue-700 border-blue-100'
                                                 : 'bg-gray-50 text-gray-600 border-gray-100'
                                             }`}>
-                                                {user.tipo}
+                                                {formatUserType(user.tipo)}
                                             </span>
                                         </td>
                                         <td className="p-5 text-sm text-gray-600 font-medium">
-                                            {/* Displaying JOINED City Name */}
                                             {getCityNameForDisplay(user)}
                                         </td>
                                         <td className="p-5">
@@ -755,13 +859,13 @@ const Settings: React.FC = () => {
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-5">
-                    {/* ... (SERVICE FORM fields same as before) ... */}
+                    {/* --- SERVICE FORM --- */}
                     {activeTab === 'services' ? (
                         <>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nome do Serviço</label>
                                 <input 
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-ios-blue/30 outline-none transition-all" 
+                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-gray-900 focus:ring-2 focus:ring-ios-blue/30 outline-none transition-all" 
                                     value={formData.nome || ''} 
                                     onChange={e => setFormData({...formData, nome: e.target.value})}
                                     placeholder="Ex: Limpeza Pesada"
@@ -813,7 +917,7 @@ const Settings: React.FC = () => {
                                 <div className="space-y-2 animate-in slide-in-from-top-2">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Vincular a Categoria</label>
                                     <select 
-                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium outline-none appearance-none" 
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-gray-900 outline-none appearance-none" 
                                         value={formData.dependencia || ''} 
                                         onChange={e => setFormData({...formData, dependencia: e.target.value ? parseInt(e.target.value) : null})}
                                     >
@@ -826,81 +930,200 @@ const Settings: React.FC = () => {
                             )}
                         </>
                     ) : (
-                        // USERS FORM
+                        // --- USERS FORM ---
                         <>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nome</label>
-                                <input 
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium outline-none focus:ring-2 focus:ring-ios-blue/30" 
-                                    value={formData.nome || ''} 
-                                    onChange={e => setFormData({...formData, nome: e.target.value})}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">E-mail</label>
-                                <input 
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium outline-none focus:ring-2 focus:ring-ios-blue/30" 
-                                    value={formData.email || ''} 
-                                    onChange={e => setFormData({...formData, email: e.target.value})}
-                                />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            {/* Seção 1: Credenciais e Tipo */}
+                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-4">
+                                <h4 className="text-xs font-bold text-gray-500 uppercase flex items-center"><Lock size={12} className="mr-1"/> Acesso e Permissões</h4>
+                                
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Tipo de Usuário</label>
-                                    <select 
-                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium outline-none appearance-none"
-                                        value={formData.tipo || 'Consumidor'}
-                                        onChange={e => setFormData({...formData, tipo: e.target.value})}
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">E-mail (Login)</label>
+                                    <input 
+                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                        value={formData.email || ''} 
+                                        onChange={e => setFormData({...formData, email: e.target.value})}
+                                        disabled={!!editingId} // Disable email change on edit to simplify
+                                    />
+                                </div>
+
+                                {!editingId && (
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Senha (Login)</label>
+                                        <input 
+                                            type="password"
+                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                            value={password} 
+                                            onChange={e => setPassword(e.target.value)}
+                                            placeholder="Mínimo 6 caracteres"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Tipo</label>
+                                        <select 
+                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none appearance-none"
+                                            value={formData.tipo || 'Consumidor'}
+                                            onChange={e => setFormData({...formData, tipo: e.target.value})}
+                                        >
+                                            <option value="Consumidor">Consumidor</option>
+                                            <option value="Profissional">Profissional</option>
+                                            <option value="Gestor">Gestor</option>
+                                            <option value="Planejista">Planejista</option>
+                                            <option value="Orçamentista">Orçamentista</option>
+                                        </select>
+                                    </div>
+                                    <div 
+                                        className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-center items-center ${formData.ativo ? 'bg-green-100 border-green-200 text-green-800' : 'bg-white border-gray-200'}`}
+                                        onClick={() => setFormData({...formData, ativo: !formData.ativo})}
                                     >
-                                        <option value="Consumidor">Consumidor</option>
-                                        <option value="Profissional">Profissional</option>
-                                        <option value="Gestor">Gestor</option>
-                                        <option value="Planejista">Planejista</option>
-                                        <option value="Orçamentista">Orçamentista</option>
-                                    </select>
+                                        <span className="text-[10px] font-bold uppercase mb-1">Status</span>
+                                        <span className="font-bold text-sm flex items-center">
+                                            {formData.ativo ? 'Ativo' : 'Inativo'} 
+                                            {formData.ativo && <Check size={12} className="ml-1"/>}
+                                        </span>
+                                    </div>
                                 </div>
-                                <div 
-                                    className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-center ${formData.ativo ? 'bg-green-50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200'}`}
-                                    onClick={() => setFormData({...formData, ativo: !formData.ativo})}
-                                >
-                                    <span className="text-[10px] font-bold uppercase">Status</span>
-                                    <span className="font-bold">{formData.ativo ? 'Ativo' : 'Inativo'}</span>
+                            </div>
+
+                            {/* Seção 2: Dados Pessoais */}
+                            <div className="space-y-3">
+                                <h4 className="text-xs font-bold text-gray-400 uppercase flex items-center mt-2 ml-1"><UserIcon size={12} className="mr-1"/> Dados Pessoais</h4>
+                                
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-400 ml-1">Nome Completo</label>
+                                    <input 
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                        value={formData.nome || ''} 
+                                        onChange={e => setFormData({...formData, nome: e.target.value})}
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 ml-1">CPF</label>
+                                        <div className="relative">
+                                            <FileText size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                                            <input 
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3 pl-8 pr-3 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                                value={formData.cpf || ''} 
+                                                onChange={e => setFormData({...formData, cpf: formatCpf(e.target.value)})}
+                                                maxLength={14}
+                                                placeholder="000.000.000-00"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 ml-1">WhatsApp</label>
+                                        <div className="relative">
+                                            <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                                            <input 
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3 pl-8 pr-3 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                                value={formData.whatsapp || ''} 
+                                                onChange={e => setFormData({...formData, whatsapp: formatPhone(e.target.value)})}
+                                                maxLength={15}
+                                                placeholder="(00) 00000-0000"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Seção 3: Endereço */}
+                            <div className="space-y-3 pt-2 border-t border-gray-100">
+                                <h4 className="text-xs font-bold text-gray-400 uppercase flex items-center mt-2 ml-1"><MapPin size={12} className="mr-1"/> Endereço</h4>
+                                
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="space-y-1 col-span-1">
+                                        <label className="text-[10px] font-bold text-gray-400 ml-1">CEP</label>
+                                        <div className="relative">
+                                            {loadingCep ? <Loader2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 animate-spin text-ios-blue"/> : <Navigation size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>}
+                                            <input 
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3 pl-8 pr-2 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                                value={formData.cep || ''} 
+                                                onChange={e => setFormData({...formData, cep: formatCep(e.target.value)})}
+                                                onBlur={fetchCepData}
+                                                maxLength={9}
+                                                placeholder="00000-000"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-[10px] font-bold text-gray-400 ml-1">Cidade</label>
+                                        <div 
+                                            onClick={() => {
+                                                setIsCitySearchOpen(true);
+                                                setCitySearchTerm('');
+                                                setSearchedCities([]);
+                                            }}
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3 px-3 text-sm font-medium cursor-pointer flex justify-between items-center hover:bg-gray-100 transition-colors"
+                                        >
+                                            <span className={`truncate ${formData.cidade ? 'text-gray-900' : 'text-gray-400'}`}>
+                                                {getFormCityDisplay()}
+                                            </span>
+                                            <Search size={14} className="text-gray-400 flex-shrink-0"/>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-400 ml-1">Rua</label>
+                                    <div className="relative">
+                                        <Home size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                                        <input 
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3 pl-8 pr-3 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                            value={formData.rua || ''} 
+                                            onChange={e => setFormData({...formData, rua: e.target.value})}
+                                            placeholder="Nome da rua"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 ml-1">Número</label>
+                                        <input 
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                            value={formData.numero || ''} 
+                                            onChange={e => setFormData({...formData, numero: e.target.value})}
+                                            placeholder="123"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-gray-400 ml-1">Bairro</label>
+                                        <input 
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                            value={formData.bairro || ''} 
+                                            onChange={e => setFormData({...formData, bairro: e.target.value})}
+                                            placeholder="Centro"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-gray-400 ml-1">Complemento</label>
+                                    <input 
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" 
+                                        value={formData.complemento || ''} 
+                                        onChange={e => setFormData({...formData, complemento: e.target.value})}
+                                        placeholder="Apto, Bloco..."
+                                    />
                                 </div>
                             </div>
                             
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Cidade</label>
-                                {/* Advanced City Search Trigger */}
-                                <div 
-                                    onClick={() => {
-                                        setIsCitySearchOpen(true);
-                                        setCitySearchTerm('');
-                                        setSearchedCities([]);
-                                    }}
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium cursor-pointer flex justify-between items-center hover:bg-gray-100 transition-colors"
-                                >
-                                    <span className={formData.cidade ? 'text-gray-900' : 'text-gray-400'}>
-                                        {/* Use new form-specific display helper */}
-                                        {getFormCityDisplay()}
-                                    </span>
-                                    <Search size={16} className="text-gray-400"/>
-                                </div>
-                            </div>
-                            
+                            {/* Seção 4: Atividades (Apenas Profissional) */}
                             {(formData.tipo === 'Profissional' || formData.tipo === 'profissional') && (
-                                <div className="bg-yellow-50 p-4 rounded-2xl border border-yellow-100 space-y-3">
+                                <div className="bg-yellow-50 p-4 rounded-2xl border border-yellow-100 space-y-3 mt-4">
                                     <label className="text-[10px] font-bold text-yellow-700 uppercase tracking-wider flex items-center">
                                         <Briefcase size={12} className="mr-1"/> Atividades (Serviços Prestados)
                                     </label>
                                     
-                                    {/* Activity Selector UI */}
                                     <div className="bg-white rounded-xl border border-yellow-200 overflow-hidden">
-                                        {/* Search Bar */}
                                         <div className="p-2 border-b border-gray-100 bg-gray-50">
                                             <div className="relative">
                                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                                                 <input 
-                                                    className="w-full bg-white border border-gray-200 rounded-lg py-2 pl-9 pr-3 text-xs font-medium focus:ring-2 focus:ring-yellow-200 outline-none"
+                                                    className="w-full bg-white border border-gray-200 rounded-lg py-2 pl-9 pr-3 text-xs font-medium text-gray-900 focus:ring-2 focus:ring-yellow-200 outline-none"
                                                     placeholder="Filtrar serviços..."
                                                     value={activitySearchTerm}
                                                     onChange={(e) => setActivitySearchTerm(e.target.value)}
@@ -908,7 +1131,6 @@ const Settings: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        {/* Scrollable List */}
                                         <div className="max-h-48 overflow-y-auto p-1 space-y-1 no-scrollbar">
                                             {filteredActivities.length > 0 ? filteredActivities.map(activity => {
                                                 const isSelected = (formData.atividade || []).includes(activity.id);
@@ -1038,7 +1260,7 @@ const Settings: React.FC = () => {
                      <div className="space-y-2">
                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nova Categoria Pai</label>
                         <select 
-                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold outline-none" 
+                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none" 
                             value={newParentId} 
                             onChange={e => setNewParentId(e.target.value ? parseInt(e.target.value) : '')}
                         >

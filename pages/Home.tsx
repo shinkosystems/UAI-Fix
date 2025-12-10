@@ -1,8 +1,9 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Geral } from '../types';
 import StoryCircle from '../components/StoryCircle';
-import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase, Calendar, MapPin, AlertTriangle, X, FileText, CheckCircle } from 'lucide-react';
+import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase, Calendar, MapPin, AlertTriangle, X, FileText, CheckCircle, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ServiceItem {
@@ -44,6 +45,7 @@ const Home: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [userType, setUserType] = useState<string>('');
   const [userName, setUserName] = useState<string>('Usuário'); // State for User Name
+  const [currentUserUuid, setCurrentUserUuid] = useState<string | null>(null);
   const [showProfileAlert, setShowProfileAlert] = useState(false);
   const navigate = useNavigate();
 
@@ -87,6 +89,7 @@ const Home: React.FC = () => {
       }
 
       if (userUuid) {
+          setCurrentUserUuid(userUuid);
           // Fetch User Type and Check Profile Completeness
           const { data: userData } = await supabase
             .from('users')
@@ -96,6 +99,7 @@ const Home: React.FC = () => {
           
           if (userData) {
               const tipo = userData.tipo || '';
+              const normalizedType = tipo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
               setUserType(tipo);
 
               // Set Name (Format to First Name, handle 'Insere' placeholder)
@@ -132,6 +136,162 @@ const Home: React.FC = () => {
 
               // --- FETCH NOTIFICATIONS BASED ON ROLE ---
               await fetchNotifications(tipo, userUuid);
+
+              // --- DEFINE SCOPE FOR DASHBOARD DATA ---
+              const isInternal = ['gestor', 'planejista', 'orcamentista'].includes(normalizedType);
+              const isProfessional = normalizedType === 'profissional';
+
+              // 4. Get "Agendamentos" Count
+              let agendamentosQuery = supabase
+                  .from('agenda')
+                  .select('*', { count: 'exact', head: true })
+                  .is('dataconclusao', null);
+
+              if (!isInternal) {
+                  if (isProfessional) {
+                      agendamentosQuery = agendamentosQuery.eq('profissional', userUuid);
+                  } else {
+                      agendamentosQuery = agendamentosQuery.eq('cliente', userUuid);
+                  }
+              }
+              const { count: countAgendamentos } = await agendamentosQuery;
+              setAgendamentosCount(countAgendamentos || 0);
+
+              // 5. Get "Serviços Ativos" Count
+              let ativosQuery = supabase
+                  .from('chaves')
+                  .select('*', { count: 'exact', head: true })
+                  .neq('status', 'concluido')
+                  .neq('status', 'cancelado');
+
+              if (!isInternal) {
+                  if (isProfessional) {
+                      ativosQuery = ativosQuery.eq('profissional', userUuid);
+                  } else {
+                      ativosQuery = ativosQuery.eq('cliente', userUuid);
+                  }
+              }
+              const { count: countAtivos } = await ativosQuery;
+              setServicosAtivosCount(countAtivos || 0);
+
+              // 6. Get Next Appointment (Upcoming)
+              const nowISO = new Date().toISOString();
+              let nextAgendaQuery = supabase
+                  .from('agenda')
+                  .select(`
+                      id,
+                      execucao,
+                      chaves (
+                          geral (nome),
+                          profissional (nome, fotoperfil),
+                          clienteData:users!cliente (nome, fotoperfil)
+                      )
+                  `)
+                  .gt('execucao', nowISO)
+                  .is('dataconclusao', null)
+                  .order('execucao', { ascending: true })
+                  .limit(1);
+
+              if (!isInternal) {
+                  if (isProfessional) {
+                      nextAgendaQuery = nextAgendaQuery.eq('profissional', userUuid);
+                  } else {
+                      nextAgendaQuery = nextAgendaQuery.eq('cliente', userUuid);
+                  }
+              } else {
+                  // Internal sees the most urgent global task
+                  nextAgendaQuery = nextAgendaQuery.limit(1);
+              }
+
+              const { data: nextAgendaData } = await nextAgendaQuery;
+              const nextAgenda = nextAgendaData && nextAgendaData.length > 0 ? nextAgendaData[0] : null;
+
+              if (nextAgenda) {
+                   const key: any = nextAgenda.chaves;
+                   // For client, show pro name. For pro/internal, show client name (or generic info)
+                   const displayName = (isProfessional || isInternal) 
+                        ? (key?.clienteData?.nome || 'Cliente') 
+                        : (key?.profissional?.nome || 'Profissional');
+                   
+                   const displayPhoto = (isProfessional || isInternal)
+                        ? (key?.clienteData?.fotoperfil)
+                        : (key?.profissional?.fotoperfil);
+
+                   setNextAppointment({
+                       id: nextAgenda.id,
+                       serviceName: key?.geral?.nome || 'Serviço Agendado',
+                       date: new Date(nextAgenda.execucao),
+                       proName: displayName,
+                       proPhoto: displayPhoto || ''
+                   });
+              }
+
+              // 7. Get Recent Services List
+              let recentQuery = supabase
+                  .from('agenda')
+                  .select(`
+                    id,
+                    execucao,
+                    dataconclusao,
+                    chaves (
+                      status,
+                      geral (
+                        nome
+                      )
+                    )
+                  `)
+                  .order('execucao', { ascending: false })
+                  .limit(6);
+
+              if (!isInternal) {
+                  if (isProfessional) {
+                      recentQuery = recentQuery.eq('profissional', userUuid);
+                  } else {
+                      recentQuery = recentQuery.eq('cliente', userUuid);
+                  }
+              }
+
+              const { data: agendaData } = await recentQuery;
+
+              if (agendaData) {
+                const formattedServices: ServiceItem[] = agendaData.map((item: any) => {
+                  const dateObj = new Date(item.execucao);
+                  const now = new Date();
+                  const isConcluded = !!item.dataconclusao;
+                  const serviceName = item.chaves?.geral?.nome || 'Serviço Geral';
+                  
+                  let status = 'Agendado';
+                  let color = 'bg-blue-100 text-blue-700';
+
+                  if (isConcluded) {
+                    status = 'Concluído';
+                    color = 'bg-gray-100 text-gray-600';
+                  } else if (dateObj < now) {
+                    status = 'Pendente';
+                    color = 'bg-yellow-100 text-yellow-700';
+                  } else {
+                    status = 'Confirmado';
+                    color = 'bg-green-100 text-green-700';
+                  }
+
+                  const dateStr = new Intl.DateTimeFormat('pt-BR', { 
+                    day: '2-digit', 
+                    month: 'short', 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  }).format(dateObj).replace('.', '');
+
+                  return {
+                    id: item.id, // This is the agenda ID
+                    title: serviceName,
+                    date: dateStr,
+                    status: status,
+                    color: color,
+                    timestamp: item.execucao
+                  };
+                });
+                setRecentServices(formattedServices);
+              }
           }
       }
 
@@ -180,115 +340,6 @@ const Home: React.FC = () => {
           });
 
           setTopProfessionals(sortedPros.slice(0, 5)); 
-      }
-
-      if (userUuid) {
-        // 4. Get "Agendamentos" Count
-        const { count: countAgendamentos } = await supabase
-          .from('agenda')
-          .select('*', { count: 'exact', head: true })
-          .eq('cliente', userUuid)
-          .is('dataconclusao', null);
-        
-        setAgendamentosCount(countAgendamentos || 0);
-
-        // 5. Get "Serviços Ativos" Count
-        const { count: countAtivos } = await supabase
-          .from('chaves')
-          .select('*', { count: 'exact', head: true })
-          .eq('cliente', userUuid)
-          .neq('status', 'concluido')
-          .neq('status', 'cancelado');
-          
-        setServicosAtivosCount(countAtivos || 0);
-
-        // 6. Get Next Appointment (Upcoming)
-        const nowISO = new Date().toISOString();
-        const { data: nextAgenda } = await supabase
-            .from('agenda')
-            .select(`
-                id,
-                execucao,
-                chaves (
-                    geral (nome),
-                    profissional (nome, fotoperfil)
-                )
-            `)
-            .eq('cliente', userUuid)
-            .gt('execucao', nowISO)
-            .is('dataconclusao', null)
-            .order('execucao', { ascending: true })
-            .limit(1)
-            .single();
-
-        if (nextAgenda) {
-             const key: any = nextAgenda.chaves; // Type casting for convenience
-             setNextAppointment({
-                 id: nextAgenda.id,
-                 serviceName: key?.geral?.nome || 'Serviço Agendado',
-                 date: new Date(nextAgenda.execucao),
-                 proName: key?.profissional?.nome || 'Profissional',
-                 proPhoto: key?.profissional?.fotoperfil || ''
-             });
-        }
-
-        // 7. Get Recent Services List
-        const { data: agendaData } = await supabase
-          .from('agenda')
-          .select(`
-            id,
-            execucao,
-            dataconclusao,
-            chaves (
-              status,
-              geral (
-                nome
-              )
-            )
-          `)
-          .eq('cliente', userUuid)
-          .order('execucao', { ascending: false })
-          .limit(6); 
-
-        if (agendaData) {
-          const formattedServices: ServiceItem[] = agendaData.map((item: any) => {
-            const dateObj = new Date(item.execucao);
-            const now = new Date();
-            const isConcluded = !!item.dataconclusao;
-            const serviceName = item.chaves?.geral?.nome || 'Serviço Geral';
-            
-            let status = 'Agendado';
-            let color = 'bg-blue-100 text-blue-700';
-
-            if (isConcluded) {
-              status = 'Concluído';
-              color = 'bg-gray-100 text-gray-600';
-            } else if (dateObj < now) {
-              status = 'Pendente';
-              color = 'bg-yellow-100 text-yellow-700';
-            } else {
-              status = 'Confirmado';
-              color = 'bg-green-100 text-green-700';
-            }
-
-            const dateStr = new Intl.DateTimeFormat('pt-BR', { 
-              day: '2-digit', 
-              month: 'short', 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            }).format(dateObj).replace('.', '');
-
-            return {
-              id: item.id, // This is the agenda ID
-              title: serviceName,
-              date: dateStr,
-              status: status,
-              color: color,
-              timestamp: item.execucao
-            };
-          });
-          setRecentServices(formattedServices);
-        }
       }
 
     } catch (error) {
@@ -445,6 +496,9 @@ const Home: React.FC = () => {
       }
   };
 
+  const normalizedUserType = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const canSchedule = normalizedUserType === 'gestor' || normalizedUserType === 'consumidor';
+
   return (
     <div className="min-h-screen bg-[#F2F4F8]">
       {/* Header */}
@@ -455,6 +509,19 @@ const Home: React.FC = () => {
         </div>
         <div className="flex items-center space-x-3" ref={notificationRef}>
             <span className="hidden md:block text-sm font-medium text-gray-500">Olá, {userName}</span>
+            
+            {/* Botão de Perfil Público para Profissionais */}
+            {userType.toLowerCase() === 'profissional' && currentUserUuid && (
+                <button
+                    onClick={() => navigate(`/professional/${currentUserUuid}`)}
+                    className="flex items-center space-x-2 bg-white px-3 py-2 rounded-full text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-50 transition-all shadow-sm active:scale-95"
+                    title="Meu Perfil Público"
+                >
+                    <User size={16} />
+                    <span className="hidden sm:inline">Minha Página</span>
+                </button>
+            )}
+
             <div className="relative">
                 <button 
                     onClick={() => setShowNotifications(!showNotifications)}
@@ -758,12 +825,14 @@ const Home: React.FC = () => {
             ) : (
               <div className="col-span-full text-center py-10 bg-white rounded-[2rem] border border-dashed border-gray-200">
                 <p className="text-gray-400 text-sm font-medium">Nenhum serviço agendado.</p>
-                <button 
-                  onClick={() => navigate('/search')}
-                  className="mt-3 text-ios-blue text-sm font-bold"
-                >
-                  Agendar agora
-                </button>
+                {canSchedule && (
+                  <button 
+                    onClick={() => navigate('/search')}
+                    className="mt-3 text-ios-blue text-sm font-bold"
+                  >
+                    Agendar agora
+                  </button>
+                )}
               </div>
             )}
           </div>

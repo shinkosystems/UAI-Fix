@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, City, Estado } from '../types';
@@ -25,6 +26,7 @@ const Profile: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [searchingCity, setSearchingCity] = useState(false);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   // --- Form States ---
   const [nome, setNome] = useState('');
@@ -50,6 +52,10 @@ const Profile: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
   const [userType, setUserType] = useState('');
+
+  // Permission Logic
+  // Apenas Gestor e Consumidor podem editar. Profissional, Planejista e Orçamentista apenas visualizam.
+  const canEdit = ['gestor', 'consumidor'].includes(userType.toLowerCase());
 
   useEffect(() => {
     fetchData();
@@ -158,6 +164,7 @@ const Profile: React.FC = () => {
   };
 
   const fetchCepData = async (cepValue: string) => {
+      if (!canEdit) return; // Prevent CEP fetch if not editable
       try {
           const cleanCep = cepValue.replace(/\D/g, '');
           const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
@@ -220,6 +227,10 @@ const Profile: React.FC = () => {
 
         if (userData) {
           setProfile(userData);
+          
+          // Verifica se é uma conta nova (dados placeholder)
+          const isNewAccount = userData.nome === 'Insere';
+
           setNome(cleanValue(userData.nome));
           setWhatsapp(formatPhone(cleanValue(userData.whatsapp)));
           setCpf(formatCpf(cleanValue(userData.cpf)));
@@ -231,20 +242,27 @@ const Profile: React.FC = () => {
           setBairro(cleanValue(userData.bairro));
           setComplemento(cleanValue(userData.complemento));
 
-          setSelectedStateId(userData.estado || '');
-          setSelectedCityId(userData.cidade);
           setUserType(userData.tipo || '');
-          
-          if (userData.cidade) {
-            const { data: cityData } = await supabase
-                .from('cidades')
-                .select('*')
-                .eq('id', userData.cidade)
-                .single();
-            if (cityData) setCityName(cityData.cidade);
-          }
-          
           fetchNotifications(userData.tipo || '', uuidToFetch);
+          
+          if (!isNewAccount) {
+              setSelectedStateId(userData.estado || '');
+              setSelectedCityId(userData.cidade);
+              
+              if (userData.cidade) {
+                const { data: cityData } = await supabase
+                    .from('cidades')
+                    .select('*')
+                    .eq('id', userData.cidade)
+                    .single();
+                if (cityData) setCityName(cityData.cidade);
+              }
+          } else {
+              // Limpa seleção visual de cidade para contas novas
+              setSelectedStateId('');
+              setSelectedCityId(null);
+              setCityName('');
+          }
         }
       }
 
@@ -319,8 +337,53 @@ const Profile: React.FC = () => {
       }
   };
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      if (!canEdit) return;
+      if (!e.target.files || e.target.files.length === 0) return;
+      if (!profile) return;
+
+      setUploadingPhoto(true);
+      setMessage(null);
+      const file = e.target.files[0];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `perfil/${profile.uuid}_${Date.now()}.${fileExt}`;
+
+      // Upload to Storage
+      const { error: uploadError } = await supabase.storage
+        .from('imagens')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get Public URL
+      const { data } = supabase.storage.from('imagens').getPublicUrl(fileName);
+      const publicUrl = data.publicUrl;
+
+      // Update User Table
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ fotoperfil: publicUrl })
+        .eq('id', profile.id);
+
+      if (updateError) throw updateError;
+
+      // Update Local State
+      setProfile({ ...profile, fotoperfil: publicUrl });
+      setMessage({ type: 'success', text: 'Foto de perfil atualizada!' });
+
+    } catch (error: any) {
+      console.error('Erro ao atualizar foto:', error);
+      setMessage({ type: 'error', text: 'Erro ao enviar foto: ' + (error.message || 'Desconhecido') });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!profile) return;
+    if (!canEdit) return;
+
     setSaving(true);
     setMessage(null);
 
@@ -457,17 +520,23 @@ const Profile: React.FC = () => {
         <div className="flex flex-col items-center justify-center pt-4">
           <div className="relative group cursor-pointer">
             <div className="w-28 h-28 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden border-4 border-white shadow-lg">
-              {profile?.fotoperfil ? (
+              {uploadingPhoto ? (
+                 <Loader2 className="animate-spin text-gray-400" />
+              ) : profile?.fotoperfil ? (
                 <img src={profile.fotoperfil} alt={nome} className="w-full h-full object-cover" />
               ) : (
                 <UserIcon size={48} className="text-gray-400" />
               )}
             </div>
-            <button className="absolute bottom-0 right-0 bg-ios-blue text-white p-2 rounded-full border-4 border-ios-bg shadow-sm active:scale-95 transition-transform">
-              <Camera size={16} />
-            </button>
+            {canEdit && (
+                <label className="absolute bottom-0 right-0 bg-ios-blue text-white p-2 rounded-full border-4 border-ios-bg shadow-sm active:scale-95 transition-transform cursor-pointer hover:bg-blue-600">
+                {uploadingPhoto ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploadingPhoto} />
+                </label>
+            )}
           </div>
           <p className="mt-3 text-sm text-gray-500 font-medium">{profile?.email}</p>
+          {!canEdit && <p className="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md mt-1">Modo Visualização: {userType}</p>}
         </div>
 
         {/* --- DADOS PESSOAIS --- */}
@@ -482,7 +551,8 @@ const Profile: React.FC = () => {
                 type="text" 
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                disabled={!canEdit}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 disabled:text-gray-500"
                 placeholder="Ex: João da Silva"
               />
             </div>
@@ -497,8 +567,9 @@ const Profile: React.FC = () => {
                     type="text" 
                     value={cpf}
                     onChange={(e) => setCpf(formatCpf(e.target.value))}
+                    disabled={!canEdit}
                     maxLength={14}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 disabled:text-gray-500"
                     placeholder="000.000.000-00"
                 />
                 </div>
@@ -512,8 +583,9 @@ const Profile: React.FC = () => {
                     type="text" 
                     value={whatsapp}
                     onChange={(e) => setWhatsapp(formatPhone(e.target.value))}
+                    disabled={!canEdit}
                     maxLength={15}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 disabled:text-gray-500"
                     placeholder="(00) 00000-0000"
                 />
                 </div>
@@ -526,7 +598,8 @@ const Profile: React.FC = () => {
                 <select 
                     value={sexo}
                     onChange={(e) => setSexo(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 appearance-none"
+                    disabled={!canEdit}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 appearance-none disabled:bg-gray-100 disabled:text-gray-500"
                 >
                     <option value="">Selecione...</option>
                     <option value="Masculino">Masculino</option>
@@ -551,8 +624,9 @@ const Profile: React.FC = () => {
                             type="text" 
                             value={cep}
                             onChange={(e) => setCep(formatCep(e.target.value))}
+                            disabled={!canEdit}
                             maxLength={9}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 disabled:text-gray-500"
                             placeholder="00000-000"
                         />
                     </div>
@@ -560,16 +634,17 @@ const Profile: React.FC = () => {
                 
                 <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Cidade</label>
-                    <div className="relative cursor-pointer" onClick={() => setIsCityModalOpen(true)}>
+                    <div className={`relative ${canEdit ? 'cursor-pointer' : 'cursor-default'}`} onClick={() => canEdit && setIsCityModalOpen(true)}>
                         <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
                         <input 
                             type="text" 
                             value={cityName}
                             readOnly
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-10 text-gray-900 text-sm cursor-pointer focus:outline-none"
+                            disabled={!canEdit}
+                            className={`w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-10 text-gray-900 text-sm focus:outline-none disabled:bg-gray-100 disabled:text-gray-500 ${canEdit ? 'cursor-pointer' : ''}`}
                             placeholder="Selecione..."
                         />
-                        <Edit2 size={16} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-ios-blue"/>
+                        {canEdit && <Edit2 size={16} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-ios-blue"/>}
                     </div>
                 </div>
             </div>
@@ -582,7 +657,8 @@ const Profile: React.FC = () => {
                         type="text" 
                         value={rua}
                         onChange={(e) => setRua(e.target.value)}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                        disabled={!canEdit}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 disabled:text-gray-500"
                         placeholder="Ex: Av. Principal"
                     />
                 </div>
@@ -595,7 +671,8 @@ const Profile: React.FC = () => {
                         type="text" 
                         value={numero}
                         onChange={(e) => setNumero(e.target.value)}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                        disabled={!canEdit}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 disabled:text-gray-500"
                         placeholder="Ex: 123"
                     />
                 </div>
@@ -605,7 +682,8 @@ const Profile: React.FC = () => {
                         type="text" 
                         value={bairro}
                         onChange={(e) => setBairro(e.target.value)}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                        disabled={!canEdit}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 disabled:text-gray-500"
                         placeholder="Ex: Centro"
                     />
                 </div>
@@ -617,7 +695,8 @@ const Profile: React.FC = () => {
                     type="text" 
                     value={complemento}
                     onChange={(e) => setComplemento(e.target.value)}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                    disabled={!canEdit}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 disabled:text-gray-500"
                     placeholder="Ex: Apto 101, Bloco A"
                 />
             </div>
@@ -633,20 +712,22 @@ const Profile: React.FC = () => {
         )}
 
         {/* Actions */}
-        <button 
-        onClick={handleSave}
-        disabled={saving}
-        className="w-full bg-ios-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-200 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 disabled:opacity-70"
-        >
-        {saving ? (
-            <Loader2 className="animate-spin" size={20} />
-        ) : (
-            <>
-            <Save size={18} />
-            <span>Salvar Alterações</span>
-            </>
+        {canEdit && (
+            <button 
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full bg-ios-blue hover:bg-blue-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-200 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 disabled:opacity-70"
+            >
+            {saving ? (
+                <Loader2 className="animate-spin" size={20} />
+            ) : (
+                <>
+                <Save size={18} />
+                <span>Salvar Alterações</span>
+                </>
+            )}
+            </button>
         )}
-        </button>
 
         <button 
           onClick={handleLogout}

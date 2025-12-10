@@ -69,6 +69,7 @@ export interface User {
   reviewCount?: number; // Optional derived field for UI
   // FIX: Added optional 'ativo' property to User interface.
   ativo?: boolean;
+  biografia?: string; // Campo para o texto "Sobre" do profissional
 }
 
 export interface Avaliacao {

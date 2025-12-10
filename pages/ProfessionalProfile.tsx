@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { User, Avaliacao, Geral } from '../types';
-import { ChevronLeft, Star, MapPin, BadgeCheck, Calendar, ShieldCheck, Clock, MessageCircle, MoreHorizontal, Briefcase } from 'lucide-react';
+import { ChevronLeft, Star, MapPin, BadgeCheck, Calendar, ShieldCheck, Clock, MessageCircle, Briefcase, Edit2, Save, Loader2 } from 'lucide-react';
 
 const ProfessionalProfile: React.FC = () => {
   const { uuid } = useParams<{ uuid: string }>();
@@ -19,12 +19,36 @@ const ProfessionalProfile: React.FC = () => {
   const [services, setServices] = useState<Geral[]>([]);
   const [cityName, setCityName] = useState('');
   const [loading, setLoading] = useState(true);
+  
+  // Owner & Edit States
+  const [isOwner, setIsOwner] = useState(false);
+  const [isEditingAbout, setIsEditingAbout] = useState(false);
+  const [aboutText, setAboutText] = useState('');
+  const [savingAbout, setSavingAbout] = useState(false);
+  
+  // Current User Type
+  const [currentUserType, setCurrentUserType] = useState<string>('');
 
   useEffect(() => {
     if (uuid) {
       fetchProfessionalData();
+      checkOwnerAndType();
     }
   }, [uuid]);
+
+  const checkOwnerAndType = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+          if (user.id === uuid) {
+              setIsOwner(true);
+          }
+          // Fetch current user role
+          const { data: userData } = await supabase.from('users').select('tipo').eq('uuid', user.id).single();
+          if (userData) {
+              setCurrentUserType(userData.tipo || '');
+          }
+      }
+  };
 
   const fetchProfessionalData = async () => {
     try {
@@ -39,6 +63,7 @@ const ProfessionalProfile: React.FC = () => {
 
       if (userError) throw userError;
       setProfessional(userData);
+      setAboutText(userData.biografia || '');
 
       // Fetch City Name if exists
       if (userData.cidade) {
@@ -118,6 +143,28 @@ const ProfessionalProfile: React.FC = () => {
     });
   };
 
+  const handleSaveAbout = async () => {
+      if (!professional) return;
+      setSavingAbout(true);
+      try {
+          const { error } = await supabase
+            .from('users')
+            .update({ biografia: aboutText })
+            .eq('id', professional.id);
+          
+          if (error) throw error;
+          
+          // Update local state
+          setProfessional({ ...professional, biografia: aboutText });
+          setIsEditingAbout(false);
+      } catch (error) {
+          console.error("Erro ao salvar biografia:", error);
+          alert("Erro ao salvar biografia.");
+      } finally {
+          setSavingAbout(false);
+      }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-ios-bg flex items-center justify-center">
@@ -137,6 +184,10 @@ const ProfessionalProfile: React.FC = () => {
     );
   }
 
+  // Permissão de Agendamento
+  const normType = currentUserType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const canSchedule = normType === 'gestor' || normType === 'consumidor';
+
   return (
     <div className="min-h-screen bg-[#F2F4F8] relative">
       {/* Vitrified Header - Floating */}
@@ -147,12 +198,6 @@ const ProfessionalProfile: React.FC = () => {
             className="w-10 h-10 rounded-full vitrified flex items-center justify-center text-gray-800 shadow-sm active:scale-95 transition-transform"
             >
             <ChevronLeft size={22} />
-            </button>
-            
-            <button 
-            className="w-10 h-10 rounded-full vitrified flex items-center justify-center text-gray-800 shadow-sm active:scale-95 transition-transform"
-            >
-            <MoreHorizontal size={20} />
             </button>
         </div>
       </div>
@@ -225,11 +270,48 @@ const ProfessionalProfile: React.FC = () => {
 
         {/* About Section */}
         <div className="px-5 mb-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-3 ml-1">Sobre</h3>
+            <div className="flex items-center justify-between mb-3 ml-1">
+                <h3 className="text-lg font-bold text-gray-900">Sobre</h3>
+                {isOwner && !isEditingAbout && (
+                    <button 
+                        onClick={() => setIsEditingAbout(true)}
+                        className="text-ios-blue text-xs font-bold flex items-center hover:bg-blue-50 px-2 py-1 rounded-lg transition-colors"
+                    >
+                        <Edit2 size={12} className="mr-1" /> Editar
+                    </button>
+                )}
+            </div>
+            
             <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-50">
-                <p className="text-gray-600 text-sm leading-relaxed">
-                    Profissional experiente e dedicado, especializado em oferecer serviços de alta qualidade. Compromisso com pontualidade e satisfação do cliente.
-                </p>
+                {isEditingAbout ? (
+                    <div className="space-y-3">
+                        <textarea 
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[120px]"
+                            placeholder="Escreva sobre sua experiência e serviços..."
+                            value={aboutText}
+                            onChange={(e) => setAboutText(e.target.value)}
+                        />
+                        <div className="flex justify-end space-x-2">
+                            <button 
+                                onClick={() => { setIsEditingAbout(false); setAboutText(professional.biografia || ''); }}
+                                className="px-4 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-100"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={handleSaveAbout}
+                                disabled={savingAbout}
+                                className="px-4 py-2 rounded-xl text-xs font-bold bg-black text-white hover:bg-gray-800 flex items-center"
+                            >
+                                {savingAbout ? <Loader2 size={14} className="animate-spin" /> : <><Save size={14} className="mr-1"/> Salvar</>}
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
+                        {professional.biografia || "Este profissional ainda não adicionou uma biografia."}
+                    </p>
+                )}
             </div>
         </div>
 
@@ -299,24 +381,27 @@ const ProfessionalProfile: React.FC = () => {
       </div>
 
       {/* Floating Action Island - Glassmorphism */}
-      <div className="fixed bottom-6 left-5 right-5 z-50">
-        <div className="max-w-md mx-auto w-full">
-            <div className="vitrified rounded-[2rem] p-2 shadow-floating flex items-center justify-between pl-6 pr-2">
-                <div className="flex flex-col">
-                    <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">Serviço</span>
-                    <span className="text-sm font-bold text-gray-900 truncate max-w-[120px]">{serviceName}</span>
+      {/* Show scheduling button only if NOT owner AND is allowed type (Consumer/Manager) */}
+      {!isOwner && canSchedule && (
+          <div className="fixed bottom-6 left-5 right-5 z-50">
+            <div className="max-w-md mx-auto w-full">
+                <div className="vitrified rounded-[2rem] p-2 shadow-floating flex items-center justify-between pl-6 pr-2">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">Serviço</span>
+                        <span className="text-sm font-bold text-gray-900 truncate max-w-[120px]">{serviceName}</span>
+                    </div>
+                    
+                    <button 
+                        className="bg-black text-white px-8 py-3.5 rounded-[1.5rem] font-semibold text-sm shadow-lg active:scale-95 transition-transform flex items-center"
+                        onClick={handleSchedule}
+                    >
+                        <Calendar size={18} className="mr-2" />
+                        Agendar
+                    </button>
                 </div>
-                
-                <button 
-                    className="bg-black text-white px-8 py-3.5 rounded-[1.5rem] font-semibold text-sm shadow-lg active:scale-95 transition-transform flex items-center"
-                    onClick={handleSchedule}
-                >
-                    <Calendar size={18} className="mr-2" />
-                    Agendar
-                </button>
             </div>
-        </div>
-      </div>
+          </div>
+      )}
     </div>
   );
 };

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Agenda, Geral } from '../types';
@@ -76,10 +77,28 @@ const CalendarPage: React.FC = () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return; 
 
-        const { data: agendaData, error: agendaError } = await supabase
-            .from('agenda')
-            .select('*')
-            .or(`cliente.eq.${user.id},profissional.eq.${user.id}`);
+        // 1. Verificar Tipo de Usuário
+        const { data: userData } = await supabase
+            .from('users')
+            .select('tipo')
+            .eq('uuid', user.id)
+            .single();
+
+        const userType = userData?.tipo?.toLowerCase() || '';
+        const normalizedType = userType.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        
+        // Cargos internos veem tudo
+        const isInternal = ['gestor', 'planejista', 'orcamentista'].includes(normalizedType);
+
+        // 2. Construir Query
+        let query = supabase.from('agenda').select('*');
+
+        if (!isInternal) {
+            // Se for Profissional ou Cliente, filtra apenas os seus
+            query = query.or(`cliente.eq.${user.id},profissional.eq.${user.id}`);
+        }
+
+        const { data: agendaData, error: agendaError } = await query;
 
         if (agendaError) throw agendaError;
         
@@ -193,8 +212,10 @@ const CalendarPage: React.FC = () => {
   };
 
   const getHeaderText = () => {
+      // Always return Month and Year as requested by user
       const month = currentDate.toLocaleDateString('pt-BR', { month: 'long' });
       const year = currentDate.getFullYear();
+      // Capitalize first letter
       return `${month.charAt(0).toUpperCase() + month.slice(1)} ${year}`;
   };
 
@@ -361,24 +382,6 @@ const CalendarPage: React.FC = () => {
       }
   };
 
-  const formatFullAddress = (client: any) => {
-      if (!client) return 'Localização não informada';
-      const parts = [];
-      if (client.rua) parts.push(client.rua);
-      if (client.numero) parts.push(client.numero);
-      if (client.complemento) parts.push(client.complemento);
-      const streetPart = parts.join(', ');
-      
-      const locationParts = [];
-      if (client.bairro) locationParts.push(client.bairro);
-      if (client.fullCity) locationParts.push(client.fullCity);
-      const locationPart = locationParts.join(' - ');
-
-      if (streetPart && locationPart) return `${streetPart} - ${locationPart}`;
-      if (locationPart) return locationPart;
-      return 'Endereço incompleto';
-  };
-
   const renderMonthView = () => {
     const daysInMonth = getDaysInMonth(currentDate);
     const firstDay = getFirstDayOfMonth(currentDate);
@@ -537,7 +540,9 @@ const CalendarPage: React.FC = () => {
             <div className="flex items-start justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{getHeaderText()}</h1>
-                    <p className="text-gray-500 text-sm mt-2 hidden md:block">Gerencie seus agendamentos.</p>
+                    <div className="flex items-center mt-1">
+                        <p className="text-gray-500 text-sm mt-3 hidden md:block">Gerencie seus agendamentos.</p>
+                    </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                     <div className="bg-gray-100 p-1 rounded-xl flex shadow-inner">
@@ -552,7 +557,7 @@ const CalendarPage: React.FC = () => {
                     </div>
                 </div>
             </div>
-            <p className="text-gray-500 text-xs md:hidden mt-2">Gerencie seus agendamentos.</p>
+            <p className="text-gray-500 text-xs md:hidden mt-3">Gerencie seus agendamentos.</p>
       </div>
 
       <div className="p-2 md:p-5 max-w-7xl mx-auto">

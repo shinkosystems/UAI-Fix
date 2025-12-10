@@ -20,6 +20,7 @@ const ProfessionalList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [userCityId, setUserCityId] = useState<number | null>(null);
   const [userCityName, setUserCityName] = useState<string>('');
+  const [currentUserType, setCurrentUserType] = useState<string>('');
 
   useEffect(() => {
     const fetchProfessionals = async () => {
@@ -28,7 +29,7 @@ const ProfessionalList: React.FC = () => {
       try {
         setLoading(true);
 
-        // 1. Obter o usuário atual para descobrir sua cidade (ID)
+        // 1. Obter o usuário atual para descobrir sua cidade (ID) e TIPO
         const { data: { user: authUser } } = await supabase.auth.getUser();
         let currentUuid = authUser?.id;
 
@@ -39,21 +40,24 @@ const ProfessionalList: React.FC = () => {
         }
 
         if (currentUuid) {
-            // Buscar dados do usuário atual (ID da cidade)
+            // Buscar dados do usuário atual (ID da cidade e Tipo)
             const { data: currentUserData, error: userError } = await supabase
                 .from('users')
-                .select('cidade')
+                .select('cidade, tipo')
                 .eq('uuid', currentUuid)
                 .single();
             
             if (userError) {
                 console.error('Erro ao buscar perfil do usuário:', userError);
-            } else if (currentUserData && currentUserData.cidade) {
-                setUserCityId(currentUserData.cidade);
+            } else if (currentUserData) {
+                if (currentUserData.cidade) setUserCityId(currentUserData.cidade);
+                if (currentUserData.tipo) setCurrentUserType(currentUserData.tipo);
                 
                 // Buscar nome da cidade apenas para exibir na UI
-                const { data: cityData } = await supabase.from('cidades').select('cidade').eq('id', currentUserData.cidade).single();
-                if (cityData) setUserCityName(cityData.cidade);
+                if (currentUserData.cidade) {
+                    const { data: cityData } = await supabase.from('cidades').select('cidade').eq('id', currentUserData.cidade).single();
+                    if (cityData) setUserCityName(cityData.cidade);
+                }
 
                 // 2. Buscar Profissionais FILTRANDO por ID da cidade e ID da atividade
                 // A coluna 'atividade' é int8[]. Convertemos o serviceId para number.
@@ -136,6 +140,10 @@ const ProfessionalList: React.FC = () => {
       } 
     });
   };
+
+  // Normalização para verificação de permissão
+  const normType = currentUserType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const canSchedule = normType === 'gestor' || normType === 'consumidor';
 
   return (
     <div className="min-h-screen bg-ios-bg">
@@ -244,13 +252,17 @@ const ProfessionalList: React.FC = () => {
                     >
                         Ver Perfil
                     </button>
-                    <button 
-                        className="flex-1 bg-black text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors flex items-center justify-center"
-                        onClick={() => handleScheduleClick(pro)}
-                    >
-                        <Calendar size={14} className="mr-2" />
-                        Agendar
-                    </button>
+                    
+                    {/* Botão de Agendar apenas para Consumidores e Gestores */}
+                    {canSchedule && (
+                        <button 
+                            className="flex-1 bg-black text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors flex items-center justify-center"
+                            onClick={() => handleScheduleClick(pro)}
+                        >
+                            <Calendar size={14} className="mr-2" />
+                            Agendar
+                        </button>
+                    )}
                 </div>
               </div>
             ))}

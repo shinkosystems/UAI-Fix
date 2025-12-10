@@ -1,7 +1,8 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao } from '../types';
-import { Loader2, FileText, DollarSign, Calendar, Clock, CheckCircle, ChevronRight, Package, User as UserIcon, X, Ban, Eye, CreditCard, Send, AlertTriangle, Star, ThumbsUp, Hash, Bell } from 'lucide-react';
+import { Loader2, FileText, DollarSign, Calendar, Clock, CheckCircle, ChevronRight, Package, User as UserIcon, X, Ban, Eye, CreditCard, Send, AlertTriangle, Star, ThumbsUp, Hash, Bell, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { jsPDF } from "jspdf";
 
@@ -75,13 +76,15 @@ const ClientOrders: React.FC = () => {
       }
 
       if (uuid) {
-         await loadData(uuid);
-         
-         // Fetch User Info for Notifications
+         // Fetch User Info first to determine logic
          const { data: userData } = await supabase.from('users').select('tipo').eq('uuid', uuid).single();
-         if (userData) {
-             setUserType(userData.tipo || '');
-             fetchNotifications(userData.tipo || '', uuid);
+         const type = userData?.tipo || '';
+         setUserType(type);
+         
+         await loadData(uuid, type);
+         
+         if (type) {
+             fetchNotifications(type, uuid);
          }
       }
 
@@ -168,14 +171,26 @@ const ClientOrders: React.FC = () => {
       else navigate('/calendar');
   };
 
-  const loadData = async (uuid: string) => {
+  const loadData = async (uuid: string, role: string) => {
     try {
+      const normalizedRole = role.toLowerCase();
+      
       // 1. Fetch Chaves (Orders) - Tabela Base
-      const { data: chavesData, error: chavesError } = await supabase
+      let query = supabase
         .from('chaves')
         .select('*')
-        .eq('cliente', uuid)
         .order('id', { ascending: false });
+
+      // Lógica de Filtro:
+      // Se for Profissional -> Vê pedidos onde ele é o profissional (recebidos)
+      // Se for Consumidor ou Gestor -> Vê pedidos onde ele é o cliente (criados)
+      if (normalizedRole === 'profissional') {
+          query = query.eq('profissional', uuid);
+      } else {
+          query = query.eq('cliente', uuid);
+      }
+
+      const { data: chavesData, error: chavesError } = await query;
 
       if (chavesError) throw chavesError;
 
@@ -187,17 +202,18 @@ const ClientOrders: React.FC = () => {
       // 2. Coletar IDs para buscas em lote
       const chavesIds = chavesData.map(c => c.id);
       const serviceIds = new Set<number>();
-      const proUuids = new Set<string>();
+      const userUuids = new Set<string>();
 
       chavesData.forEach((c) => {
         if (c.atividade) serviceIds.add(c.atividade);
-        if (c.profissional) proUuids.add(c.profissional);
+        if (c.profissional) userUuids.add(c.profissional);
+        if (c.cliente) userUuids.add(c.cliente); // Precisamos saber quem é o cliente se for visão de profissional
       });
 
       // 3. Buscas Paralelas (Manual Join)
-      const [servicesRes, prosRes, orcamentosRes, planRes, reviewsRes] = await Promise.all([
+      const [servicesRes, usersRes, orcamentosRes, planRes, reviewsRes] = await Promise.all([
         serviceIds.size > 0 ? supabase.from('geral').select('*').in('id', Array.from(serviceIds)) : { data: [] },
-        proUuids.size > 0 ? supabase.from('users').select('*').in('uuid', Array.from(proUuids)) : { data: [] },
+        userUuids.size > 0 ? supabase.from('users').select('*').in('uuid', Array.from(userUuids)) : { data: [] },
         supabase.from('orcamentos').select('*').in('chave', chavesIds),
         supabase.from('planejamento').select('*').in('chave', chavesIds),
         supabase.from('avaliacoes').select('*').in('chave', chavesIds)
@@ -206,8 +222,8 @@ const ClientOrders: React.FC = () => {
       const servicesMap: Record<number, Geral> = {};
       servicesRes.data?.forEach((s: any) => servicesMap[s.id] = s);
 
-      const prosMap: Record<string, User> = {};
-      prosRes.data?.forEach((u: any) => prosMap[u.uuid] = u);
+      const usersMap: Record<string, User> = {};
+      usersRes.data?.forEach((u: any) => usersMap[u.uuid] = u);
 
       const budgetsMap: Record<number, Orcamento[]> = {};
       orcamentosRes.data?.forEach((o: any) => {
@@ -227,17 +243,23 @@ const ClientOrders: React.FC = () => {
       });
 
       const fullOrders = chavesData.map((order) => {
-        let proObject = null;
-        if (order.profissional) {
-            proObject = prosMap[order.profissional] || { 
-                id: 0, uuid: order.profissional, nome: 'Profissional', email: '', fotoperfil: '', tipo: 'profissional', cidade: 0, estado: 0 
+        // Se eu sou profissional, quero ver os dados do Cliente. Se sou cliente, quero ver os dados do Profissional.
+        // Mas a estrutura de dados atual nomeia o campo 'profissional'. Vamos manter a estrutura, mas popular corretamente para a UI.
+        
+        // Objeto 'profissional' no OrderExtended é usado para exibir o "Outro Lado"
+        let displayUserUuid = normalizedRole === 'profissional' ? order.cliente : order.profissional;
+        
+        let displayUserObject = null;
+        if (displayUserUuid) {
+            displayUserObject = usersMap[displayUserUuid] || { 
+                id: 0, uuid: displayUserUuid, nome: normalizedRole === 'profissional' ? 'Cliente' : 'Profissional', email: '', fotoperfil: '', tipo: '', cidade: 0, estado: 0 
             } as User;
         }
 
         return {
             ...order,
             geral: servicesMap[order.atividade] || { nome: 'Serviço' },
-            profissional: proObject,
+            profissional: displayUserObject, // Na UI, isso será renderizado como a "outra pessoa"
             orcamentos: budgetsMap[order.id] || [],
             planejamento: plansMap[order.id] || [],
             avaliacao: reviewsMap[order.id] || null
@@ -294,7 +316,8 @@ const ClientOrders: React.FC = () => {
       
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      doc.text(`Profissional Responsável: ${order.profissional?.nome || 'A definir'}`, 20, 56);
+      // Ajuste de texto dinâmico dependendo de quem está vendo (mas o PDF é padrão)
+      doc.text(`Profissional Responsável: ${userType.toLowerCase() === 'profissional' ? 'Você' : (order.profissional?.nome || 'A definir')}`, 20, 56);
       doc.text(`Tipo de Serviço: ${order.geral?.nome}`, 20, 62);
 
       if (plan) {
@@ -399,11 +422,19 @@ const ClientOrders: React.FC = () => {
 
         if (osError) throw new Error("Erro ao criar registro de Ordem de Serviço: " + osError.message);
 
-        if (plan?.execucao && selectedOrder.profissional?.uuid) {
+        // Se eu sou o cliente aprovando, o ID do profissional está no pedido (order.profissional)
+        // Se eu sou o profissional (tecnicamente não aprovo meu proprio orçamento, mas se fosse fluxo reverso), seria diferente.
+        // Assumindo fluxo normal: Cliente aprova -> Gera Agenda para Profissional.
+        // O campo 'profissional' no objeto selectedOrder (visualização) pode estar trocado dependendo da view.
+        // Vamos usar a chave original para garantir IDs corretos.
+        
+        const { data: chaveOriginal } = await supabase.from('chaves').select('cliente, profissional').eq('id', selectedOrder.id).single();
+
+        if (plan?.execucao && chaveOriginal?.profissional) {
             await supabase.from('agenda').insert({
                 execucao: plan.execucao,
-                profissional: selectedOrder.profissional.uuid,
-                cliente: selectedOrder.cliente,
+                profissional: chaveOriginal.profissional,
+                cliente: chaveOriginal.cliente,
                 chave: selectedOrder.id,
                 observacoes: `Serviço Aprovado: ${selectedOrder.geral?.nome}`
             });
@@ -434,6 +465,10 @@ const ClientOrders: React.FC = () => {
   };
 
   const submitRating = async () => {
+      // Para avaliar, precisamos do UUID do profissional. 
+      // Se estou na visão de cliente, order.profissional tem os dados do profissional.
+      // Se estou na visão de profissional (não deveria me autoavaliar), mas por segurança, usamos o objeto.
+      
       if (!ratingOrder || !ratingOrder.profissional?.uuid) return;
       if (ratingScore === 0) return alert("Selecione uma nota.");
 
@@ -543,6 +578,9 @@ const ClientOrders: React.FC = () => {
       return new Date(dateStr).toLocaleDateString('pt-BR') + ' às ' + new Date(dateStr).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
   };
 
+  const normUserType = userType?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || '';
+  const canCreateOrder = normUserType === 'gestor' || normUserType === 'consumidor';
+
   return (
     <div className="min-h-screen bg-ios-bg pb-20">
       {/* Header */}
@@ -552,39 +590,52 @@ const ClientOrders: React.FC = () => {
                 <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Meus Pedidos</h1>
                 <p className="text-gray-500 text-sm mt-1">Acompanhe seus orçamentos e serviços.</p>
             </div>
-            {/* Notification Bell */}
-             <div className="relative" ref={notificationRef}>
-                <button 
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="relative p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-                >
-                    <Bell size={20} className="text-gray-700" />
-                    {notifications.length > 0 && (
-                        <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>
-                    )}
-                </button>
-                
-                {showNotifications && (
-                    <div className="absolute right-0 top-12 w-80 bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
-                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                            <h3 className="font-bold text-gray-900 text-sm">Notificações</h3>
-                            <button onClick={() => setShowNotifications(false)}><X size={16} className="text-gray-400"/></button>
-                        </div>
-                        <div className="max-h-64 overflow-y-auto">
-                            {notifications.length > 0 ? (
-                                notifications.map((notif) => (
-                                    <div key={notif.id} onClick={() => handleNotificationClick(notif)} className="p-4 border-b border-gray-50 hover:bg-blue-50 cursor-pointer">
-                                        <div className="flex justify-between mb-1"><span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 rounded font-bold uppercase">{notif.type}</span><span className="text-[10px] text-gray-400">{notif.date}</span></div>
-                                        <h4 className="text-sm font-bold text-gray-900">{notif.title}</h4>
-                                        <p className="text-xs text-gray-500 truncate">{notif.description}</p>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="p-6 text-center text-xs text-gray-400">Nenhuma notificação nova.</div>
-                            )}
-                        </div>
-                    </div>
+            
+            <div className="flex items-center space-x-3">
+                {canCreateOrder && (
+                    <button 
+                        onClick={() => navigate('/search')}
+                        className="bg-black text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center shadow-lg hover:bg-gray-800 transition-all active:scale-95"
+                    >
+                        <Plus size={16} className="mr-1" />
+                        Novo
+                    </button>
                 )}
+
+                {/* Notification Bell */}
+                <div className="relative" ref={notificationRef}>
+                    <button 
+                        onClick={() => setShowNotifications(!showNotifications)}
+                        className="relative p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                    >
+                        <Bell size={20} className="text-gray-700" />
+                        {notifications.length > 0 && (
+                            <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>
+                        )}
+                    </button>
+                    
+                    {showNotifications && (
+                        <div className="absolute right-0 top-12 w-80 bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                            <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                                <h3 className="font-bold text-gray-900 text-sm">Notificações</h3>
+                                <button onClick={() => setShowNotifications(false)}><X size={16} className="text-gray-400"/></button>
+                            </div>
+                            <div className="max-h-64 overflow-y-auto">
+                                {notifications.length > 0 ? (
+                                    notifications.map((notif) => (
+                                        <div key={notif.id} onClick={() => handleNotificationClick(notif)} className="p-4 border-b border-gray-50 hover:bg-blue-50 cursor-pointer">
+                                            <div className="flex justify-between mb-1"><span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 rounded font-bold uppercase">{notif.type}</span><span className="text-[10px] text-gray-400">{notif.date}</span></div>
+                                            <h4 className="text-sm font-bold text-gray-900">{notif.title}</h4>
+                                            <p className="text-xs text-gray-500 truncate">{notif.description}</p>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="p-6 text-center text-xs text-gray-400">Nenhuma notificação nova.</div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
              </div>
         </div>
       </div>
@@ -596,12 +647,14 @@ const ClientOrders: React.FC = () => {
                  <FileText size={32} />
              </div>
              <h3 className="font-bold text-lg text-gray-800">Nenhum pedido encontrado</h3>
-             <button 
-                onClick={() => navigate('/search')}
-                className="mt-4 text-ios-blue font-bold text-sm hover:underline"
-             >
-                Fazer um novo pedido
-             </button>
+             {canCreateOrder && (
+                 <button 
+                    onClick={() => navigate('/search')}
+                    className="mt-4 text-ios-blue font-bold text-sm hover:underline"
+                 >
+                    Fazer um novo pedido
+                 </button>
+             )}
            </div>
         ) : (
           orders.map(order => {
@@ -649,13 +702,13 @@ const ClientOrders: React.FC = () => {
                 {/* Details Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   
-                  {/* Professional Info */}
+                  {/* Partner Info (Cliente or Profissional) */}
                   <div className="flex items-center space-x-3 bg-gray-50 p-3 rounded-2xl">
                      <div className="w-10 h-10 rounded-full bg-white flex-shrink-0 overflow-hidden border border-gray-100">
-                        <img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'P'}`} alt="" className="w-full h-full object-cover"/>
+                        <img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`} alt="" className="w-full h-full object-cover"/>
                      </div>
                      <div>
-                        <p className="text-xs text-gray-400 font-bold uppercase">Profissional</p>
+                        <p className="text-xs text-gray-400 font-bold uppercase">{normUserType === 'profissional' ? 'Cliente' : 'Profissional'}</p>
                         <p className="text-sm font-bold text-gray-900">{order.profissional?.nome || 'Ainda não atribuído'}</p>
                      </div>
                   </div>
@@ -685,13 +738,13 @@ const ClientOrders: React.FC = () => {
                        </div>
                        
                        <div className="flex space-x-2">
-                           {isWaitingApproval && (
+                           {isWaitingApproval && normUserType === 'consumidor' && (
                                <button className="bg-orange-100 text-orange-700 px-3 py-1.5 rounded-xl text-xs font-bold animate-pulse">
                                    Ação Necessária
                                </button>
                            )}
                            
-                           {isCompleted && (
+                           {isCompleted && normUserType === 'consumidor' && (
                                order.avaliacao ? (
                                    <div className="bg-yellow-50 text-yellow-700 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center border border-yellow-100">
                                        <Star size={12} className="fill-yellow-500 text-yellow-500 mr-1"/>
@@ -708,7 +761,7 @@ const ClientOrders: React.FC = () => {
                                )
                            )}
 
-                           {!isWaitingApproval && !isCompleted && (
+                           {(!isWaitingApproval || normUserType !== 'consumidor') && !isCompleted && (
                                <button className="text-ios-blue text-xs font-bold flex items-center bg-blue-50 px-3 py-1.5 rounded-lg">
                                    <Eye size={12} className="mr-1"/> Ver Detalhes
                                </button>
@@ -752,11 +805,11 @@ const ClientOrders: React.FC = () => {
 
                     <div>
                         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center">
-                            <UserIcon size={12} className="mr-1"/> Profissional Responsável
+                            <UserIcon size={12} className="mr-1"/> {normUserType === 'profissional' ? 'Cliente' : 'Profissional Responsável'}
                         </h4>
                         <div className="flex items-center space-x-3 bg-gray-50 p-4 rounded-2xl border border-gray-100">
                             <div className="w-12 h-12 rounded-full bg-white flex-shrink-0 overflow-hidden border-2 border-white shadow-sm">
-                                <img src={selectedOrder.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${selectedOrder.profissional?.nome || 'P'}`} alt="" className="w-full h-full object-cover"/>
+                                <img src={selectedOrder.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${selectedOrder.profissional?.nome || 'U'}`} alt="" className="w-full h-full object-cover"/>
                             </div>
                             <div>
                                 <p className="font-bold text-gray-900">{selectedOrder.profissional?.nome || 'Ainda não atribuído'}</p>
@@ -793,7 +846,7 @@ const ClientOrders: React.FC = () => {
                 </div>
 
                 <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto">
-                    {selectedOrder.status === 'aguardando_aprovacao' ? (
+                    {selectedOrder.status === 'aguardando_aprovacao' && normUserType === 'consumidor' ? (
                         <div className="flex space-x-3">
                             <button 
                                 onClick={handleRejectClick}
@@ -811,7 +864,7 @@ const ClientOrders: React.FC = () => {
                             </button>
                         </div>
                     ) : (
-                        selectedOrder.status === 'concluido' && !selectedOrder.avaliacao ? (
+                        selectedOrder.status === 'concluido' && !selectedOrder.avaliacao && normUserType === 'consumidor' ? (
                             <div className="flex space-x-3">
                                 <button onClick={() => setIsModalOpen(false)} className="flex-1 bg-white border border-gray-200 text-gray-700 py-3.5 rounded-2xl font-bold hover:bg-gray-50 transition-colors">Fechar</button>
                                 <button onClick={(e) => handleRateClick(e, selectedOrder)} className="flex-[2] bg-gray-900 text-white py-3.5 rounded-2xl font-bold shadow-lg hover:bg-gray-800 transition-all flex justify-center items-center"><Star size={18} className="mr-2"/> Avaliar Profissional</button>

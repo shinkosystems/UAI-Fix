@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { User } from '../types';
-import { ChevronLeft, Calendar, FileText, CheckCircle, Loader2, AlertTriangle, MapPin, Package, Plus, X, Clock, Banknote, Wallet, Camera, Image as ImageIcon } from 'lucide-react';
+import { ChevronLeft, Calendar, FileText, CheckCircle, Loader2, AlertTriangle, MapPin, Package, Plus, X, Clock, Banknote, Wallet, Camera, Image as ImageIcon, Ban } from 'lucide-react';
 
 const Planning: React.FC = () => {
   const { uuid } = useParams<{ uuid: string }>(); // Professional UUID
@@ -17,6 +17,7 @@ const Planning: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [userType, setUserType] = useState<string>('');
 
   // Form State
   const [date, setDate] = useState('');
@@ -56,6 +57,7 @@ const Planning: React.FC = () => {
                 .eq('uuid', currentUuid)
                 .single();
             setCurrentUser(userData);
+            setUserType(userData.tipo || '');
 
             // 2. Get Professional Data
             if (uuid) {
@@ -120,6 +122,13 @@ const Planning: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    // 0. Permission Check
+    const normType = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (normType !== 'gestor' && normType !== 'consumidor') {
+        setErrorMsg("Apenas Consumidores e Gestores podem criar novos pedidos.");
+        return;
+    }
+
     if (!date || !description || !paymentType) {
         setErrorMsg("Por favor, preencha a data, tipo de pagamento e descrição.");
         return;
@@ -193,6 +202,30 @@ const Planning: React.FC = () => {
         <Loader2 className="animate-spin text-ios-blue" size={32} />
       </div>
     );
+  }
+
+  // Verificar permissão após carregamento
+  const normType = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const canCreate = normType === 'gestor' || normType === 'consumidor';
+
+  if (!canCreate) {
+      return (
+          <div className="min-h-screen bg-ios-bg flex flex-col items-center justify-center p-6 text-center">
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6 text-red-500">
+                  <Ban size={40} />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">Acesso Restrito</h2>
+              <p className="text-gray-500 mb-6 max-w-xs">
+                  Seu perfil ({userType}) não tem permissão para solicitar novos serviços. Apenas Consumidores podem criar pedidos.
+              </p>
+              <button 
+                  onClick={() => navigate('/home')}
+                  className="bg-black text-white px-6 py-3 rounded-xl font-bold shadow-lg"
+              >
+                  Voltar ao Início
+              </button>
+          </div>
+      );
   }
 
   if (success) {
