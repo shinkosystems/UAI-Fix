@@ -116,6 +116,7 @@ export interface Planejamento {
   ativo: boolean;
   chave: number;
   tempoprevisto: number;
+  imagem_pedido?: string | null; // Added field for request image
   // Nested relation from JOIN
   chaves?: Chave;
 }

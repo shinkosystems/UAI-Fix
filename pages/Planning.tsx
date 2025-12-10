@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { User } from '../types';
-import { ChevronLeft, Calendar, FileText, CheckCircle, Loader2, AlertTriangle, MapPin, Package, Plus, X, Clock, Banknote, Wallet } from 'lucide-react';
+import { ChevronLeft, Calendar, FileText, CheckCircle, Loader2, AlertTriangle, MapPin, Package, Plus, X, Clock, Banknote, Wallet, Camera, Image as ImageIcon } from 'lucide-react';
 
 const Planning: React.FC = () => {
   const { uuid } = useParams<{ uuid: string }>(); // Professional UUID
@@ -22,6 +22,10 @@ const Planning: React.FC = () => {
   const [date, setDate] = useState('');
   const [description, setDescription] = useState('');
   const [paymentType, setPaymentType] = useState<'hora' | 'empreitada' | ''>('');
+  
+  // Image Upload State
+  const [imagePedido, setImagePedido] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   
   // Resources State
   const [resources, setResources] = useState<string[]>([]);
@@ -88,6 +92,33 @@ const Planning: React.FC = () => {
     setResources(resources.filter((_, index) => index !== indexToRemove));
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    
+    setUploadingImage(true);
+    try {
+        const file = e.target.files[0];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `pedidos/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `${fileName}`; // Saving to root or specific folder in 'imagens' bucket
+
+        const { error: uploadError } = await supabase.storage.from('imagens').upload(filePath, file);
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('imagens').getPublicUrl(filePath);
+        setImagePedido(data.publicUrl);
+    } catch (error: any) {
+        console.error("Upload error:", error);
+        alert("Erro ao enviar imagem: " + error.message);
+    } finally {
+        setUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+      setImagePedido(null);
+  };
+
   const handleSubmit = async () => {
     if (!date || !description || !paymentType) {
         setErrorMsg("Por favor, preencha a data, tipo de pagamento e descrição.");
@@ -124,7 +155,7 @@ const Planning: React.FC = () => {
         if (chaveError) throw chaveError;
 
         // 3. Insert into 'planejamento' (The Schedule)
-        // Schema: execucao, descricao, chave, tempoprevisto, ativo, recursos (ARRAY), pagamento (TEXT)
+        // Schema: execucao, descricao, chave, tempoprevisto, ativo, recursos (ARRAY), pagamento (TEXT), imagem_pedido (TEXT)
         const executionDate = new Date(date).toISOString();
         
         const { error: planError } = await supabase
@@ -135,6 +166,7 @@ const Planning: React.FC = () => {
                 descricao: description,
                 recursos: resources, 
                 pagamento: paymentType, // Insert payment type
+                imagem_pedido: imagePedido, // Insert image URL
                 ativo: true,
                 tempoprevisto: 1 // Default 1 hour
             });
@@ -314,6 +346,46 @@ const Planning: React.FC = () => {
                 )}
             </div>
 
+             {/* Image Upload for Request */}
+             <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center">
+                    <ImageIcon size={12} className="mr-1" /> Foto do Local / Item (Opcional)
+                </label>
+                <p className="text-[10px] text-gray-400 ml-1 mb-1">Uma foto ajuda o profissional a entender melhor o serviço.</p>
+                
+                {imagePedido ? (
+                    <div className="relative w-full h-48 bg-gray-100 rounded-2xl overflow-hidden border border-gray-200 shadow-sm group">
+                        <img src={imagePedido} alt="Foto do pedido" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <button 
+                                onClick={handleRemoveImage}
+                                className="bg-red-500 text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-red-600 transition-colors flex items-center"
+                            >
+                                <X size={14} className="mr-1" /> Remover
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <label className="w-full h-32 bg-white border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 hover:border-ios-blue/50 transition-colors">
+                        {uploadingImage ? (
+                            <Loader2 className="animate-spin text-ios-blue" size={24} />
+                        ) : (
+                            <>
+                                <Camera size={24} className="text-gray-400 mb-2" />
+                                <span className="text-xs font-bold text-gray-500">Toque para enviar uma foto</span>
+                            </>
+                        )}
+                        <input 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={handleImageUpload}
+                            disabled={uploadingImage}
+                        />
+                    </label>
+                )}
+            </div>
+
             {/* Description */}
             <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center">
@@ -352,7 +424,7 @@ const Planning: React.FC = () => {
         <div className="max-w-md mx-auto w-full">
             <button 
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || uploadingImage}
                 className="w-full vitrified bg-black/90 text-white backdrop-blur-xl py-4 rounded-[1.5rem] font-bold text-base shadow-floating active:scale-95 transition-all flex items-center justify-center disabled:opacity-70 disabled:scale-100"
             >
                 {submitting ? (
