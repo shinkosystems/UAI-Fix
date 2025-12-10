@@ -64,7 +64,7 @@ const LandingPage: React.FC = () => {
               Entrar
             </button>
             <button 
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/login', { state: { isSignUp: true } })}
               className="bg-black text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-lg shadow-gray-200 hover:shadow-xl hover:scale-105 active:scale-95 transition-all"
             >
               Cadastre-se
@@ -94,7 +94,7 @@ const LandingPage: React.FC = () => {
                 Entrar
               </button>
               <button 
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/login', { state: { isSignUp: true } })}
                 className="w-full bg-ios-blue text-white py-3 rounded-xl font-bold shadow-lg shadow-blue-200"
               >
                 Criar Conta Grátis
@@ -124,7 +124,7 @@ const LandingPage: React.FC = () => {
             
             <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4 pt-4 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-200">
               <button 
-                onClick={() => navigate('/login')}
+                onClick={() => navigate('/login', { state: { isSignUp: true } })}
                 className="w-full sm:w-auto bg-black text-white px-8 py-4 rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center"
               >
                 Começar Agora
@@ -263,7 +263,7 @@ const LandingPage: React.FC = () => {
                   </li>
                 </ul>
                 <button 
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigate('/login', { state: { isSignUp: true } })}
                   className="bg-white text-blue-900 px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-blue-50 transition-colors"
                 >
                   Quero Contratar
@@ -293,7 +293,7 @@ const LandingPage: React.FC = () => {
                   </li>
                 </ul>
                 <button 
-                  onClick={() => navigate('/login')}
+                  onClick={() => navigate('/login', { state: { isSignUp: true } })}
                   className="bg-gray-900 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-gray-800 transition-colors"
                 >
                   Quero Trabalhar

@@ -94,6 +94,16 @@ const Profile: React.FC = () => {
       }
   };
 
+  const cleanValue = (val: string | undefined | null) => {
+      if (!val) return '';
+      const v = val.trim().toLowerCase();
+      // Remove placeholder values set during registration
+      if (v === 'insere' || v === '000.000.000-00' || v === '00000-000' || v === '(00) 00000-0000') {
+          return '';
+      }
+      return val;
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -120,16 +130,16 @@ const Profile: React.FC = () => {
 
         if (userData) {
           setProfile(userData);
-          setNome(userData.nome || '');
-          setWhatsapp(formatPhone(userData.whatsapp || ''));
-          setCpf(formatCpf(userData.cpf || ''));
+          setNome(cleanValue(userData.nome));
+          setWhatsapp(formatPhone(cleanValue(userData.whatsapp)));
+          setCpf(formatCpf(cleanValue(userData.cpf)));
           setSexo(userData.sexo || '');
           
-          setCep(formatCep(userData.cep || ''));
-          setRua(userData.rua || '');
-          setNumero(userData.numero || '');
-          setBairro(userData.bairro || '');
-          setComplemento(userData.complemento || '');
+          setCep(formatCep(cleanValue(userData.cep)));
+          setRua(cleanValue(userData.rua));
+          setNumero(cleanValue(userData.numero));
+          setBairro(cleanValue(userData.bairro));
+          setComplemento(cleanValue(userData.complemento));
 
           setSelectedStateId(userData.estado || '');
           setSelectedCityId(userData.cidade);
@@ -194,6 +204,7 @@ const Profile: React.FC = () => {
   };
 
   const formatCpf = (v: string) => {
+    if (!v) return '';
     return v.replace(/\D/g, '')
       .replace(/(\d{3})(\d)/, '$1.$2')
       .replace(/(\d{3})(\d)/, '$1.$2')
@@ -202,10 +213,12 @@ const Profile: React.FC = () => {
   };
 
   const formatCep = (v: string) => {
+    if (!v) return '';
     return v.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2').slice(0, 9);
   };
 
   const formatPhone = (v: string) => {
+      if (!v) return '';
       const r = v.replace(/\D/g, "");
       if (r.length > 10) {
           return r.replace(/^(\d\d)(\d{5})(\d{4}).*/, "($1) $2-$3");
@@ -347,7 +360,7 @@ const Profile: React.FC = () => {
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
-                placeholder="Seu nome"
+                placeholder="Ex: João da Silva"
               />
             </div>
           </div>
@@ -447,6 +460,7 @@ const Profile: React.FC = () => {
                         value={rua}
                         onChange={(e) => setRua(e.target.value)}
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                        placeholder="Ex: Av. Principal"
                     />
                 </div>
             </div>
@@ -459,6 +473,7 @@ const Profile: React.FC = () => {
                         value={numero}
                         onChange={(e) => setNumero(e.target.value)}
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                        placeholder="Ex: 123"
                     />
                 </div>
                 <div className="space-y-2">
@@ -468,6 +483,7 @@ const Profile: React.FC = () => {
                         value={bairro}
                         onChange={(e) => setBairro(e.target.value)}
                         className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
+                        placeholder="Ex: Centro"
                     />
                 </div>
             </div>
@@ -479,7 +495,7 @@ const Profile: React.FC = () => {
                     value={complemento}
                     onChange={(e) => setComplemento(e.target.value)}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50"
-                    placeholder="Apto, Bloco, etc."
+                    placeholder="Ex: Apto 101, Bloco A"
                 />
             </div>
         </div>

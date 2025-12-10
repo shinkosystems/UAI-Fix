@@ -79,7 +79,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
 
   return (
-    <div className="flex min-h-screen bg-[#F2F4F8]">
+    <div className="flex h-screen w-full bg-[#F2F4F8] overflow-hidden">
       
       {/* --- MOBILE HEADER BUTTON (Hamburger) --- */}
       <div className="md:hidden fixed top-4 left-4 z-50">
@@ -104,11 +104,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         className={`
           fixed inset-y-0 left-0 z-[60] w-72 bg-white border-r border-gray-200 flex flex-col h-full
           transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none
-          md:translate-x-0 md:static md:h-screen md:z-30 md:w-64
+          md:static md:translate-x-0 md:z-30 md:w-64
           ${isDrawerOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shadow-sm">
                <img 
@@ -208,7 +208,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
         </nav>
 
-        <div className="p-4 border-t border-gray-100">
+        <div className="p-4 border-t border-gray-100 flex-shrink-0">
             <button 
                 onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}
                 className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 transition-all font-medium"
@@ -220,8 +220,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       </aside>
 
       {/* --- MAIN CONTENT AREA --- */}
-      <main className="flex-1 min-h-screen relative w-full max-w-[100vw] overflow-x-hidden min-w-0">
-        <div className={`h-full w-full mx-auto md:p-8 ${shouldHideNav ? 'pb-8' : 'pb-28 md:pb-8'}`}>
+      <main className="flex-1 h-full overflow-y-auto relative w-full max-w-[100vw] min-w-0">
+        <div className={`w-full mx-auto md:p-8 ${shouldHideNav ? 'pb-8' : 'pb-28 md:pb-8'}`}>
           <div className="md:max-w-7xl mx-auto w-full">
             {children}
           </div>
