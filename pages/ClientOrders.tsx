@@ -1,8 +1,8 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao } from '../types';
-import { Loader2, FileText, DollarSign, Calendar, Clock, CheckCircle, ChevronRight, Package, User as UserIcon, X, Ban, Eye, CreditCard, Send, AlertTriangle, Star, ThumbsUp, Hash, Bell, Plus, Calculator } from 'lucide-react';
+import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao, Agenda, OrdemServico } from '../types';
+import { Loader2, FileText, DollarSign, Calendar, Clock, CheckCircle, ChevronRight, Package, User as UserIcon, X, Ban, Eye, CreditCard, Send, AlertTriangle, Star, ThumbsUp, Hash, Bell, Plus, Calculator, PlayCircle, CheckCircle2, Camera, Image as ImageIcon, Trash2, MessageSquare, Save, Wrench } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { jsPDF } from "jspdf";
 
@@ -12,6 +12,8 @@ interface OrderExtended extends Chave {
   orcamentos: Orcamento[];
   planejamento: Planejamento[];
   avaliacao?: Avaliacao;
+  agenda?: Agenda[];
+  ordemServico?: OrdemServico[]; // Added OrdemServico to match Calendar data requirements
 }
 
 interface NotificationItem {
@@ -31,6 +33,19 @@ const ClientOrders: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<OrderExtended | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [processingId, setProcessingId] = useState<number | null>(null);
+
+  // Execution Modal States (Professional)
+  const [activeTab, setActiveTab] = useState<'geral' | 'fotos' | 'obs'>('geral');
+  const [executionData, setExecutionData] = useState({
+      status: '',
+      datainicio: '',
+      datafim: '',
+      observacoes: '',
+      fotoantes: [] as string[],
+      fotodepois: [] as string[]
+  });
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Rejection Logic
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -63,6 +78,14 @@ const ClientOrders: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const toLocalISOString = (dateStr: string) => {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      const offset = date.getTimezoneOffset() * 60000;
+      const localDate = new Date(date.getTime() - offset);
+      return localDate.toISOString().slice(0, 16);
+  };
 
   const fetchOrders = async () => {
     try {
@@ -208,12 +231,14 @@ const ClientOrders: React.FC = () => {
         if (c.cliente) userUuids.add(c.cliente);
       });
 
-      const [servicesRes, usersRes, orcamentosRes, planRes, reviewsRes] = await Promise.all([
+      const [servicesRes, usersRes, orcamentosRes, planRes, reviewsRes, agendaRes, osRes] = await Promise.all([
         serviceIds.size > 0 ? supabase.from('geral').select('*').in('id', Array.from(serviceIds)) : { data: [] },
         userUuids.size > 0 ? supabase.from('users').select('*').in('uuid', Array.from(userUuids)) : { data: [] },
         supabase.from('orcamentos').select('*').in('chave', chavesIds),
         supabase.from('planejamento').select('*').in('chave', chavesIds),
-        supabase.from('avaliacoes').select('*').in('chave', chavesIds)
+        supabase.from('avaliacoes').select('*').in('chave', chavesIds),
+        supabase.from('agenda').select('*').in('chave', chavesIds),
+        supabase.from('ordemservico').select('*').in('chave', chavesIds) // Fetch OS
       ]);
 
       const servicesMap: Record<number, Geral> = {};
@@ -239,6 +264,18 @@ const ClientOrders: React.FC = () => {
           reviewsMap[r.chave] = r;
       });
 
+      const agendaMap: Record<number, Agenda[]> = {};
+      agendaRes.data?.forEach((a: any) => {
+          if (!agendaMap[a.chave]) agendaMap[a.chave] = [];
+          agendaMap[a.chave].push(a);
+      });
+
+      const osMap: Record<number, OrdemServico[]> = {};
+      osRes.data?.forEach((os: any) => {
+          if (!osMap[os.chave]) osMap[os.chave] = [];
+          osMap[os.chave].push(os);
+      });
+
       const fullOrders = chavesData.map((order) => {
         let displayUserUuid = normalizedRole === 'profissional' ? order.cliente : order.profissional;
         
@@ -255,7 +292,9 @@ const ClientOrders: React.FC = () => {
             profissional: displayUserObject,
             orcamentos: budgetsMap[order.id] || [],
             planejamento: plansMap[order.id] || [],
-            avaliacao: reviewsMap[order.id] || null
+            avaliacao: reviewsMap[order.id] || null,
+            agenda: agendaMap[order.id] || [],
+            ordemServico: osMap[order.id] || []
         };
       });
 
@@ -275,7 +314,230 @@ const ClientOrders: React.FC = () => {
 
   const handleOpenDetails = (order: OrderExtended) => {
     setSelectedOrder(order);
+    
+    // Initialize Execution Data matching Calendar.tsx logic
+    const os = order.ordemServico?.[0];
+    const ag = order.agenda?.[0];
+    const plan = order.planejamento?.[0];
+
+    // Determine start date: use OS start or Plan start
+    const startDate = os?.datainicio || ag?.execucao || plan?.execucao;
+    
+    setExecutionData({
+        status: order.status || 'pendente',
+        datainicio: toLocalISOString(startDate || ''),
+        datafim: toLocalISOString(os?.datafim || ''),
+        observacoes: ag?.observacoes || '',
+        fotoantes: order.fotoantes || [],
+        fotodepois: order.fotodepois || [],
+    });
+    
+    setActiveTab('geral');
     setIsModalOpen(true);
+  };
+
+  const handleDeleteImage = (indexToRemove: number, type: 'antes' | 'depois') => {
+      if (!window.confirm("Deseja remover esta imagem?")) return;
+      
+      setExecutionData(prev => {
+          const list = type === 'antes' ? prev.fotoantes : prev.fotodepois;
+          const newList = list.filter((_, i) => i !== indexToRemove);
+          return {
+              ...prev,
+              [type === 'antes' ? 'fotoantes' : 'fotodepois']: newList
+          };
+      });
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'antes' | 'depois') => {
+      if (!e.target.files || e.target.files.length === 0) return;
+      setUploading(true);
+      try {
+          const file = e.target.files[0];
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${selectedOrder?.chaveunica || 'order'}_${type}_${Date.now()}.${fileExt}`;
+          const filePath = `imagens/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage.from('imagens').upload(filePath, file);
+          if (uploadError) throw uploadError;
+
+          const { data } = supabase.storage.from('imagens').getPublicUrl(filePath);
+          
+          if (type === 'antes') {
+              setExecutionData(prev => ({ ...prev, fotoantes: [...prev.fotoantes, data.publicUrl] }));
+          } else {
+              setExecutionData(prev => ({ ...prev, fotodepois: [...prev.fotodepois, data.publicUrl] }));
+          }
+      } catch (error: any) {
+          alert("Erro no upload: " + error.message);
+      } finally {
+          setUploading(false);
+      }
+  };
+
+  const handleSaveExecution = async () => {
+      if (!selectedOrder) return;
+      setSaving(true);
+
+      // Validação de fotos
+      if (executionData.status === 'executando' && (!executionData.fotoantes || executionData.fotoantes.length === 0)) {
+          alert("REGRA DE EXECUÇÃO:\n\nPara alterar o status para 'Executando', é obrigatório registrar fotos do 'Antes'.\n\nPor favor, acesse a aba 'Fotos' e faça o upload.");
+          setActiveTab('fotos');
+          setSaving(false);
+          return;
+      }
+
+      if (executionData.status === 'concluido' && (!executionData.fotodepois || executionData.fotodepois.length === 0)) {
+          alert("REGRA DE CONCLUSÃO:\n\nPara alterar o status para 'Concluído', é obrigatório registrar fotos do 'Depois' (Conclusão).\n\nPor favor, acesse a aba 'Fotos' e faça o upload.");
+          setActiveTab('fotos');
+          setSaving(false);
+          return;
+      }
+
+      let finalDataFim = null;
+      if (executionData.status === 'concluido') {
+          finalDataFim = executionData.datafim ? new Date(executionData.datafim).toISOString() : new Date().toISOString();
+      } else {
+          finalDataFim = null;
+      }
+
+      try {
+          // 1. Update Chaves (Status & Photos)
+          const { error: chavesError } = await supabase.from('chaves').update({
+              status: executionData.status,
+              fotoantes: executionData.fotoantes,
+              fotodepois: executionData.fotodepois
+          }).eq('id', selectedOrder.id);
+          if (chavesError) throw chavesError;
+
+          // 2. Update Agenda (Obs)
+          if (selectedOrder.agenda && selectedOrder.agenda.length > 0) {
+              const { error: agendaError } = await supabase.from('agenda').update({
+                  observacoes: executionData.observacoes
+              }).eq('id', selectedOrder.agenda[0].id);
+              if (agendaError) throw agendaError;
+          }
+
+          // 3. Update OrdemServico (Dates & Status)
+          let osId = selectedOrder.ordemServico?.[0]?.id;
+          const osPayload = {
+              status: executionData.status,
+              datainicio: executionData.datainicio ? new Date(executionData.datainicio).toISOString() : null,
+              datafim: finalDataFim
+          };
+
+          if (osId) {
+              await supabase.from('ordemservico').update(osPayload).eq('id', osId);
+          } else {
+              await supabase.from('ordemservico').insert({
+                  chave: selectedOrder.id,
+                  ...osPayload
+              });
+          }
+
+          // Update local state to reflect changes without reload
+          await loadData(currentUserId, userType);
+          setIsModalOpen(false);
+          alert('Dados atualizados com sucesso!');
+
+      } catch (error: any) {
+          console.error(error);
+          alert('Erro ao salvar: ' + (error.message || JSON.stringify(error)));
+      } finally {
+          setSaving(false);
+      }
+  };
+
+  const handleStartService = async () => {
+      if (!selectedOrder) return;
+      
+      if (confirm("Deseja iniciar o serviço agora? O horário será registrado.")) {
+          setProcessingId(selectedOrder.id);
+          try {
+              const now = new Date().toISOString();
+              
+              // 1. Atualizar Agenda
+              if (selectedOrder.agenda && selectedOrder.agenda.length > 0) {
+                  const agendaId = selectedOrder.agenda[0].id;
+                  const { error: agendaError } = await supabase
+                      .from('agenda')
+                      .update({ datainicioexecucao: now })
+                      .eq('id', agendaId);
+                  if (agendaError) throw agendaError;
+              } else {
+                  await supabase.from('agenda').update({ datainicioexecucao: now }).eq('chave', selectedOrder.id);
+              }
+
+              // 2. Atualizar Chave Status
+              await supabase.from('chaves').update({ status: 'executando' }).eq('id', selectedOrder.id);
+
+              // 3. Atualizar Orderm de Serviço
+              await supabase.from('ordemservico').update({ status: 'executando', datainicio: now }).eq('chave', selectedOrder.id);
+
+              updateLocalStatus(selectedOrder.id, 'executando');
+              
+              // Update form state for immediate feedback if modal stays open
+              setExecutionData(prev => ({ ...prev, status: 'executando', datainicio: toLocalISOString(now) }));
+              
+              // Reload full data to sync
+              await loadData(currentUserId, userType);
+
+              alert("Serviço iniciado com sucesso!");
+
+          } catch (error: any) {
+              alert("Erro ao iniciar serviço: " + error.message);
+          } finally {
+              setProcessingId(null);
+          }
+      }
+  };
+
+  const handleFinishService = async () => {
+      if (!selectedOrder) return;
+
+      if (executionData.fotodepois.length === 0 && !confirm("Você não adicionou fotos de 'Depois'. Deseja concluir mesmo assim?")) {
+          setActiveTab('fotos');
+          return;
+      }
+
+      if (confirm("Deseja concluir o serviço? O horário de término será registrado.")) {
+          setProcessingId(selectedOrder.id);
+          try {
+              const now = new Date().toISOString();
+              
+              // 1. Atualizar Agenda
+              if (selectedOrder.agenda && selectedOrder.agenda.length > 0) {
+                  const agendaId = selectedOrder.agenda[0].id;
+                  const { error: agendaError } = await supabase
+                      .from('agenda')
+                      .update({ dataconclusao: now })
+                      .eq('id', agendaId);
+                  if (agendaError) throw agendaError;
+              } else {
+                   await supabase.from('agenda').update({ dataconclusao: now }).eq('chave', selectedOrder.id);
+              }
+
+              // 2. Atualizar Chave Status
+              await supabase.from('chaves').update({ status: 'concluido' }).eq('id', selectedOrder.id);
+
+              // 3. Atualizar Orderm de Serviço
+              await supabase.from('ordemservico').update({ status: 'concluido', datafim: now }).eq('chave', selectedOrder.id);
+
+              updateLocalStatus(selectedOrder.id, 'concluido');
+              
+              // Update form state
+              setExecutionData(prev => ({ ...prev, status: 'concluido', datafim: toLocalISOString(now) }));
+
+              await loadData(currentUserId, userType);
+              
+              alert("Serviço concluído com sucesso!");
+
+          } catch (error: any) {
+              alert("Erro ao concluir serviço: " + error.message);
+          } finally {
+              setProcessingId(null);
+          }
+      }
   };
 
   const generateAndUploadPDF = async (order: OrderExtended): Promise<string> => {
@@ -401,8 +663,6 @@ const ClientOrders: React.FC = () => {
 
     if (!selectedOrder) return;
     
-    // REMOVIDO: window.confirm para ação imediata
-    
     setProcessingId(selectedOrder.id);
     
     try {
@@ -426,7 +686,6 @@ const ClientOrders: React.FC = () => {
         const { data: osData, error: osError } = await supabase.from('ordemservico').insert(osPayload).select().single();
 
         if (osError) {
-            // Se já existe (pode acontecer em cliques duplos rápidos), tentar update ou ignorar
             console.warn("Possível duplicação de OS:", osError);
         }
 
@@ -581,6 +840,10 @@ const ClientOrders: React.FC = () => {
   const normUserType = userType?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || '';
   const canCreateOrder = normUserType === 'gestor' || normUserType === 'consumidor';
 
+  const activeAgenda = selectedOrder?.agenda && selectedOrder.agenda.length > 0 ? selectedOrder.agenda[0] : null;
+  const isStarted = activeAgenda?.datainicioexecucao;
+  const isFinished = activeAgenda?.dataconclusao;
+
   return (
     <div className="min-h-screen bg-ios-bg pb-20">
       {/* Header */}
@@ -602,7 +865,6 @@ const ClientOrders: React.FC = () => {
                     </button>
                 )}
 
-                {/* Notification Bell */}
                 <div className="relative" ref={notificationRef}>
                     <button 
                         onClick={() => setShowNotifications(!showNotifications)}
@@ -672,7 +934,6 @@ const ClientOrders: React.FC = () => {
                 className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 relative overflow-hidden group hover:shadow-md transition-all cursor-pointer"
               >
                 
-                {/* Header Card */}
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex items-center space-x-3">
                     <div className="w-12 h-12 bg-gray-50 rounded-2xl flex-shrink-0 overflow-hidden">
@@ -684,8 +945,6 @@ const ClientOrders: React.FC = () => {
                     </div>
                     <div>
                       <h3 className="font-bold text-gray-900 text-lg leading-tight">{order.geral?.nome || 'Serviço Personalizado'}</h3>
-                      
-                      {/* CHAVE UNICA BADGE */}
                       <div className="inline-flex items-center mt-1.5 bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
                          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mr-1.5">Chave:</span>
                          <span className="text-xs font-black text-gray-800 font-mono tracking-wide">{order.chaveunica || 'N/A'}</span>
@@ -699,10 +958,7 @@ const ClientOrders: React.FC = () => {
 
                 <div className="border-t border-dashed border-gray-100 my-4"></div>
 
-                {/* Details Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  
-                  {/* Partner Info (Cliente or Profissional) */}
                   <div className="flex items-center space-x-3 bg-gray-50 p-3 rounded-2xl">
                      <div className="w-10 h-10 rounded-full bg-white flex-shrink-0 overflow-hidden border border-gray-100">
                         <img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`} alt="" className="w-full h-full object-cover"/>
@@ -713,7 +969,6 @@ const ClientOrders: React.FC = () => {
                      </div>
                   </div>
 
-                  {/* Date Info */}
                   {plan && (
                       <div className="flex items-center space-x-3 bg-gray-50 p-3 rounded-2xl">
                         <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-500 border border-gray-100">
@@ -729,7 +984,6 @@ const ClientOrders: React.FC = () => {
                   )}
                 </div>
 
-                {/* Budget Preview / Action */}
                 {hasBudget && budget ? (
                    <div className="mt-4 flex justify-between items-end">
                        <div>
@@ -781,7 +1035,6 @@ const ClientOrders: React.FC = () => {
         )}
       </div>
 
-      {/* --- ORDER DETAILS MODAL --- */}
       {isModalOpen && selectedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
@@ -797,82 +1050,300 @@ const ClientOrders: React.FC = () => {
                         <X size={20} />
                     </button>
                 </div>
-                {/* ... existing modal content ... */}
-                <div className="p-6 overflow-y-auto space-y-6">
-                    <div className={`p-4 rounded-2xl border text-center ${getStatusColor(selectedOrder.status)}`}>
-                        <span className="font-bold uppercase text-sm tracking-wide">{getStatusLabel(selectedOrder.status)}</span>
-                    </div>
 
-                    <div>
-                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center">
-                            <UserIcon size={12} className="mr-1"/> {normUserType === 'profissional' ? 'Cliente' : 'Profissional Responsável'}
-                        </h4>
-                        <div className="flex items-center space-x-3 bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                            <div className="w-12 h-12 rounded-full bg-white flex-shrink-0 overflow-hidden border-2 border-white shadow-sm">
-                                <img src={selectedOrder.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${selectedOrder.profissional?.nome || 'U'}`} alt="" className="w-full h-full object-cover"/>
-                            </div>
-                            <div>
-                                <p className="font-bold text-gray-900">{selectedOrder.profissional?.nome || 'Ainda não atribuído'}</p>
-                                <p className="text-xs text-gray-500">{selectedOrder.profissional ? 'Verificado' : 'Aguardando confirmação'}</p>
-                            </div>
-                        </div>
+                {/* Professional TABS */}
+                {normUserType === 'profissional' && (
+                    <div className="flex border-b border-gray-100">
+                        <button onClick={() => setActiveTab('geral')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'geral' ? 'border-ios-blue text-ios-blue' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Geral</button>
+                        <button onClick={() => setActiveTab('fotos')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'fotos' ? 'border-ios-blue text-ios-blue' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Fotos</button>
+                        <button onClick={() => setActiveTab('obs')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'obs' ? 'border-ios-blue text-ios-blue' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Anotações</button>
                     </div>
+                )}
+
+                <div className="p-6 overflow-y-auto space-y-6 flex-1">
                     
-                    {/* BUDGET DETAILS (Highlight) */}
-                    {selectedOrder.orcamentos && selectedOrder.orcamentos.length > 0 && (
-                        <div className="bg-blue-50/50 p-5 rounded-3xl border border-blue-100 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-20 h-20 bg-blue-100 rounded-bl-full opacity-50 -mr-4 -mt-4"></div>
-                            <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-4 flex items-center relative z-10">
-                                <DollarSign size={14} className="mr-1"/> Orçamento Proposto
-                            </h4>
-                            
-                            <div className="space-y-4 relative z-10">
-                                {/* Total Value */}
-                                <div>
-                                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Valor Total</p>
-                                    <p className="text-4xl font-black text-gray-900 tracking-tight mt-1">
-                                        R$ {selectedOrder.orcamentos[0].preco.toFixed(2)}
-                                    </p>
-                                </div>
-
-                                {/* Divider */}
-                                <div className="h-px bg-blue-200/50 w-full"></div>
-
-                                {/* Payment Details Grid */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Forma de Pagamento</p>
-                                        <div className="bg-white px-3 py-2.5 rounded-xl border border-blue-100 flex items-center shadow-sm">
-                                            <CreditCard size={14} className="text-blue-500 mr-2 flex-shrink-0"/>
-                                            <span className="text-xs font-bold text-gray-800 capitalize truncate">
-                                                {selectedOrder.orcamentos[0].tipopagmto}
-                                            </span>
+                    {/* GERAL TAB CONTENT */}
+                    {activeTab === 'geral' && (
+                        <>
+                            {/* --- PROFESSIONAL VIEW --- */}
+                            {normUserType === 'profissional' ? (
+                                <>
+                                    {/* --- ACTIONS FOR PROFESSIONAL --- */}
+                                    {currentUserId === selectedOrder.profissional?.uuid && !isFinished && (selectedOrder.status === 'aprovado' || selectedOrder.status === 'executando') && (
+                                        <div className="mb-6 space-y-3">
+                                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Ações do Profissional</h4>
+                                            
+                                            {!isStarted ? (
+                                                <button 
+                                                    onClick={handleStartService}
+                                                    disabled={processingId === selectedOrder.id}
+                                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 active:scale-[0.98] transition-all flex justify-center items-center gap-2"
+                                                >
+                                                    {processingId === selectedOrder.id ? <Loader2 className="animate-spin" size={20}/> : <><PlayCircle size={20} /> Iniciar Serviço</>}
+                                                </button>
+                                            ) : (
+                                                <button 
+                                                    onClick={handleFinishService}
+                                                    disabled={processingId === selectedOrder.id}
+                                                    className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-green-200 active:scale-[0.98] transition-all flex justify-center items-center gap-2"
+                                                >
+                                                    {processingId === selectedOrder.id ? <Loader2 className="animate-spin" size={20}/> : <><CheckCircle2 size={20} /> Concluir Serviço</>}
+                                                </button>
+                                            )}
                                         </div>
-                                    </div>
+                                    )}
 
-                                    <div>
-                                        <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Parcelamento</p>
-                                        <div className="bg-white px-3 py-2.5 rounded-xl border border-blue-100 flex items-center shadow-sm">
-                                            <Calculator size={14} className="text-blue-500 mr-2 flex-shrink-0"/>
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-bold text-gray-800">
-                                                    {selectedOrder.orcamentos[0].parcelas}x
-                                                </span>
-                                                {selectedOrder.orcamentos[0].parcelas > 1 && (
-                                                    <span className="text-[10px] font-medium text-gray-500 leading-tight">
-                                                        de R$ {(selectedOrder.orcamentos[0].preco / selectedOrder.orcamentos[0].parcelas).toFixed(2)}
-                                                    </span>
-                                                )}
+                                    {isFinished && (
+                                        <div className="mb-6 bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center justify-center text-green-800 font-bold">
+                                            <CheckCircle2 size={20} className="mr-2"/>
+                                            Serviço Concluído
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100 flex items-center space-x-3">
+                                            <div className="w-10 h-10 rounded-full bg-white flex-shrink-0 overflow-hidden border border-gray-200">
+                                                <img src={selectedOrder.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${selectedOrder.clienteData?.nome || 'C'}`} className="w-full h-full object-cover"/>
+                                            </div>
+                                            <div className="overflow-hidden">
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase">Cliente</p>
+                                                <p className="text-sm font-bold text-gray-900 truncate">{selectedOrder.clienteData?.nome || 'Cliente'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100 flex items-center space-x-3">
+                                            <div className="w-10 h-10 rounded-full bg-white flex-shrink-0 overflow-hidden border border-gray-200">
+                                                <img src={selectedOrder.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${selectedOrder.profissional?.nome || 'P'}`} className="w-full h-full object-cover"/>
+                                            </div>
+                                            <div className="overflow-hidden">
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase">Profissional</p>
+                                                <p className="text-sm font-bold text-gray-900 truncate">{selectedOrder.profissional?.nome}</p>
                                             </div>
                                         </div>
                                     </div>
+
+                                    <div className="space-y-4 pt-2 border-t border-gray-100 mt-2">
+                                        <div className="flex items-center space-x-2 text-gray-900 font-bold">
+                                            <Wrench size={18} />
+                                            <span>Status e Datas</span>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status</label>
+                                            <select 
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium outline-none appearance-none capitalize text-black"
+                                                value={executionData.status}
+                                                onChange={(e) => setExecutionData({...executionData, status: e.target.value})}
+                                            >
+                                                <option value="pendente">Pendente</option>
+                                                <option value="executando">Executando</option>
+                                                <option value="concluido">Concluído</option>
+                                                <option value="cancelado">Cancelado</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Início Real</label>
+                                                <input 
+                                                    type="datetime-local"
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ios-blue/30 text-black"
+                                                    value={executionData.datainicio}
+                                                    onChange={(e) => setExecutionData({...executionData, datainicio: e.target.value})}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Fim (Previsão/Real)</label>
+                                                <input 
+                                                    type="datetime-local"
+                                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ios-blue/30 text-black"
+                                                    value={executionData.datafim}
+                                                    onChange={(e) => setExecutionData({...executionData, datafim: e.target.value})}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                /* --- CLIENT/MANAGER VIEW (Existing) --- */
+                                <>
+                                    <div className={`p-4 rounded-2xl border text-center ${getStatusColor(selectedOrder.status)}`}>
+                                        <span className="font-bold uppercase text-sm tracking-wide">{getStatusLabel(selectedOrder.status)}</span>
+                                    </div>
+
+                                    <div>
+                                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center">
+                                            <UserIcon size={12} className="mr-1"/> {normUserType === 'profissional' ? 'Cliente' : 'Profissional Responsável'}
+                                        </h4>
+                                        <div className="flex items-center space-x-3 bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                            <div className="w-12 h-12 rounded-full bg-white flex-shrink-0 overflow-hidden border-2 border-white shadow-sm">
+                                                <img src={selectedOrder.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${selectedOrder.profissional?.nome || 'U'}`} alt="" className="w-full h-full object-cover"/>
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-gray-900">{selectedOrder.profissional?.nome || 'Ainda não atribuído'}</p>
+                                                <p className="text-xs text-gray-500">{selectedOrder.profissional ? 'Verificado' : 'Aguardando confirmação'}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {selectedOrder.planejamento && selectedOrder.planejamento[0]?.execucao && (
+                                        <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center justify-between">
+                                            <div className="flex items-center space-x-3">
+                                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-blue-500 shadow-sm">
+                                                    <Calendar size={20} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-400 uppercase">Data Agendada</p>
+                                                    <p className="text-sm font-bold text-gray-900">
+                                                        {new Date(selectedOrder.planejamento[0].execucao).toLocaleDateString('pt-BR', {weekday: 'short', day:'2-digit', month: '2-digit'})}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs font-bold text-gray-400 uppercase">Horário</p>
+                                                <p className="text-xl font-black text-gray-900">
+                                                    {new Date(selectedOrder.planejamento[0].execucao).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {selectedOrder.orcamentos && selectedOrder.orcamentos.length > 0 && (
+                                        <div className="bg-blue-50/50 p-5 rounded-3xl border border-blue-100 relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-20 h-20 bg-blue-100 rounded-bl-full opacity-50 -mr-4 -mt-4"></div>
+                                            <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-4 flex items-center relative z-10">
+                                                <DollarSign size={14} className="mr-1"/> Orçamento Proposto
+                                            </h4>
+                                            
+                                            <div className="space-y-4 relative z-10">
+                                                <div>
+                                                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Valor Total</p>
+                                                    <p className="text-4xl font-black text-gray-900 tracking-tight mt-1">
+                                                        R$ {selectedOrder.orcamentos[0].preco.toFixed(2)}
+                                                    </p>
+                                                </div>
+
+                                                <div className="h-px bg-blue-200/50 w-full"></div>
+
+                                                <div className={`grid gap-4 ${selectedOrder.orcamentos[0].tipopagmto === 'PIX' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                                                    <div>
+                                                        <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Forma de Pagamento</p>
+                                                        <div className="bg-white px-3 py-2.5 rounded-xl border border-blue-100 flex items-center shadow-sm">
+                                                            <CreditCard size={14} className="text-blue-500 mr-2 flex-shrink-0"/>
+                                                            <span className="text-xs font-bold text-gray-800 capitalize truncate">
+                                                                {selectedOrder.orcamentos[0].tipopagmto}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {selectedOrder.orcamentos[0].tipopagmto !== 'PIX' && (
+                                                        <div>
+                                                            <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Parcelamento</p>
+                                                            <div className="bg-white px-3 py-2.5 rounded-xl border border-blue-100 flex items-center shadow-sm">
+                                                                <Calculator size={14} className="text-blue-500 mr-2 flex-shrink-0"/>
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-xs font-bold text-gray-800">
+                                                                        {selectedOrder.orcamentos[0].parcelas}x
+                                                                    </span>
+                                                                    {selectedOrder.orcamentos[0].parcelas > 1 && (
+                                                                        <span className="text-[10px] font-medium text-gray-500 leading-tight">
+                                                                            de R$ {(selectedOrder.orcamentos[0].preco / selectedOrder.orcamentos[0].parcelas).toFixed(2)}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </>
+                    )}
+
+                    {/* FOTOS TAB CONTENT */}
+                    {activeTab === 'fotos' && (
+                        <div className="space-y-6">
+                            <div>
+                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Fotos Antes (Obrigatório para iniciar)</h4>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {executionData.fotoantes.map((url, i) => (
+                                        <div key={i} className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative group">
+                                            <img src={url} className="w-full h-full object-cover"/>
+                                            <button 
+                                                onClick={() => handleDeleteImage(i, 'antes')}
+                                                className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-md"
+                                                title="Excluir imagem"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                                        {uploading ? <Loader2 className="animate-spin text-blue-500"/> : <><Camera size={24} className="text-gray-400"/><span className="text-[10px] text-gray-400 mt-1">Adicionar</span></>}
+                                        <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'antes')} disabled={uploading}/>
+                                    </label>
                                 </div>
                             </div>
+                            <div>
+                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Fotos Depois (Obrigatório para concluir)</h4>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {executionData.fotodepois.map((url, i) => (
+                                        <div key={i} className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative group">
+                                            <img src={url} className="w-full h-full object-cover"/>
+                                            <button 
+                                                onClick={() => handleDeleteImage(i, 'depois')}
+                                                className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-md"
+                                                title="Excluir imagem"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                                        {uploading ? <Loader2 className="animate-spin text-blue-500"/> : <><Camera size={24} className="text-gray-400"/><span className="text-[10px] text-gray-400 mt-1">Adicionar</span></>}
+                                        <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'depois')} disabled={uploading}/>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* OBS TAB CONTENT */}
+                    {activeTab === 'obs' && (
+                        <div className="space-y-4">
+                            <div className="bg-yellow-50 border border-yellow-100 p-4 rounded-2xl flex items-start space-x-3">
+                                <MessageSquare size={20} className="text-yellow-500 mt-1" />
+                                <div>
+                                    <h4 className="font-bold text-yellow-800 text-sm">Anotações da Agenda</h4>
+                                    <p className="text-xs text-yellow-700 mt-1">Use este espaço para registrar observações sobre a execução, imprevistos ou detalhes importantes.</p>
+                                </div>
+                            </div>
+                            <textarea 
+                                className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-medium outline-none resize-none min-h-[200px] focus:ring-2 focus:ring-yellow-200 text-black"
+                                placeholder="Digite suas observações aqui..."
+                                value={executionData.observacoes}
+                                onChange={(e) => setExecutionData({...executionData, observacoes: e.target.value})}
+                            />
                         </div>
                     )}
                 </div>
 
                 <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto">
+                    {/* Botão de Salvar para Profissional nas abas extras ou geral */}
+                    {normUserType === 'profissional' && (
+                        <div className="mb-3">
+                             <button 
+                                onClick={handleSaveExecution}
+                                disabled={saving}
+                                className="w-full bg-black text-white py-3.5 rounded-2xl font-bold shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all flex justify-center items-center disabled:opacity-70 disabled:scale-100 space-x-2"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}
+                            </button>
+                        </div>
+                    )}
+
                     {selectedOrder.status === 'aguardando_aprovacao' && (normUserType === 'consumidor' || normUserType === 'gestor' || currentUserId === selectedOrder.cliente) ? (
                         <div className="flex space-x-3">
                             <button 
@@ -891,13 +1362,15 @@ const ClientOrders: React.FC = () => {
                             </button>
                         </div>
                     ) : (
-                        selectedOrder.status === 'concluido' && !selectedOrder.avaliacao && normUserType === 'consumidor' ? (
+                        normUserType === 'consumidor' && selectedOrder.status === 'concluido' && !selectedOrder.avaliacao ? (
                             <div className="flex space-x-3">
                                 <button onClick={() => setIsModalOpen(false)} className="flex-1 bg-white border border-gray-200 text-gray-700 py-3.5 rounded-2xl font-bold hover:bg-gray-50 transition-colors">Fechar</button>
                                 <button onClick={(e) => handleRateClick(e, selectedOrder)} className="flex-[2] bg-gray-900 text-white py-3.5 rounded-2xl font-bold shadow-lg hover:bg-gray-800 transition-all flex justify-center items-center"><Star size={18} className="mr-2"/> Avaliar Profissional</button>
                             </div>
                         ) : (
-                            <button onClick={() => setIsModalOpen(false)} className="w-full bg-white border border-gray-200 text-gray-700 py-3.5 rounded-2xl font-bold hover:bg-gray-50 transition-colors">Fechar</button>
+                            normUserType !== 'profissional' && (
+                                <button onClick={() => setIsModalOpen(false)} className="w-full bg-white border border-gray-200 text-gray-700 py-3.5 rounded-2xl font-bold hover:bg-gray-50 transition-colors">Fechar</button>
+                            )
                         )
                     )}
                 </div>
@@ -917,7 +1390,7 @@ const ClientOrders: React.FC = () => {
                       <p className="text-sm text-gray-500">Informe o motivo para o profissional.</p>
                   </div>
                   <textarea 
-                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm min-h-[100px] mb-4 focus:ring-2 focus:ring-red-100 outline-none"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm min-h-[100px] mb-4 focus:ring-2 focus:ring-red-100 outline-none text-black"
                       placeholder="Ex: Valor muito alto..."
                       value={rejectionReason}
                       onChange={(e) => setRejectionReason(e.target.value)}
@@ -950,7 +1423,7 @@ const ClientOrders: React.FC = () => {
                           ))}
                       </div>
                       <textarea 
-                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-yellow-200 outline-none resize-none min-h-[100px] mb-4"
+                          className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-yellow-200 outline-none resize-none min-h-[100px] mb-4 text-black"
                           placeholder="Escreva um comentário (opcional)..."
                           value={ratingComment}
                           onChange={(e) => setRatingComment(e.target.value)}

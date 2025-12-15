@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Agenda, Geral } from '../types';
-import { Loader2, ChevronLeft, ChevronRight, X, Clock, User, Wrench, Save, FileText, Calendar as CalendarIcon, MapPin, ExternalLink, Grid, Columns, List, Hash, Camera, Image as ImageIcon, Trash2, MessageSquare, AlertCircle } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, X, Clock, User, Wrench, Save, FileText, Calendar as CalendarIcon, MapPin, ExternalLink, Grid, Columns, List, Hash, Camera, Image as ImageIcon, Trash2, MessageSquare, AlertCircle, PlayCircle, CheckCircle2 } from 'lucide-react';
 
 interface AgendaExtended extends Agenda {
     geral?: Geral;
@@ -49,6 +49,7 @@ const CalendarPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<ModalTab>('geral');
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   
   const [formData, setFormData] = useState({
       status: '',
@@ -76,6 +77,8 @@ const CalendarPage: React.FC = () => {
         setLoading(true);
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return; 
+        
+        setCurrentUserId(user.id);
 
         // 1. Verificar Tipo de Usuário
         const { data: userData } = await supabase
@@ -301,6 +304,88 @@ const CalendarPage: React.FC = () => {
           alert("Erro no upload: " + error.message);
       } finally {
           setUploading(false);
+      }
+  };
+
+  const handleStartService = async () => {
+      if (!selectedEvent) return;
+      
+      if (confirm("Deseja iniciar o serviço agora? O horário será registrado.")) {
+          setSaving(true);
+          try {
+              const now = new Date().toISOString();
+              
+              // 1. Atualizar Agenda
+              const { error: agendaError } = await supabase
+                  .from('agenda')
+                  .update({ datainicioexecucao: now })
+                  .eq('id', selectedEvent.id);
+                  
+              if (agendaError) throw agendaError;
+
+              // 2. Atualizar Chave Status
+              if (selectedEvent.chave) {
+                  await supabase.from('chaves').update({ status: 'executando' }).eq('id', selectedEvent.chave);
+              }
+
+              // Atualizar Orderm de Serviço se existir
+              if (selectedEvent.ordemServico) {
+                  await supabase.from('ordemservico').update({ status: 'executando', datainicio: now }).eq('id', selectedEvent.ordemServico.id);
+              }
+
+              await fetchAgenda();
+              setIsModalOpen(false);
+              alert("Serviço iniciado com sucesso!");
+
+          } catch (error: any) {
+              alert("Erro ao iniciar serviço: " + error.message);
+          } finally {
+              setSaving(false);
+          }
+      }
+  };
+
+  const handleFinishService = async () => {
+      if (!selectedEvent) return;
+
+      // Validação simples: exigir foto do depois? (Opcional, mas recomendado)
+      if (formData.fotodepois.length === 0 && !confirm("Você não adicionou fotos de 'Depois'. Deseja concluir mesmo assim?")) {
+          setActiveTab('fotos');
+          return;
+      }
+
+      if (confirm("Deseja concluir o serviço? O horário de término será registrado.")) {
+          setSaving(true);
+          try {
+              const now = new Date().toISOString();
+              
+              // 1. Atualizar Agenda
+              const { error: agendaError } = await supabase
+                  .from('agenda')
+                  .update({ dataconclusao: now })
+                  .eq('id', selectedEvent.id);
+                  
+              if (agendaError) throw agendaError;
+
+              // 2. Atualizar Chave Status
+              if (selectedEvent.chave) {
+                  await supabase.from('chaves').update({ status: 'concluido' }).eq('id', selectedEvent.chave);
+              }
+
+              // Atualizar Orderm de Serviço se existir
+              if (selectedEvent.ordemServico) {
+                  await supabase.from('ordemservico').update({ status: 'concluido', datafim: now }).eq('id', selectedEvent.ordemServico.id);
+              }
+
+              await fetchAgenda();
+              setIsModalOpen(false);
+              alert("Serviço concluído com sucesso!");
+
+          } catch (error: any) {
+              alert("Erro ao concluir serviço: " + error.message);
+          } finally {
+              setSaving(false);
+          }
       }
   };
 
@@ -593,6 +678,38 @@ const CalendarPage: React.FC = () => {
                 <div className="p-6 overflow-y-auto space-y-6 flex-1">
                     {activeTab === 'geral' && (
                         <>
+                            {/* --- ACTIONS FOR PROFESSIONAL --- */}
+                            {currentUserId === selectedEvent.profissional && !selectedEvent.dataconclusao && (
+                                <div className="mb-6 space-y-3">
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Ações do Profissional</h4>
+                                    
+                                    {!selectedEvent.datainicioexecucao ? (
+                                        <button 
+                                            onClick={handleStartService}
+                                            disabled={saving}
+                                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 active:scale-[0.98] transition-all flex justify-center items-center gap-2"
+                                        >
+                                            {saving ? <Loader2 className="animate-spin" size={20}/> : <><PlayCircle size={20} /> Iniciar Serviço</>}
+                                        </button>
+                                    ) : (
+                                        <button 
+                                            onClick={handleFinishService}
+                                            disabled={saving}
+                                            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-green-200 active:scale-[0.98] transition-all flex justify-center items-center gap-2"
+                                        >
+                                            {saving ? <Loader2 className="animate-spin" size={20}/> : <><CheckCircle2 size={20} /> Concluir Serviço</>}
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                            {selectedEvent.dataconclusao && (
+                                <div className="mb-6 bg-green-50 border border-green-200 rounded-2xl p-4 flex items-center justify-center text-green-800 font-bold">
+                                    <CheckCircle2 size={20} className="mr-2"/>
+                                    Serviço Concluído em {new Date(selectedEvent.dataconclusao).toLocaleDateString()}
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100 flex items-center space-x-3">
                                      <div className="w-10 h-10 rounded-full bg-white flex-shrink-0 overflow-hidden border border-gray-200">
@@ -623,7 +740,7 @@ const CalendarPage: React.FC = () => {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status</label>
                                     <select 
-                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium outline-none appearance-none capitalize"
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium outline-none appearance-none capitalize text-black"
                                         value={formData.status}
                                         onChange={(e) => setFormData({...formData, status: e.target.value})}
                                     >
@@ -639,7 +756,7 @@ const CalendarPage: React.FC = () => {
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Início Real</label>
                                         <input 
                                             type="datetime-local"
-                                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ios-blue/30"
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ios-blue/30 text-black"
                                             value={formData.datainicio}
                                             onChange={(e) => setFormData({...formData, datainicio: e.target.value})}
                                         />
@@ -648,7 +765,7 @@ const CalendarPage: React.FC = () => {
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Fim (Previsão/Real)</label>
                                         <input 
                                             type="datetime-local"
-                                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ios-blue/30"
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-medium outline-none focus:ring-2 focus:ring-ios-blue/30 text-black"
                                             value={formData.datafim}
                                             onChange={(e) => setFormData({...formData, datafim: e.target.value})}
                                         />
@@ -715,7 +832,7 @@ const CalendarPage: React.FC = () => {
                                 </div>
                             </div>
                             <textarea 
-                                className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-medium outline-none resize-none min-h-[200px] focus:ring-2 focus:ring-yellow-200"
+                                className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm font-medium outline-none resize-none min-h-[200px] focus:ring-2 focus:ring-yellow-200 text-black"
                                 placeholder="Digite suas observações aqui..."
                                 value={formData.observacoes}
                                 onChange={(e) => setFormData({...formData, observacoes: e.target.value})}

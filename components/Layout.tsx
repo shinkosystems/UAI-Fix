@@ -73,7 +73,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const normType = userType?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || '';
   
   const isManager = !loadingUserType && normType === 'gestor';
-  const isInternal = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista');
+  // Agora Profissional também pode ver a tela de chamados para histórico
+  const isInternalOrPro = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista' || normType === 'profissional');
+  
   const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor' && normType !== 'profissional';
   const showExecution = !loadingUserType && (normType === 'consumidor' || normType === 'profissional');
 
@@ -187,7 +189,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <span>Meu Perfil</span>
           </button>
           
-          {isInternal && (
+          {isInternalOrPro && (
             <button 
               onClick={() => navigate('/chamados')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/chamados')}`}

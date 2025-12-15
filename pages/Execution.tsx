@@ -434,7 +434,7 @@ const Execution: React.FC = () => {
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Alterar Status</label>
                                 <select 
-                                    className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-sm font-bold outline-none appearance-none"
+                                    className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-sm font-bold outline-none appearance-none text-black"
                                     value={formData.status}
                                     onChange={(e) => setFormData({...formData, status: e.target.value})}
                                 >
@@ -448,7 +448,7 @@ const Execution: React.FC = () => {
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Descrição do Serviço</label>
                                 <textarea 
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium outline-none resize-none min-h-[100px]"
+                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium outline-none resize-none min-h-[100px] text-black"
                                     value={formData.planDescricao}
                                     onChange={(e) => setFormData({...formData, planDescricao: e.target.value})}
                                 />
@@ -460,7 +460,7 @@ const Execution: React.FC = () => {
                         <div className="space-y-4">
                             <div className="flex gap-2">
                                 <input 
-                                    className="flex-1 bg-gray-50 border border-gray-100 rounded-2xl p-3 text-sm outline-none"
+                                    className="flex-1 bg-gray-50 border border-gray-100 rounded-2xl p-3 text-sm outline-none text-black"
                                     placeholder="Novo recurso/material..."
                                     value={formData.newResource}
                                     onChange={(e) => setFormData({...formData, newResource: e.target.value})}
@@ -530,7 +530,7 @@ const Execution: React.FC = () => {
                         <div className="space-y-2">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Observações da Agenda / Motivo do Cancelamento</label>
                             <textarea 
-                                className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-4 text-sm font-medium outline-none resize-none min-h-[200px]"
+                                className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-4 text-sm font-medium outline-none resize-none min-h-[200px] text-black"
                                 placeholder="Anotações gerais ou justificativa de cancelamento..."
                                 value={formData.descricao}
                                 onChange={(e) => setFormData({...formData, descricao: e.target.value})}

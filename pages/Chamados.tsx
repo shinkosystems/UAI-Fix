@@ -34,6 +34,7 @@ const Chamados: React.FC = () => {
     
     // User Role State
     const [currentUserRole, setCurrentUserRole] = useState<string>('');
+    const [currentUserId, setCurrentUserId] = useState<string>('');
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [showNotifications, setShowNotifications] = useState(false);
     const notificationRef = useRef<HTMLDivElement>(null);
@@ -89,10 +90,13 @@ const Chamados: React.FC = () => {
 
     const visibleTabs = allTabs.filter(tab => {
         if (currentUserRole === 'planejista') {
-            return tab.id === 'novos';
+            return tab.id === 'novos' || tab.id === 'historico';
         }
         if (currentUserRole === 'orcamentista') {
-            return tab.id === 'novos' || tab.id === 'orcamentos' || tab.id === 'execucao';
+            return tab.id === 'novos' || tab.id === 'orcamentos' || tab.id === 'execucao' || tab.id === 'historico';
+        }
+        if (currentUserRole === 'profissional') {
+            return tab.id === 'execucao' || tab.id === 'historico';
         }
         return true;
     });
@@ -114,6 +118,8 @@ const Chamados: React.FC = () => {
     useEffect(() => {
         if (currentUserRole === 'planejista' || currentUserRole === 'orcamentista') {
             setActiveTab('novos');
+        } else if (currentUserRole === 'profissional') {
+            setActiveTab('execucao');
         }
     }, [currentUserRole]);
 
@@ -142,6 +148,7 @@ const Chamados: React.FC = () => {
     const fetchUserRole = async () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
+            setCurrentUserId(user.id);
             const { data: userData } = await supabase.from('users').select('tipo').eq('uuid', user.id).single();
             if (userData) {
                 // Normalize role to handle accents (e.g. Orçamentista -> orcamentista)
@@ -259,6 +266,11 @@ const Chamados: React.FC = () => {
     const getFilteredTickets = () => {
         let filtered = tickets;
         
+        // Regra de segurança: Profissional só vê o que é dele
+        if (currentUserRole === 'profissional') {
+            filtered = filtered.filter(t => t.profissional === currentUserId);
+        }
+
         if (activeTab === 'novos') {
             if (currentUserRole === 'planejista') {
                 filtered = filtered.filter(t => t.status === 'pendente');
@@ -314,6 +326,17 @@ const Chamados: React.FC = () => {
 
     const canEditStatus = () => {
         if (currentUserRole === 'gestor') return true;
+        
+        // Regra específica para Profissional:
+        // Não pode alterar se o chamado JÁ estiver Concluído ou Cancelado
+        if (currentUserRole === 'profissional') {
+            const currentStatus = editingItem?.status?.toLowerCase();
+            if (currentStatus === 'concluido' || currentStatus === 'cancelado') {
+                return false;
+            }
+            return true;
+        }
+
         if (currentUserRole === 'orcamentista') {
             return !isExecutingOrDone();
         }
@@ -748,7 +771,7 @@ const Chamados: React.FC = () => {
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Pedido</label>
                                     <div className="relative">
                                         <select 
-                                            className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none capitalize focus:ring-2 focus:ring-black/10 ${!canEditStatus() ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-black outline-none capitalize focus:ring-2 focus:ring-black/10 ${!canEditStatus() ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             value={formData.status}
                                             disabled={!canEditStatus()}
                                             onChange={(e) => setFormData({...formData, status: e.target.value})}
@@ -767,7 +790,7 @@ const Chamados: React.FC = () => {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional</label>
                                     <select 
-                                        className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none ${!canEditPlanning() ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-black outline-none ${!canEditPlanning() ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         value={formData.profissionalUuid}
                                         disabled={!canEditPlanning()}
                                         onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
@@ -797,7 +820,7 @@ const Chamados: React.FC = () => {
                                         <input 
                                             type="datetime-local" 
                                             disabled={!canEditPlanning()}
-                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-black outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                                             value={formData.planejamentoData}
                                             onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})}
                                         />
@@ -807,7 +830,7 @@ const Chamados: React.FC = () => {
                                         <input 
                                             type="datetime-local" 
                                             disabled={!canEditPlanning()}
-                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-gray-900 outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-black outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
                                             value={formData.planejamentoVisita}
                                             onChange={(e) => setFormData({...formData, planejamentoVisita: e.target.value})}
                                         />
@@ -818,7 +841,7 @@ const Chamados: React.FC = () => {
                                     <label className="text-[10px] font-bold text-gray-400 ml-1">Tipo de Pagamento</label>
                                     <select 
                                         disabled={!canEditPlanning()}
-                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-gray-900 outline-none disabled:bg-gray-100"
+                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-black outline-none disabled:bg-gray-100"
                                         value={formData.planejamentoPagamento}
                                         onChange={(e) => setFormData({...formData, planejamentoPagamento: e.target.value})}
                                     >
@@ -869,7 +892,7 @@ const Chamados: React.FC = () => {
                                                 min="0"
                                                 step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoCusto}
                                                 onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value)})}
                                             />
@@ -881,7 +904,7 @@ const Chamados: React.FC = () => {
                                                 min="0"
                                                 step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoCustoVariavel}
                                                 onChange={(e) => setFormData({...formData, orcamentoCustoVariavel: parseFloat(e.target.value)})}
                                             />
@@ -893,7 +916,7 @@ const Chamados: React.FC = () => {
                                                 min="0"
                                                 step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoHH}
                                                 onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value)})}
                                             />
@@ -905,7 +928,7 @@ const Chamados: React.FC = () => {
                                                 min="0"
                                                 step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoImposto}
                                                 onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value)})}
                                             />
@@ -941,9 +964,16 @@ const Chamados: React.FC = () => {
                                             <label className="text-[10px] font-bold text-blue-500 ml-1">Tipo de Pagamento</label>
                                             <select 
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoTipoPgto}
-                                                onChange={(e) => setFormData({...formData, orcamentoTipoPgto: e.target.value})}
+                                                onChange={(e) => {
+                                                    const type = e.target.value;
+                                                    setFormData({
+                                                        ...formData, 
+                                                        orcamentoTipoPgto: type,
+                                                        orcamentoParcelas: type === 'PIX' ? 1 : formData.orcamentoParcelas
+                                                    });
+                                                }}
                                             >
                                                 <option value="Dinheiro">Dinheiro</option>
                                                 <option value="PIX">PIX</option>
@@ -953,18 +983,20 @@ const Chamados: React.FC = () => {
                                                 <option value="Transferência">Transferência</option>
                                             </select>
                                         </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Parcelas</label>
-                                            <input 
-                                                type="number"
-                                                min="1"
-                                                max="12"
-                                                disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
-                                                value={formData.orcamentoParcelas}
-                                                onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value)})}
-                                            />
-                                        </div>
+                                        {formData.orcamentoTipoPgto !== 'PIX' && (
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-blue-500 ml-1">Parcelas</label>
+                                                <input 
+                                                    type="number"
+                                                    min="1"
+                                                    max="12"
+                                                    disabled={!canEditBudget()}
+                                                    className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                    value={formData.orcamentoParcelas}
+                                                    onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value)})}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="bg-blue-600 text-white p-4 rounded-xl text-center shadow-lg transform transition-transform hover:scale-[1.02]">

@@ -16,6 +16,7 @@ export interface Agenda {
   cliente: string | null; // uuid
   chave?: number; // Link to the ticket
   dataconclusao?: string | null;
+  datainicioexecucao?: string | null; // Added field for start execution time
   // Nested relation
   chaves?: Chave;
 }
