@@ -401,7 +401,7 @@ const ClientOrders: React.FC = () => {
 
     if (!selectedOrder) return;
     
-    if (!window.confirm('Confirma a aprovação deste orçamento?')) return;
+    // REMOVIDO: window.confirm para ação imediata
     
     setProcessingId(selectedOrder.id);
     
