@@ -173,12 +173,30 @@ const Profile: React.FC = () => {
           if (!data.erro) {
               setRua(data.logradouro);
               setBairro(data.bairro);
-              if(data.localidade) {
-                  const { data: cityDB } = await supabase
+              
+              // Use states list to find correct UF ID
+              const stateObj = states.find(s => s.uf === data.uf);
+
+              if(data.localidade && stateObj) {
+                  // 1. Try exact match in State
+                  let { data: cityDB } = await supabase
                     .from('cidades')
                     .select('*')
-                    .ilike('cidade', data.localidade)
-                    .single();
+                    .eq('uf', stateObj.id)
+                    .ilike('cidade', data.localidade.trim())
+                    .maybeSingle();
+                  
+                  // 2. Try fuzzy match in State
+                  if (!cityDB) {
+                      const { data: fuzzyData } = await supabase
+                        .from('cidades')
+                        .select('*')
+                        .eq('uf', stateObj.id)
+                        .ilike('cidade', `%${data.localidade.trim()}%`)
+                        .limit(1)
+                        .maybeSingle();
+                      cityDB = fuzzyData;
+                  }
                   
                   if(cityDB) {
                       setCityName(cityDB.cidade);

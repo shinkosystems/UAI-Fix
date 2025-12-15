@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao } from '../types';
-import { Loader2, FileText, DollarSign, Calendar, Clock, CheckCircle, ChevronRight, Package, User as UserIcon, X, Ban, Eye, CreditCard, Send, AlertTriangle, Star, ThumbsUp, Hash, Bell, Plus } from 'lucide-react';
+import { Loader2, FileText, DollarSign, Calendar, Clock, CheckCircle, ChevronRight, Package, User as UserIcon, X, Ban, Eye, CreditCard, Send, AlertTriangle, Star, ThumbsUp, Hash, Bell, Plus, Calculator } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { jsPDF } from "jspdf";
 
@@ -47,6 +47,7 @@ const ClientOrders: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
   const [userType, setUserType] = useState<string>('');
+  const [currentUserId, setCurrentUserId] = useState<string>('');
 
   const navigate = useNavigate();
 
@@ -76,6 +77,7 @@ const ClientOrders: React.FC = () => {
       }
 
       if (uuid) {
+         setCurrentUserId(uuid);
          // Fetch User Info first to determine logic
          const { data: userData } = await supabase.from('users').select('tipo').eq('uuid', uuid).single();
          const type = userData?.tipo || '';
@@ -181,9 +183,6 @@ const ClientOrders: React.FC = () => {
         .select('*')
         .order('id', { ascending: false });
 
-      // Lógica de Filtro:
-      // Se for Profissional -> Vê pedidos onde ele é o profissional (recebidos)
-      // Se for Consumidor ou Gestor -> Vê pedidos onde ele é o cliente (criados)
       if (normalizedRole === 'profissional') {
           query = query.eq('profissional', uuid);
       } else {
@@ -199,7 +198,6 @@ const ClientOrders: React.FC = () => {
         return;
       }
 
-      // 2. Coletar IDs para buscas em lote
       const chavesIds = chavesData.map(c => c.id);
       const serviceIds = new Set<number>();
       const userUuids = new Set<string>();
@@ -207,10 +205,9 @@ const ClientOrders: React.FC = () => {
       chavesData.forEach((c) => {
         if (c.atividade) serviceIds.add(c.atividade);
         if (c.profissional) userUuids.add(c.profissional);
-        if (c.cliente) userUuids.add(c.cliente); // Precisamos saber quem é o cliente se for visão de profissional
+        if (c.cliente) userUuids.add(c.cliente);
       });
 
-      // 3. Buscas Paralelas (Manual Join)
       const [servicesRes, usersRes, orcamentosRes, planRes, reviewsRes] = await Promise.all([
         serviceIds.size > 0 ? supabase.from('geral').select('*').in('id', Array.from(serviceIds)) : { data: [] },
         userUuids.size > 0 ? supabase.from('users').select('*').in('uuid', Array.from(userUuids)) : { data: [] },
@@ -243,10 +240,6 @@ const ClientOrders: React.FC = () => {
       });
 
       const fullOrders = chavesData.map((order) => {
-        // Se eu sou profissional, quero ver os dados do Cliente. Se sou cliente, quero ver os dados do Profissional.
-        // Mas a estrutura de dados atual nomeia o campo 'profissional'. Vamos manter a estrutura, mas popular corretamente para a UI.
-        
-        // Objeto 'profissional' no OrderExtended é usado para exibir o "Outro Lado"
         let displayUserUuid = normalizedRole === 'profissional' ? order.cliente : order.profissional;
         
         let displayUserObject = null;
@@ -259,7 +252,7 @@ const ClientOrders: React.FC = () => {
         return {
             ...order,
             geral: servicesMap[order.atividade] || { nome: 'Serviço' },
-            profissional: displayUserObject, // Na UI, isso será renderizado como a "outra pessoa"
+            profissional: displayUserObject,
             orcamentos: budgetsMap[order.id] || [],
             planejamento: plansMap[order.id] || [],
             avaliacao: reviewsMap[order.id] || null
@@ -286,13 +279,23 @@ const ClientOrders: React.FC = () => {
   };
 
   const generateAndUploadPDF = async (order: OrderExtended): Promise<string> => {
-      console.log("Inicializando jsPDF...");
+      // Tentar resolver jsPDF de forma segura
+      let jsPDFConstructor = jsPDF;
+      if ((jsPDF as any).default) {
+          jsPDFConstructor = (jsPDF as any).default;
+      }
+      
+      if (!jsPDFConstructor) {
+          throw new Error("Biblioteca jsPDF não foi carregada corretamente.");
+      }
+
       let doc;
       try {
-        doc = new jsPDF();
+        // @ts-ignore - Ignore type check for dynamic constructor
+        doc = new jsPDFConstructor();
       } catch (err) {
         console.error("Failed to initialize jsPDF:", err);
-        throw new Error("Erro ao inicializar gerador de PDF. Tente recarregar a página.");
+        throw new Error("Erro ao inicializar gerador de PDF.");
       }
 
       const budget = order.orcamentos[0];
@@ -316,7 +319,6 @@ const ClientOrders: React.FC = () => {
       
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
-      // Ajuste de texto dinâmico dependendo de quem está vendo (mas o PDF é padrão)
       doc.text(`Profissional Responsável: ${userType.toLowerCase() === 'profissional' ? 'Você' : (order.profissional?.nome || 'A definir')}`, 20, 56);
       doc.text(`Tipo de Serviço: ${order.geral?.nome}`, 20, 62);
 
@@ -387,26 +389,29 @@ const ClientOrders: React.FC = () => {
             upsert: false
         });
 
-      if (uploadError) {
-          throw new Error("Falha ao salvar PDF no Storage: " + uploadError.message);
-      }
+      if (uploadError) throw uploadError;
 
       const { data } = supabase.storage.from('os').getPublicUrl(fileName);
       return data.publicUrl;
   };
 
-  const handleApproveClick = async () => {
+  const handleApproveClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     if (!selectedOrder) return;
-    const confirmed = window.confirm('Confirma a aprovação deste orçamento? Uma ordem de serviço será gerada.');
-    if (!confirmed) return;
+    
+    if (!window.confirm('Confirma a aprovação deste orçamento?')) return;
     
     setProcessingId(selectedOrder.id);
+    
     try {
         let pdfUrl = '';
+        
         try {
             pdfUrl = await generateAndUploadPDF(selectedOrder);
         } catch (pdfErr: any) {
-            alert("Aviso: O PDF da Ordem de Serviço não pôde ser gerado. O processo continuará sem o PDF.");
+            console.error("PDF generation skipped (non-fatal):", pdfErr);
         }
 
         const plan = selectedOrder.planejamento[0];
@@ -420,14 +425,11 @@ const ClientOrders: React.FC = () => {
 
         const { data: osData, error: osError } = await supabase.from('ordemservico').insert(osPayload).select().single();
 
-        if (osError) throw new Error("Erro ao criar registro de Ordem de Serviço: " + osError.message);
+        if (osError) {
+            // Se já existe (pode acontecer em cliques duplos rápidos), tentar update ou ignorar
+            console.warn("Possível duplicação de OS:", osError);
+        }
 
-        // Se eu sou o cliente aprovando, o ID do profissional está no pedido (order.profissional)
-        // Se eu sou o profissional (tecnicamente não aprovo meu proprio orçamento, mas se fosse fluxo reverso), seria diferente.
-        // Assumindo fluxo normal: Cliente aprova -> Gera Agenda para Profissional.
-        // O campo 'profissional' no objeto selectedOrder (visualização) pode estar trocado dependendo da view.
-        // Vamos usar a chave original para garantir IDs corretos.
-        
         const { data: chaveOriginal } = await supabase.from('chaves').select('cliente, profissional').eq('id', selectedOrder.id).single();
 
         if (plan?.execucao && chaveOriginal?.profissional) {
@@ -446,17 +448,17 @@ const ClientOrders: React.FC = () => {
 
         updateLocalStatus(selectedOrder.id, 'aprovado');
         setIsModalOpen(false);
-        alert('Orçamento Aprovado com sucesso! Ordem de Serviço #' + osData.id + ' gerada.');
+        alert('Orçamento Aprovado! Serviço iniciado.');
 
     } catch (error: any) {
-        alert('Erro ao processar aprovação: ' + (error.message || JSON.stringify(error)));
+        alert('Erro ao processar aprovação: ' + (error.message || "Erro desconhecido"));
     } finally {
         setProcessingId(null);
     }
   };
 
   const handleRateClick = (e: React.MouseEvent, order: OrderExtended) => {
-      if(e) e.stopPropagation(); 
+      e.stopPropagation(); 
       setIsModalOpen(false);
       setRatingOrder(order);
       setRatingScore(0);
@@ -465,10 +467,6 @@ const ClientOrders: React.FC = () => {
   };
 
   const submitRating = async () => {
-      // Para avaliar, precisamos do UUID do profissional. 
-      // Se estou na visão de cliente, order.profissional tem os dados do profissional.
-      // Se estou na visão de profissional (não deveria me autoavaliar), mas por segurança, usamos o objeto.
-      
       if (!ratingOrder || !ratingOrder.profissional?.uuid) return;
       if (ratingScore === 0) return alert("Selecione uma nota.");
 
@@ -504,7 +502,9 @@ const ClientOrders: React.FC = () => {
       }
   };
 
-  const handleRejectClick = () => {
+  const handleRejectClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     setRejectionReason('');
     setIsRejectModalOpen(true);
   };
@@ -738,7 +738,7 @@ const ClientOrders: React.FC = () => {
                        </div>
                        
                        <div className="flex space-x-2">
-                           {isWaitingApproval && normUserType === 'consumidor' && (
+                           {isWaitingApproval && (normUserType === 'consumidor' || normUserType === 'gestor') && (
                                <button className="bg-orange-100 text-orange-700 px-3 py-1.5 rounded-xl text-xs font-bold animate-pulse">
                                    Ação Necessária
                                </button>
@@ -818,26 +818,53 @@ const ClientOrders: React.FC = () => {
                         </div>
                     </div>
                     
-                    {/* ... rest of the modal ... */}
-                     {/* BUDGET DETAILS (Highlight) */}
+                    {/* BUDGET DETAILS (Highlight) */}
                     {selectedOrder.orcamentos && selectedOrder.orcamentos.length > 0 && (
                         <div className="bg-blue-50/50 p-5 rounded-3xl border border-blue-100 relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-20 h-20 bg-blue-100 rounded-bl-full opacity-50 -mr-4 -mt-4"></div>
                             <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-4 flex items-center relative z-10">
                                 <DollarSign size={14} className="mr-1"/> Orçamento Proposto
                             </h4>
+                            
                             <div className="space-y-4 relative z-10">
-                                <div className="flex justify-between items-end">
+                                {/* Total Value */}
+                                <div>
+                                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Valor Total</p>
+                                    <p className="text-4xl font-black text-gray-900 tracking-tight mt-1">
+                                        R$ {selectedOrder.orcamentos[0].preco.toFixed(2)}
+                                    </p>
+                                </div>
+
+                                {/* Divider */}
+                                <div className="h-px bg-blue-200/50 w-full"></div>
+
+                                {/* Payment Details Grid */}
+                                <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <p className="text-sm text-gray-500">Valor Total</p>
-                                        <p className="text-3xl font-bold text-gray-900 tracking-tight">R$ {selectedOrder.orcamentos[0].preco.toFixed(2)}</p>
+                                        <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Forma de Pagamento</p>
+                                        <div className="bg-white px-3 py-2.5 rounded-xl border border-blue-100 flex items-center shadow-sm">
+                                            <CreditCard size={14} className="text-blue-500 mr-2 flex-shrink-0"/>
+                                            <span className="text-xs font-bold text-gray-800 capitalize truncate">
+                                                {selectedOrder.orcamentos[0].tipopagmto}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div className="text-right">
-                                         <p className="text-xs text-gray-500 mb-1">Condição de Pagamento</p>
-                                         <span className="bg-white px-3 py-1 rounded-lg text-xs font-bold border border-blue-100 capitalize flex items-center">
-                                            <CreditCard size={10} className="mr-1"/>
-                                            {selectedOrder.orcamentos[0].tipopagmto}
-                                         </span>
+
+                                    <div>
+                                        <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">Parcelamento</p>
+                                        <div className="bg-white px-3 py-2.5 rounded-xl border border-blue-100 flex items-center shadow-sm">
+                                            <Calculator size={14} className="text-blue-500 mr-2 flex-shrink-0"/>
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-bold text-gray-800">
+                                                    {selectedOrder.orcamentos[0].parcelas}x
+                                                </span>
+                                                {selectedOrder.orcamentos[0].parcelas > 1 && (
+                                                    <span className="text-[10px] font-medium text-gray-500 leading-tight">
+                                                        de R$ {(selectedOrder.orcamentos[0].preco / selectedOrder.orcamentos[0].parcelas).toFixed(2)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -846,17 +873,17 @@ const ClientOrders: React.FC = () => {
                 </div>
 
                 <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto">
-                    {selectedOrder.status === 'aguardando_aprovacao' && normUserType === 'consumidor' ? (
+                    {selectedOrder.status === 'aguardando_aprovacao' && (normUserType === 'consumidor' || normUserType === 'gestor' || currentUserId === selectedOrder.cliente) ? (
                         <div className="flex space-x-3">
                             <button 
-                                onClick={handleRejectClick}
+                                onClick={(e) => handleRejectClick(e)}
                                 disabled={processingId === selectedOrder.id}
                                 className="flex-1 bg-white border border-red-100 text-red-600 hover:bg-red-50 py-3.5 rounded-2xl font-bold shadow-sm transition-all flex justify-center items-center"
                             >
                                 {processingId === selectedOrder.id ? <Loader2 className="animate-spin" size={20}/> : <><Ban size={18} className="mr-2"/> Reprovar</>}
                             </button>
                             <button 
-                                onClick={handleApproveClick}
+                                onClick={(e) => handleApproveClick(e)}
                                 disabled={processingId === selectedOrder.id}
                                 className="flex-[2] bg-green-600 text-white hover:bg-green-700 py-3.5 rounded-2xl font-bold shadow-lg shadow-green-200 transition-all flex justify-center items-center"
                             >

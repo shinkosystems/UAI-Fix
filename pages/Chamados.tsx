@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Chave, Geral, User, Orcamento, Planejamento } from '../types';
@@ -68,6 +69,7 @@ const Chamados: React.FC = () => {
         orcamentoTipoPgto: 'Dinheiro',
         orcamentoParcelas: 1,
         orcamentoObs: '',
+        orcamentoNotaFiscal: false,
         
         planejamentoDesc: '',
         planejamentoData: '',
@@ -142,18 +144,20 @@ const Chamados: React.FC = () => {
         if (user) {
             const { data: userData } = await supabase.from('users').select('tipo').eq('uuid', user.id).single();
             if (userData) {
-                setCurrentUserRole(userData.tipo.toLowerCase());
-                fetchNotifications(userData.tipo.toLowerCase(), user.id);
+                // Normalize role to handle accents (e.g. Orçamentista -> orcamentista)
+                const normalizedRole = userData.tipo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                setCurrentUserRole(normalizedRole);
+                fetchNotifications(normalizedRole, user.id);
             }
         }
     };
 
     const fetchNotifications = async (role: string, uuid: string) => {
-      const normalizedRole = role.toLowerCase();
+      // Role already normalized from fetchUserRole
       let notifs: NotificationItem[] = [];
 
       try {
-          if (normalizedRole === 'planejista' || normalizedRole === 'orcamentista') {
+          if (role === 'planejista' || role === 'orcamentista') {
               const { data } = await supabase
                   .from('planejamento')
                   .select(`id, created_at, descricao, chaves (chaveunica, geral (nome))`)
@@ -358,6 +362,7 @@ const Chamados: React.FC = () => {
             orcamentoTipoPgto: budget?.tipopagmto || 'Dinheiro',
             orcamentoParcelas: budget?.parcelas || 1,
             orcamentoObs: budget?.observacaocliente || '',
+            orcamentoNotaFiscal: budget?.notafiscal || false,
             
             planejamentoDesc: plan?.descricao || '',
             planejamentoData: formattedDate,
@@ -381,7 +386,8 @@ const Chamados: React.FC = () => {
             orcamentoLucro: 0,
             orcamentoTipoPgto: 'Dinheiro',
             orcamentoParcelas: 1,
-            orcamentoObs: ''
+            orcamentoObs: '',
+            orcamentoNotaFiscal: false
         }));
     };
 
@@ -467,6 +473,7 @@ const Chamados: React.FC = () => {
                     tipopagmto: formData.orcamentoTipoPgto,
                     parcelas: parseInt(formData.orcamentoParcelas.toString()),
                     observacaocliente: formData.orcamentoObs,
+                    notafiscal: formData.orcamentoNotaFiscal,
                     ativo: true
                 };
                 
@@ -529,6 +536,7 @@ const Chamados: React.FC = () => {
                     tipopagmto: formData.orcamentoTipoPgto,
                     parcelas: parseInt(formData.orcamentoParcelas.toString()),
                     observacaocliente: formData.orcamentoObs,
+                    notafiscal: formData.orcamentoNotaFiscal,
                     ativo: true
                 };
                 
@@ -732,15 +740,15 @@ const Chamados: React.FC = () => {
                             </button>
                         </div>
 
-                        <div className="p-6 overflow-y-auto space-y-6">
-                            {/* ... Content same as previous implementation ... */}
-                             {/* Status and Assignment */}
+                        {/* Content Area - ADDED FLEX-1 to allow scrolling */}
+                        <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                            {/* Status and Assignment */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Pedido</label>
                                     <div className="relative">
                                         <select 
-                                            className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold outline-none capitalize focus:ring-2 focus:ring-black/10 ${!canEditStatus() ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none capitalize focus:ring-2 focus:ring-black/10 ${!canEditStatus() ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             value={formData.status}
                                             disabled={!canEditStatus()}
                                             onChange={(e) => setFormData({...formData, status: e.target.value})}
@@ -759,7 +767,7 @@ const Chamados: React.FC = () => {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional</label>
                                     <select 
-                                        className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold outline-none ${!canEditPlanning() ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none ${!canEditPlanning() ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         value={formData.profissionalUuid}
                                         disabled={!canEditPlanning()}
                                         onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
@@ -858,26 +866,115 @@ const Chamados: React.FC = () => {
                                             <label className="text-[10px] font-bold text-blue-500 ml-1">Custo Fixo (R$)</label>
                                             <input 
                                                 type="number"
+                                                min="0"
+                                                step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs disabled:bg-gray-100"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoCusto}
                                                 onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value)})}
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Lucro (R$)</label>
+                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Custo Variável (R$)</label>
                                             <input 
                                                 type="number"
+                                                min="0"
+                                                step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs disabled:bg-gray-100"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                value={formData.orcamentoCustoVariavel}
+                                                onChange={(e) => setFormData({...formData, orcamentoCustoVariavel: parseFloat(e.target.value)})}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Mão de Obra (R$)</label>
+                                            <input 
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                value={formData.orcamentoHH}
+                                                onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value)})}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Imposto (R$)</label>
+                                            <input 
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                value={formData.orcamentoImposto}
+                                                onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value)})}
+                                            />
+                                        </div>
+                                        <div className="space-y-1 col-span-2">
+                                            <label className="text-[10px] font-bold text-green-600 ml-1">Margem de Lucro (R$)</label>
+                                            <input 
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-green-50 border border-green-200 rounded-xl p-2 text-xs text-green-800 font-bold disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:ring-2 focus:ring-green-300"
                                                 value={formData.orcamentoLucro}
                                                 onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value)})}
                                             />
                                         </div>
+                                        <div className="col-span-2 flex items-center justify-between bg-white border border-gray-200 rounded-xl p-3 mt-1">
+                                            <span className="text-xs font-bold text-gray-900">Emitir Nota Fiscal?</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setFormData({ ...formData, orcamentoNotaFiscal: !formData.orcamentoNotaFiscal })}
+                                                disabled={!canEditBudget()}
+                                                className={`w-10 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out ${formData.orcamentoNotaFiscal ? 'bg-green-500' : 'bg-gray-300'} disabled:opacity-50`}
+                                            >
+                                                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${formData.orcamentoNotaFiscal ? 'translate-x-4' : 'translate-x-0'}`} />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="bg-blue-600 text-white p-2 rounded-xl text-center shadow-lg">
-                                        <span className="text-[10px] opacity-80 uppercase font-bold block">Preço Final</span>
-                                        <span className="text-lg font-bold">R$ {formData.orcamentoPreco.toFixed(2)}</span>
+
+                                    {/* Payment Details */}
+                                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-blue-100">
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Tipo de Pagamento</label>
+                                            <select 
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                value={formData.orcamentoTipoPgto}
+                                                onChange={(e) => setFormData({...formData, orcamentoTipoPgto: e.target.value})}
+                                            >
+                                                <option value="Dinheiro">Dinheiro</option>
+                                                <option value="PIX">PIX</option>
+                                                <option value="Cartão de Crédito">Cartão de Crédito</option>
+                                                <option value="Cartão de Débito">Cartão de Débito</option>
+                                                <option value="Boleto">Boleto</option>
+                                                <option value="Transferência">Transferência</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Parcelas</label>
+                                            <input 
+                                                type="number"
+                                                min="1"
+                                                max="12"
+                                                disabled={!canEditBudget()}
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-gray-900 disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                value={formData.orcamentoParcelas}
+                                                onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value)})}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-blue-600 text-white p-4 rounded-xl text-center shadow-lg transform transition-transform hover:scale-[1.02]">
+                                        <span className="text-[10px] opacity-80 uppercase font-bold block mb-1">Preço Final do Orçamento</span>
+                                        <span className="text-2xl font-black">R$ {formData.orcamentoPreco.toFixed(2)}</span>
+                                        {formData.orcamentoParcelas > 1 && (
+                                            <span className="text-[10px] font-medium block mt-1 opacity-90">
+                                                {formData.orcamentoParcelas}x de R$ {(formData.orcamentoPreco / formData.orcamentoParcelas).toFixed(2)}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             )}
