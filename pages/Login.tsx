@@ -27,6 +27,7 @@ const Login: React.FC = () => {
   const [selectedCityId, setSelectedCityId] = useState<string>('');
   const [selectedCityName, setSelectedCityName] = useState<string>('');
   const [selectedStateId, setSelectedStateId] = useState<number | null>(null);
+  const [displayStateUf, setDisplayStateUf] = useState<string>(''); // New state for display only
   
   // Data States
   const [states, setStates] = useState<Estado[]>([]);
@@ -94,6 +95,11 @@ const Login: React.FC = () => {
       setSelectedCityId(city.id.toString());
       setSelectedCityName(city.cidade);
       setSelectedStateId(city.uf);
+      
+      // Update display state UF based on selection
+      const stateObj = states.find(s => s.id === city.uf);
+      if (stateObj) setDisplayStateUf(stateObj.uf);
+      
       setIsCityModalOpen(false);
       setCitySearchTerm('');
   };
@@ -106,6 +112,7 @@ const Login: React.FC = () => {
           if (!data.erro) {
               setRua(data.logradouro);
               setBairro(data.bairro);
+              setDisplayStateUf(data.uf); // Fill UF display field
               
               // Resolve State ID first for better matching
               const stateObj = states.find(s => s.uf === data.uf);
@@ -293,7 +300,7 @@ const Login: React.FC = () => {
                                 required={isSignUp}
                                 value={nome}
                                 onChange={(e) => setNome(e.target.value)}
-                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
+                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
                                 placeholder="Seu nome"
                             />
                         </div>
@@ -309,7 +316,7 @@ const Login: React.FC = () => {
                                 value={cpf}
                                 onChange={(e) => setCpf(formatCpf(e.target.value))}
                                 maxLength={14}
-                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
+                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
                                 placeholder="000.000.000-00"
                             />
                         </div>
@@ -330,7 +337,7 @@ const Login: React.FC = () => {
                                     value={cep}
                                     onChange={(e) => setCep(formatCep(e.target.value))}
                                     maxLength={9}
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-2 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
+                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-2 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
                                     placeholder="00000-000"
                                 />
                             </div>
@@ -348,14 +355,29 @@ const Login: React.FC = () => {
                                     required={isSignUp}
                                     value={selectedCityName}
                                     placeholder="Selecionar..."
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-3 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm cursor-pointer"
+                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-3 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm cursor-pointer"
                                 />
                             </div>
                         </div>
                     </div>
 
+                    {/* NEW: DISPLAY ONLY STATE FIELD */}
                     <div className="space-y-2">
-                        <label className="text-xs font-bold text-gray-400 uppercase ml-1">Rua / Logradouro</label>
+                        <label className="text-xs font-bold text-gray-400 uppercase ml-1">Estado (UF)</label>
+                        <div className="relative">
+                            <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input
+                                type="text"
+                                readOnly
+                                value={displayStateUf || 'Preencha o CEP'}
+                                className="w-full bg-gray-100 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-black outline-none font-bold text-sm cursor-default"
+                                placeholder="UF"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Rua / Logradouro</label>
                         <div className="relative">
                             <Home className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                             <input
@@ -363,7 +385,7 @@ const Login: React.FC = () => {
                                 required={isSignUp}
                                 value={rua}
                                 onChange={(e) => setRua(e.target.value)}
-                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
+                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
                                 placeholder="Nome da rua"
                             />
                         </div>
@@ -378,7 +400,7 @@ const Login: React.FC = () => {
                                 required={isSignUp}
                                 value={numero}
                                 onChange={(e) => setNumero(e.target.value)}
-                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 px-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
+                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 px-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
                                 placeholder="123"
                             />
                         </div>
@@ -389,7 +411,7 @@ const Login: React.FC = () => {
                                 required={isSignUp}
                                 value={bairro}
                                 onChange={(e) => setBairro(e.target.value)}
-                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 px-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
+                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 px-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
                                 placeholder="Centro"
                             />
                         </div>
@@ -401,7 +423,7 @@ const Login: React.FC = () => {
                             type="text"
                             value={complemento}
                             onChange={(e) => setComplemento(e.target.value)}
-                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 px-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
+                            className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 px-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
                             placeholder="Apto, Bloco..."
                         />
                     </div>
@@ -418,7 +440,7 @@ const Login: React.FC = () => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 focus:border-ios-blue transition-all"
+                  className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 focus:border-ios-blue transition-all"
                   placeholder="seu@email.com"
                 />
               </div>
@@ -433,7 +455,7 @@ const Login: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 focus:border-ios-blue transition-all"
+                  className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 focus:border-ios-blue transition-all"
                   placeholder="••••••••"
                 />
               </div>
@@ -450,7 +472,7 @@ const Login: React.FC = () => {
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`w-full bg-gray-50 border rounded-xl py-3.5 pl-11 pr-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20 focus:border-ios-blue transition-all ${
+                    className={`w-full bg-gray-50 border rounded-xl py-3.5 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 focus:border-ios-blue transition-all ${
                         confirmPassword && password !== confirmPassword ? 'border-red-300 focus:border-red-500' : 'border-gray-100'
                     }`}
                     placeholder="Repita a senha"
@@ -510,7 +532,7 @@ const Login: React.FC = () => {
                             placeholder="Busque pelo nome..."
                             value={citySearchTerm}
                             onChange={(e) => setCitySearchTerm(e.target.value)}
-                            className="w-full bg-white border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 transition-all shadow-sm"
+                            className="w-full bg-white border border-gray-200 rounded-xl py-3 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/30 transition-all shadow-sm"
                         />
                     </div>
                 </div>
