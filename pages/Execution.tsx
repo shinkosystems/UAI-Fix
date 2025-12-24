@@ -288,17 +288,33 @@ const Execution: React.FC = () => {
 
                     {activeTab === 'fotos' && (
                         <div className="space-y-8">
-                            {['Antes', 'Depois'].map((type) => (
-                                <div key={type}>
-                                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 ml-1">Fotos do {type}</h4>
-                                    <div className="grid grid-cols-3 gap-3">
-                                        {(type === 'Antes' ? formData.fotoantes : formData.fotodepois).map((url, i) => (
-                                            <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-100"><img src={url} className="w-full h-full object-cover"/>{isProfessional && <button onClick={(e) => handleDeleteImage(e, i, type.toLowerCase() as any)} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full"><Trash2 size={12}/></button>}</div>
-                                        ))}
-                                        {isProfessional && <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center cursor-pointer">{uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={24} className="text-gray-300"/><input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, type.toLowerCase() as any)} />}</label>}
+                            {['Antes', 'Depois'].map((sectionName) => {
+                                const uploadTag = sectionName.toLowerCase() === 'antes' ? 'antes' : 'depois';
+                                const photoList = uploadTag === 'antes' ? formData.fotoantes : formData.fotodepois;
+                                return (
+                                    <div key={sectionName}>
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 ml-1">Fotos do {sectionName}</h4>
+                                        <div className="grid grid-cols-3 gap-3">
+                                            {photoList.map((url, i) => (
+                                                <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-100">
+                                                    <img src={url} className="w-full h-full object-cover"/>
+                                                    {isProfessional && (
+                                                        <button onClick={(e) => handleDeleteImage(e, i, uploadTag)} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full">
+                                                            <Trash2 size={12}/>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {isProfessional && (
+                                                <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center cursor-pointer">
+                                                    {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={24} className="text-gray-300"/>}
+                                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, uploadTag)} />
+                                                </label>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
 
