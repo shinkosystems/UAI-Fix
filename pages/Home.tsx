@@ -44,27 +44,25 @@ const Home: React.FC = () => {
   const [categories, setCategories] = useState<Geral[]>([]);
   const [loading, setLoading] = useState(true);
   const [userType, setUserType] = useState<string>('');
-  const [userName, setUserName] = useState<string>('Usuário'); // State for User Name
+  const [userName, setUserName] = useState<string>('Usuário');
   const [currentUserUuid, setCurrentUserUuid] = useState<string | null>(null);
   const [showProfileAlert, setShowProfileAlert] = useState(false);
   const navigate = useNavigate();
 
-  // Dashboard States
   const [agendamentosCount, setAgendamentosCount] = useState(0);
   const [servicosAtivosCount, setServicosAtivosCount] = useState(0);
   const [recentServices, setRecentServices] = useState<ServiceItem[]>([]);
   const [topProfessionals, setTopProfessionals] = useState<TopProfessional[]>([]);
   const [nextAppointment, setNextAppointment] = useState<NextAppointment | null>(null);
 
-  // Notification States
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [pendingReviewId, setPendingReviewId] = useState<number | null>(null);
   const notificationRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchData();
     
-    // Close notifications when clicking outside
     const handleClickOutside = (event: MouseEvent) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
@@ -77,764 +75,278 @@ const Home: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      
-      // 1. Get User (Auth or Demo Fallback)
       const { data: { user: authUser } } = await supabase.auth.getUser();
       let userUuid = authUser?.id;
 
       if (!userUuid) {
-        // Demo fallback to show real data interaction
         const { data: demoUsers } = await supabase.from('users').select('*').eq('ativo', true).limit(1);
         if (demoUsers && demoUsers.length > 0) userUuid = demoUsers[0].uuid;
       }
 
       if (userUuid) {
           setCurrentUserUuid(userUuid);
-          // Fetch User Type and Check Profile Completeness
-          const { data: userData } = await supabase
-            .from('users')
-            .select('*')
-            .eq('uuid', userUuid)
-            .single();
+          const { data: userData } = await supabase.from('users').select('*').eq('uuid', userUuid).single();
           
           if (userData) {
               const tipo = userData.tipo || '';
               const normalizedType = tipo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
               setUserType(tipo);
 
-              // Set Name (Format to First Name, handle 'Insere' placeholder)
               if (userData.nome && userData.nome !== 'Insere') {
-                  const firstName = userData.nome.split(' ')[0];
-                  setUserName(firstName);
+                  setUserName(userData.nome.split(' ')[0]);
               }
               
-              // Helper to check if field is empty or has a placeholder value
               const isInvalid = (val: any) => {
                   if (!val) return true;
                   const str = String(val).trim().toLowerCase();
-                  return str === '' || 
-                         str === 'insere' || 
-                         str === '000.000.000-00' || 
-                         str === '00000-000' || 
-                         str === '(00) 00000-0000';
+                  return str === '' || str === 'insere' || str === '000.000.000-00' || str === '00000-000' || str === '(00) 00000-0000';
               };
 
-              // Check for critical missing fields OR placeholders
-              const isProfileIncomplete = 
-                  isInvalid(userData.nome) || 
-                  isInvalid(userData.cpf) || 
-                  isInvalid(userData.whatsapp) || 
-                  isInvalid(userData.cep) || 
-                  !userData.cidade || 
-                  isInvalid(userData.rua) || 
-                  isInvalid(userData.numero) || 
-                  isInvalid(userData.bairro);
+              const isProfileIncomplete = isInvalid(userData.nome) || isInvalid(userData.cpf) || isInvalid(userData.whatsapp) || isInvalid(userData.cep) || !userData.cidade || isInvalid(userData.rua) || isInvalid(userData.numero) || isInvalid(userData.bairro);
+              if (isProfileIncomplete) setShowProfileAlert(true);
 
-              if (isProfileIncomplete) {
-                  setShowProfileAlert(true);
-              }
-
-              // --- FETCH NOTIFICATIONS BASED ON ROLE ---
               await fetchNotifications(tipo, userUuid);
+              await checkPendingReviews(userUuid);
 
-              // --- DEFINE SCOPE FOR DASHBOARD DATA ---
               const isInternal = ['gestor', 'planejista', 'orcamentista'].includes(normalizedType);
               const isProfessional = normalizedType === 'profissional';
 
-              // 4. Get "Agendamentos" Count
-              let agendamentosQuery = supabase
-                  .from('agenda')
-                  .select('*', { count: 'exact', head: true })
-                  .is('dataconclusao', null);
-
+              let agendamentosQuery = supabase.from('agenda').select('*', { count: 'exact', head: true }).is('dataconclusao', null);
               if (!isInternal) {
-                  if (isProfessional) {
-                      agendamentosQuery = agendamentosQuery.eq('profissional', userUuid);
-                  } else {
-                      agendamentosQuery = agendamentosQuery.eq('cliente', userUuid);
-                  }
+                  if (isProfessional) agendamentosQuery = agendamentosQuery.eq('profissional', userUuid);
+                  else agendamentosQuery = agendamentosQuery.eq('cliente', userUuid);
               }
               const { count: countAgendamentos } = await agendamentosQuery;
               setAgendamentosCount(countAgendamentos || 0);
 
-              // 5. Get "Serviços Ativos" Count
-              let ativosQuery = supabase
-                  .from('chaves')
-                  .select('*', { count: 'exact', head: true })
-                  .neq('status', 'concluido')
-                  .neq('status', 'cancelado');
-
+              let ativosQuery = supabase.from('chaves').select('*', { count: 'exact', head: true }).neq('status', 'concluido').neq('status', 'cancelado');
               if (!isInternal) {
-                  if (isProfessional) {
-                      ativosQuery = ativosQuery.eq('profissional', userUuid);
-                  } else {
-                      ativosQuery = ativosQuery.eq('cliente', userUuid);
-                  }
+                  if (isProfessional) ativosQuery = ativosQuery.eq('profissional', userUuid);
+                  else ativosQuery = ativosQuery.eq('cliente', userUuid);
               }
               const { count: countAtivos } = await ativosQuery;
               setServicosAtivosCount(countAtivos || 0);
 
-              // 6. Get Next Appointment (Upcoming)
               const nowISO = new Date().toISOString();
-              let nextAgendaQuery = supabase
-                  .from('agenda')
-                  .select(`
-                      id,
-                      execucao,
-                      chaves (
-                          geral (nome),
-                          profissional (nome, fotoperfil),
-                          clienteData:users!cliente (nome, fotoperfil)
-                      )
-                  `)
-                  .gt('execucao', nowISO)
-                  .is('dataconclusao', null)
-                  .order('execucao', { ascending: true })
-                  .limit(1);
-
+              let nextAgendaQuery = supabase.from('agenda').select(`id, execucao, chaves (geral (nome), profissional (nome, fotoperfil), clienteData:users!cliente (nome, fotoperfil))`).gt('execucao', nowISO).is('dataconclusao', null).order('execucao', { ascending: true }).limit(1);
               if (!isInternal) {
-                  if (isProfessional) {
-                      nextAgendaQuery = nextAgendaQuery.eq('profissional', userUuid);
-                  } else {
-                      nextAgendaQuery = nextAgendaQuery.eq('cliente', userUuid);
-                  }
-              } else {
-                  // Internal sees the most urgent global task
-                  nextAgendaQuery = nextAgendaQuery.limit(1);
+                  if (isProfessional) nextAgendaQuery = nextAgendaQuery.eq('profissional', userUuid);
+                  else nextAgendaQuery = nextAgendaQuery.eq('cliente', userUuid);
               }
-
               const { data: nextAgendaData } = await nextAgendaQuery;
-              const nextAgenda = nextAgendaData && nextAgendaData.length > 0 ? nextAgendaData[0] : null;
+              const nextAgenda = nextAgendaData?.[0];
 
               if (nextAgenda) {
                    const key: any = nextAgenda.chaves;
-                   // For client, show pro name. For pro/internal, show client name (or generic info)
-                   const displayName = (isProfessional || isInternal) 
-                        ? (key?.clienteData?.nome || 'Cliente') 
-                        : (key?.profissional?.nome || 'Profissional');
-                   
-                   const displayPhoto = (isProfessional || isInternal)
-                        ? (key?.clienteData?.fotoperfil)
-                        : (key?.profissional?.fotoperfil);
-
-                   setNextAppointment({
-                       id: nextAgenda.id,
-                       serviceName: key?.geral?.nome || 'Serviço Agendado',
-                       date: new Date(nextAgenda.execucao),
-                       proName: displayName,
-                       proPhoto: displayPhoto || ''
-                   });
+                   const displayName = (isProfessional || isInternal) ? (key?.clienteData?.nome || 'Cliente') : (key?.profissional?.nome || 'Profissional');
+                   const displayPhoto = (isProfessional || isInternal) ? (key?.clienteData?.fotoperfil) : (key?.profissional?.fotoperfil);
+                   setNextAppointment({ id: nextAgenda.id, serviceName: key?.geral?.nome || 'Serviço Agendado', date: new Date(nextAgenda.execucao), proName: displayName, proPhoto: displayPhoto || '' });
               }
 
-              // 7. Get Recent Services List
-              let recentQuery = supabase
-                  .from('agenda')
-                  .select(`
-                    id,
-                    execucao,
-                    dataconclusao,
-                    chaves (
-                      status,
-                      geral (
-                        nome
-                      )
-                    )
-                  `)
-                  .order('execucao', { ascending: false })
-                  .limit(6);
-
+              let recentQuery = supabase.from('agenda').select(`id, execucao, dataconclusao, chaves (status, geral (nome))`).order('execucao', { ascending: false }).limit(6);
               if (!isInternal) {
-                  if (isProfessional) {
-                      recentQuery = recentQuery.eq('profissional', userUuid);
-                  } else {
-                      recentQuery = recentQuery.eq('cliente', userUuid);
-                  }
+                  if (isProfessional) recentQuery = recentQuery.eq('profissional', userUuid);
+                  else recentQuery = recentQuery.eq('cliente', userUuid);
               }
-
               const { data: agendaData } = await recentQuery;
-
               if (agendaData) {
-                const formattedServices: ServiceItem[] = agendaData.map((item: any) => {
+                setRecentServices(agendaData.map((item: any) => {
                   const dateObj = new Date(item.execucao);
                   const now = new Date();
                   const isConcluded = !!item.dataconclusao;
-                  const serviceName = item.chaves?.geral?.nome || 'Serviço Geral';
-                  
-                  let status = 'Agendado';
-                  let color = 'bg-blue-100 text-blue-700';
-
-                  if (isConcluded) {
-                    status = 'Concluído';
-                    color = 'bg-gray-100 text-gray-600';
-                  } else if (dateObj < now) {
-                    status = 'Pendente';
-                    color = 'bg-yellow-100 text-yellow-700';
-                  } else {
-                    status = 'Confirmado';
-                    color = 'bg-green-100 text-green-700';
-                  }
-
-                  const dateStr = new Intl.DateTimeFormat('pt-BR', { 
-                    day: '2-digit', 
-                    month: 'short', 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
-                  }).format(dateObj).replace('.', '');
-
-                  return {
-                    id: item.id, // This is the agenda ID
-                    title: serviceName,
-                    date: dateStr,
-                    status: status,
-                    color: color,
-                    timestamp: item.execucao
-                  };
-                });
-                setRecentServices(formattedServices);
+                  let status = 'Agendado', color = 'bg-blue-100 text-blue-700';
+                  if (isConcluded) { status = 'Concluído'; color = 'bg-gray-100 text-gray-900'; }
+                  else if (dateObj < now) { status = 'Pendente'; color = 'bg-yellow-100 text-yellow-900'; }
+                  else { status = 'Confirmado'; color = 'bg-green-100 text-green-900'; }
+                  return { id: item.id, title: item.chaves?.geral?.nome || 'Serviço', date: dateObj.toLocaleString('pt-BR', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}), status, color, timestamp: item.execucao };
+                }));
               }
           }
       }
 
-      // 2. Fetch Categories (Stories)
-      const { data: catData } = await supabase
-        .from('geral')
-        .select('*')
-        .eq('primaria', true)
-        .eq('ativa', true)
-        .order('id', { ascending: true });
+      const { data: catData } = await supabase.from('geral').select('*').eq('primaria', true).eq('ativa', true).order('id', { ascending: true });
       setCategories(catData || []);
 
-      // 3. Fetch Top Professionals Logic
-      const { data: pros } = await supabase
-        .from('users')
-        .select('uuid, nome, fotoperfil')
-        .ilike('tipo', 'profissional')
-        .eq('ativo', true);
-
+      const { data: pros } = await supabase.from('users').select('uuid, nome, fotoperfil').ilike('tipo', 'profissional').eq('ativo', true);
       if (pros && pros.length > 0) {
-          const { data: agendaData } = await supabase.from('agenda').select('profissional');
-          const { data: ratingsData } = await supabase.from('avaliacoes').select('profissional, nota');
-
+          const [{ data: ags }, { data: rats }] = await Promise.all([supabase.from('agenda').select('profissional'), supabase.from('avaliacoes').select('profissional, nota')]);
           const stats = pros.map(p => {
-              const count = agendaData?.filter(a => a.profissional === p.uuid).length || 0;
-              const pRatings = ratingsData?.filter(r => r.profissional === p.uuid) || [];
-              const avg = pRatings.length > 0 
-                ? pRatings.reduce((acc, curr) => acc + curr.nota, 0) / pRatings.length 
-                : 0;
-
-              return {
-                  uuid: p.uuid,
-                  nome: p.nome,
-                  fotoperfil: p.fotoperfil,
-                  serviceCount: count,
-                  rating: avg
-              };
+              const count = ags?.filter(a => a.profissional === p.uuid).length || 0;
+              const pRats = rats?.filter(r => r.profissional === p.uuid) || [];
+              return { uuid: p.uuid, nome: p.nome, fotoperfil: p.fotoperfil, serviceCount: count, rating: pRats.length > 0 ? pRats.reduce((a, b) => a + b.nota, 0) / pRats.length : 0 };
           });
-
-          // Sorting Logic: Priority on Rating (Highest to Lowest), then Service Count
-          const sortedPros = stats.sort((a, b) => {
-              if (b.rating !== a.rating) {
-                  return b.rating - a.rating; // Primary: Rating
-              }
-              return b.serviceCount - a.serviceCount; // Secondary: Service Count
-          });
-
-          setTopProfessionals(sortedPros.slice(0, 5)); 
+          setTopProfessionals(stats.sort((a, b) => b.rating !== a.rating ? b.rating - a.rating : b.serviceCount - a.serviceCount).slice(0, 5));
       }
+    } catch (error) { console.error(error); } finally { setLoading(false); }
+  };
 
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
+  const checkPendingReviews = async (uuid: string) => {
+      const { data: concluded } = await supabase.from('chaves').select('id').eq('cliente', uuid).eq('status', 'concluido');
+      if(!concluded?.length) return;
+      const ids = concluded.map(c => c.id);
+      const { data: reviews } = await supabase.from('avaliacoes').select('chave').in('chave', ids);
+      const reviewedIds = reviews?.map(r => r.chave) || [];
+      const firstPending = ids.find(id => !reviewedIds.includes(id));
+      if(firstPending) setPendingReviewId(firstPending);
   };
 
   const fetchNotifications = async (role: string, uuid: string) => {
-      const normalizedRole = role.toLowerCase();
+      const normalizedRole = role.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       let notifs: NotificationItem[] = [];
-
       try {
-          if (normalizedRole === 'planejista' || normalizedRole === 'orcamentista') {
-              // 1. Planejista/Orcamentista: Busca em 'planejamento' onde ativo = TRUE
-              // Limitamos aos 10 últimos para não sobrecarregar
-              const { data } = await supabase
-                  .from('planejamento')
-                  .select(`
-                      id, 
-                      created_at, 
-                      descricao,
-                      chaves (
-                          chaveunica,
-                          geral (nome)
-                      )
-                  `)
-                  .eq('ativo', true)
-                  .order('created_at', { ascending: false })
-                  .limit(10);
+          if (normalizedRole === 'planejista' || normalizedRole === 'orcamentista' || normalizedRole === 'gestor') {
+              // Status alvo baseado na função
+              const targetStatus = normalizedRole === 'planejista' ? 'pendente' : (normalizedRole === 'orcamentista' ? 'analise' : null);
+              
+              let query = supabase.from('chaves').select(`id, created_at, chaveunica, status, geral (nome)`);
+              
+              if (targetStatus) {
+                  query = query.eq('status', targetStatus);
+              } else {
+                  // Gestor vê pendentes e análise
+                  query = query.in('status', ['pendente', 'analise']);
+              }
+
+              const { data } = await query.order('created_at', { ascending: false }).limit(10);
               
               if (data) {
-                  notifs = data.map((item: any) => ({
-                      id: item.id,
-                      title: 'Planejamento Ativo',
-                      description: `Chave: ${item.chaves?.chaveunica} - ${item.chaves?.geral?.nome}`,
-                      date: new Date(item.created_at).toLocaleDateString('pt-BR'),
-                      type: 'planning',
-                      read: false
+                  notifs = data.map((item: any) => ({ 
+                      id: item.id, 
+                      title: item.status === 'analise' ? 'Novo Orçamento Pendente' : 'Novo Planejamento Pendente', 
+                      description: `Chave: ${item.chaveunica} - ${item.geral?.nome}`, 
+                      date: new Date(item.created_at).toLocaleDateString('pt-BR'), 
+                      type: 'planning', 
+                      read: false 
                   }));
               }
           } 
-          else if (normalizedRole === 'consumidor') {
-              // 2. Consumidor: Busca em 'agenda' onde cliente = UUID
-              const { data } = await supabase
-                  .from('agenda')
-                  .select(`
-                      id,
-                      execucao,
-                      observacoes,
-                      chaves (
-                          geral (nome),
-                          status
-                      )
-                  `)
-                  .eq('cliente', uuid)
-                  .order('execucao', { ascending: false })
-                  .limit(10);
-                  
-              if (data) {
-                  notifs = data.map((item: any) => ({
-                      id: item.id,
-                      title: item.chaves?.geral?.nome || 'Serviço Agendado',
-                      description: `Status: ${item.chaves?.status}. ${item.observacoes || ''}`,
-                      date: new Date(item.execucao).toLocaleDateString('pt-BR'),
-                      type: 'agenda',
-                      read: false
-                  }));
-              }
+          else {
+              const { data } = await supabase.from('agenda').select(`id, execucao, observacoes, chaves (geral (nome), status)`).or(`cliente.eq.${uuid},profissional.eq.${uuid}`).order('execucao', { ascending: false }).limit(10);
+              if (data) notifs = data.map((item: any) => ({ id: item.id, title: item.chaves?.geral?.nome || 'Serviço', description: `Status: ${item.chaves?.status}`, date: new Date(item.execucao).toLocaleDateString('pt-BR'), type: 'agenda', read: false }));
           }
-          else if (normalizedRole === 'profissional') {
-              // 3. Profissional: Busca em 'agenda' onde profissional = UUID
-              const { data } = await supabase
-                  .from('agenda')
-                  .select(`
-                      id,
-                      execucao,
-                      observacoes,
-                      chaves (
-                          geral (nome),
-                          status
-                      )
-                  `)
-                  .eq('profissional', uuid)
-                  .order('execucao', { ascending: false })
-                  .limit(10);
-              
-              if (data) {
-                   notifs = data.map((item: any) => ({
-                      id: item.id,
-                      title: 'Novo Agendamento',
-                      description: `${item.chaves?.geral?.nome} - Status: ${item.chaves?.status}`,
-                      date: new Date(item.execucao).toLocaleDateString('pt-BR'),
-                      type: 'agenda',
-                      read: false
-                  }));
-              }
-          }
-          
           setNotifications(notifs);
-
-      } catch (error) {
-          console.error("Erro ao buscar notificações:", error);
-      }
+      } catch (error) { console.error(error); }
   };
   
-  // Logic to check for pending reviews on render/state update if we want a separate banner
-  const [hasPendingReviews, setHasPendingReviews] = useState(false);
-  
-  useEffect(() => {
-      const checkReviews = async () => {
-          const { data: { user } } = await supabase.auth.getUser();
-          if(!user) return;
-          
-          const { data: concluded } = await supabase.from('chaves').select('id').eq('cliente', user.id).eq('status', 'concluido');
-          if(!concluded || concluded.length === 0) return;
-          
-          const ids = concluded.map(c => c.id);
-          const { data: reviews } = await supabase.from('avaliacoes').select('chave').in('chave', ids);
-          
-          const reviewedIds = reviews ? reviews.map(r => r.chave) : [];
-          if(ids.some(id => !reviewedIds.includes(id))) {
-              setHasPendingReviews(true);
-          }
-      };
-      checkReviews();
-  }, [loading]);
-
-
   const handleSmartNavigation = () => {
       const type = userType.toLowerCase();
-      if (type === 'consumidor' || type === 'profissional') {
-          navigate('/execution');
-      } else {
-          navigate('/calendar');
-      }
+      if (type === 'consumidor' || type === 'profissional') navigate('/execution');
+      else navigate('/calendar');
   };
   
-  const handleServiceClick = (agendaId: number) => {
-      navigate('/calendar', { state: { openEventId: agendaId } });
-  };
-  
+  const handleServiceClick = (agendaId: number) => { navigate('/calendar', { state: { openEventId: agendaId } }); };
   const handleNotificationClick = (notif: NotificationItem) => {
       setShowNotifications(false);
-      // Logic to navigate based on notification type/role
-      const type = userType.toLowerCase();
-      if (type === 'planejista' || type === 'orcamentista') {
-           navigate('/chamados');
-      } else if (type === 'consumidor') {
-           navigate('/orders');
-      } else {
-           navigate('/calendar');
-      }
+      const type = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (type === 'planejista' || type === 'orcamentista' || type === 'gestor') navigate('/chamados');
+      else if (type === 'consumidor') navigate('/orders');
+      else navigate('/calendar');
   };
-
-  const normalizedUserType = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const canSchedule = normalizedUserType === 'gestor' || normalizedUserType === 'consumidor';
 
   return (
     <div className="min-h-screen bg-[#F2F4F8]">
-      {/* Header */}
-      <header className="px-5 pt-12 md:pt-8 pb-4 flex justify-between items-center md:bg-transparent md:backdrop-blur-none vitrified md:border-none md:shadow-none sticky md:static top-0 z-30 rounded-b-[2rem] md:rounded-none shadow-sm mb-4 relative">
+      <header className="px-5 pt-12 md:pt-8 pb-4 flex justify-between items-center md:bg-transparent vitrified sticky md:static top-0 z-30 rounded-b-[2rem] md:rounded-none shadow-sm mb-4">
         <div>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Bem-vindo, {userName}</h2>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
         </div>
         <div className="flex items-center space-x-3" ref={notificationRef}>
-            <span className="hidden md:block text-sm font-medium text-gray-500">Olá, {userName}</span>
-            
-            {/* Botão de Perfil Público para Profissionais */}
             {userType.toLowerCase() === 'profissional' && currentUserUuid && (
-                <button
-                    onClick={() => navigate(`/professional/${currentUserUuid}`)}
-                    className="flex items-center space-x-2 bg-white px-3 py-2 rounded-full text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-50 transition-all shadow-sm active:scale-95"
-                    title="Meu Perfil Público"
-                >
-                    <User size={16} />
-                    <span className="hidden sm:inline">Minha Página</span>
-                </button>
+                <button onClick={() => navigate(`/professional/${currentUserUuid}`)} className="flex items-center space-x-2 bg-white px-3 py-2 rounded-full text-xs font-bold text-gray-900 border border-gray-200 shadow-sm active:scale-95"><User size={16} /><span className="hidden sm:inline">Minha Página</span></button>
             )}
-
             <div className="relative">
-                <button 
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="relative p-2.5 rounded-full bg-white shadow-sm border border-gray-100 hover:scale-105 transition-transform active:bg-gray-100"
-                >
-                    <Bell size={20} className="text-gray-700" />
-                    {notifications.length > 0 && (
-                        <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white animate-pulse"></span>
-                    )}
-                </button>
-                
-                {/* Notification Dropdown */}
+                <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2.5 rounded-full bg-white shadow-sm border border-gray-100"><Bell size={20} className="text-gray-900" />{notifications.length > 0 && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white animate-pulse"></span>}</button>
                 {showNotifications && (
-                    <div className="absolute right-0 top-14 w-80 bg-white/90 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 origin-top-right">
-                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white/50">
-                            <h3 className="font-bold text-gray-900 text-sm">Notificações</h3>
-                            <button onClick={() => setShowNotifications(false)} className="text-gray-400 hover:text-gray-600">
-                                <X size={16} />
-                            </button>
-                        </div>
+                    <div className="absolute right-0 top-14 w-80 bg-white/90 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white/50"><h3 className="font-bold text-gray-900 text-sm">Notificações</h3><button onClick={() => setShowNotifications(false)} className="text-gray-400"><X size={16} /></button></div>
                         <div className="max-h-80 overflow-y-auto">
-                            {notifications.length > 0 ? (
-                                notifications.map((notif) => (
-                                    <div 
-                                        key={notif.id}
-                                        onClick={() => handleNotificationClick(notif)}
-                                        className="p-4 border-b border-gray-50 hover:bg-blue-50/50 transition-colors cursor-pointer group"
-                                    >
-                                        <div className="flex justify-between items-start mb-1">
-                                            <span className="text-xs font-bold text-ios-blue bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 group-hover:bg-white transition-colors">{notif.type === 'agenda' ? 'Agenda' : 'Planejamento'}</span>
-                                            <span className="text-[10px] text-gray-400">{notif.date}</span>
-                                        </div>
-                                        <h4 className="text-sm font-bold text-gray-900 leading-tight">{notif.title}</h4>
-                                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">{notif.description}</p>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="p-8 text-center">
-                                    <div className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-2 text-gray-300">
-                                        <Bell size={18} />
-                                    </div>
-                                    <p className="text-xs text-gray-400">Nenhuma notificação nova.</p>
+                            {notifications.length > 0 ? notifications.map((notif) => (
+                                <div key={notif.id} onClick={() => handleNotificationClick(notif)} className="p-4 border-b border-gray-50 hover:bg-blue-50 transition-colors cursor-pointer group">
+                                    <div className="flex justify-between items-start mb-1"><span className="text-xs font-bold text-ios-blue bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 group-hover:bg-white">{notif.type === 'agenda' ? 'Agenda' : 'Planejamento'}</span><span className="text-[10px] text-gray-400">{notif.date}</span></div>
+                                    <h4 className="text-sm font-bold text-gray-900 leading-tight">{notif.title}</h4>
+                                    <p className="text-xs text-gray-500 mt-1 line-clamp-2">{notif.description}</p>
                                 </div>
-                            )}
+                            )) : <div className="p-8 text-center"><Bell size={18} className="mx-auto text-gray-300 mb-2"/><p className="text-xs text-gray-400">Vazio.</p></div>}
                         </div>
-                        {notifications.length > 0 && (
-                            <div className="p-2 bg-gray-50 text-center">
-                                <button className="text-xs font-bold text-gray-500 hover:text-gray-800 transition-colors">Marcar todas como lidas</button>
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
         </div>
       </header>
 
-      {/* --- PROFILE ALERT --- */}
       {showProfileAlert && (
-          <div className="mx-5 mb-4 bg-orange-50 border border-orange-100 rounded-[2rem] p-5 shadow-sm flex items-start justify-between animate-in fade-in slide-in-from-top-4">
-              <div className="flex items-start space-x-3">
-                  <div className="bg-orange-100 p-2 rounded-xl text-orange-600 mt-1">
-                      <AlertTriangle size={20} />
-                  </div>
-                  <div>
-                      <h3 className="font-bold text-orange-900 text-sm">Perfil Incompleto</h3>
-                      <p className="text-xs text-orange-700 mt-1 mb-2 max-w-xs">
-                          Para realizar agendamentos, precisamos do seu CPF, Telefone e Endereço completo.
-                      </p>
-                      <button 
-                          onClick={() => navigate('/profile')}
-                          className="bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-orange-600 transition-colors shadow-sm"
-                      >
-                          Completar Agora
-                      </button>
-                  </div>
-              </div>
+          <div className="mx-5 mb-4 bg-orange-50 border border-orange-100 rounded-[2rem] p-5 shadow-sm flex items-start justify-between">
+              <div className="flex items-start space-x-3"><div className="bg-orange-100 p-2 rounded-xl text-orange-600 mt-1"><AlertTriangle size={20} /></div><div><h3 className="font-bold text-orange-900 text-sm">Perfil Incompleto</h3><p className="text-xs text-orange-700 mt-1 mb-2 max-w-xs">Precisamos dos seus dados para agendamentos.</p><button onClick={() => navigate('/profile')} className="bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm">Completar Agora</button></div></div>
           </div>
       )}
       
-      {/* --- PENDING REVIEW ALERT --- */}
-      {hasPendingReviews && !showProfileAlert && (
-          <div 
-            onClick={() => navigate('/orders')}
-            className="mx-5 mb-4 bg-yellow-50 border border-yellow-100 rounded-[2rem] p-5 shadow-sm flex items-center justify-between animate-in fade-in slide-in-from-top-4 cursor-pointer hover:bg-yellow-100/50 transition-colors"
-          >
-              <div className="flex items-center space-x-3">
-                  <div className="bg-yellow-100 p-2 rounded-xl text-yellow-600">
-                      <Star size={20} className="fill-yellow-600"/>
-                  </div>
-                  <div>
-                      <h3 className="font-bold text-yellow-900 text-sm">Avaliação Pendente</h3>
-                      <p className="text-xs text-yellow-700 mt-0.5">
-                          Você tem serviços concluídos sem avaliação.
-                      </p>
-                  </div>
-              </div>
+      {pendingReviewId && !showProfileAlert && (
+          <div onClick={() => navigate('/orders', { state: { ratingOrderId: pendingReviewId } })} className="mx-5 mb-4 bg-yellow-50 border border-yellow-100 rounded-[2rem] p-5 shadow-sm flex items-center justify-between cursor-pointer hover:bg-yellow-100/50 transition-colors">
+              <div className="flex items-center space-x-3"><div className="bg-yellow-100 p-2 rounded-xl text-yellow-600"><Star size={20} className="fill-yellow-600"/></div><div><h3 className="font-bold text-yellow-900 text-sm">Avaliação Pendente</h3><p className="text-xs text-yellow-700 mt-0.5">Você tem serviços concluídos para avaliar.</p></div></div>
               <ChevronRight size={18} className="text-yellow-400" />
           </div>
       )}
 
-      {/* Stories Section */}
-      <div className="mt-2 md:mt-0">
-        <div className="flex space-x-4 overflow-x-auto px-5 pb-4 no-scrollbar">
-          {loading ? (
-            Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex flex-col items-center space-y-1 min-w-[72px]">
-                <div className="w-[68px] h-[68px] rounded-full bg-white animate-pulse"></div>
-                <div className="w-12 h-2 bg-gray-200 rounded animate-pulse mt-2"></div>
-              </div>
-            ))
-          ) : (
-            categories.map((cat) => (
-              <StoryCircle key={cat.id} item={cat} />
-            ))
-          )}
-        </div>
+      <div className="flex space-x-4 overflow-x-auto px-5 pb-4 no-scrollbar">
+          {loading ? Array.from({ length: 5 }).map((_, i) => <div key={i} className="w-[68px] h-[68px] rounded-full bg-white animate-pulse"></div>) : categories.map((cat) => <StoryCircle key={cat.id} item={cat} />)}
       </div>
 
       <div className="px-5 space-y-6 mt-2 md:mt-6">
-        
-        {/* NEXT APPOINTMENT WIDGET */}
         {nextAppointment && (
-            <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-[2.5rem] p-6 text-white shadow-xl relative overflow-hidden group hover:scale-[1.01] transition-transform cursor-pointer" onClick={() => handleServiceClick(nextAppointment.id)}>
-                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
-                <div className="absolute bottom-0 left-0 w-24 h-24 bg-blue-500/30 rounded-full -ml-8 -mb-8 blur-xl"></div>
-                
+            <div className="bg-white border border-blue-100 rounded-[2.5rem] p-6 text-gray-900 shadow-vitrified relative overflow-hidden group hover:scale-[1.01] transition-transform cursor-pointer" onClick={() => handleServiceClick(nextAppointment.id)}>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/50 rounded-full -mr-8 -mt-8 blur-2xl"></div>
                 <div className="relative z-10 flex items-center justify-between">
                     <div>
-                        <span className="text-blue-200 text-xs font-bold uppercase tracking-widest bg-blue-900/30 px-2 py-1 rounded-lg">Próximo Atendimento</span>
-                        <h3 className="text-xl font-bold mt-3 mb-1">{nextAppointment.serviceName}</h3>
-                        <div className="flex items-center space-x-2 text-blue-100 text-sm">
-                            <Calendar size={14} />
-                            <span>
-                                {nextAppointment.date.toLocaleDateString('pt-BR', {weekday: 'long', day: '2-digit', month: 'long'})}
-                            </span>
-                        </div>
-                         <div className="flex items-center space-x-2 text-blue-100 text-sm mt-1">
-                            <Clock size={14} />
-                            <span className="font-bold text-white">
-                                {nextAppointment.date.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
-                            </span>
-                        </div>
+                        <span className="text-ios-blue text-[10px] font-bold uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-lg border border-blue-100">Próximo Atendimento</span>
+                        <h3 className="text-xl font-bold mt-3 mb-1 text-gray-900">{nextAppointment.serviceName}</h3>
+                        <div className="flex items-center space-x-2 text-gray-500 text-sm"><Calendar size={14} /><span>{nextAppointment.date.toLocaleDateString('pt-BR', {weekday: 'long', day: '2-digit', month: 'long'})}</span></div>
+                         <div className="flex items-center space-x-2 text-gray-500 text-sm mt-1"><Clock size={14} /><span className="font-bold text-gray-900">{nextAppointment.date.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}</span></div>
                     </div>
-
-                    <div className="flex flex-col items-center">
-                        <div className="w-12 h-12 rounded-full border-2 border-white/30 bg-white/10 overflow-hidden mb-2">
-                            <img src={nextAppointment.proPhoto || `https://ui-avatars.com/api/?name=${nextAppointment.proName}`} alt="Pro" className="w-full h-full object-cover"/>
-                        </div>
-                        <span className="text-[10px] font-medium opacity-80">{nextAppointment.proName.split(' ')[0]}</span>
-                    </div>
+                    <div className="flex flex-col items-center"><div className="w-12 h-12 rounded-full border-2 border-white shadow-md bg-gray-50 overflow-hidden mb-2"><img src={nextAppointment.proPhoto || `https://ui-avatars.com/api/?name=${nextAppointment.proName}`} className="w-full h-full object-cover"/></div><span className="text-[10px] font-bold text-gray-900">{nextAppointment.proName.split(' ')[0]}</span></div>
                 </div>
             </div>
         )}
 
-        {/* Dashboard Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-[2rem] shadow-vitrified flex flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
-            <div className="absolute -top-6 -right-6 w-24 h-24 bg-blue-50/50 rounded-full transition-transform group-hover:scale-125"></div>
-            <div className="relative z-10">
-              <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-4">
-                <CalendarCheck size={20} />
-              </div>
-              <span className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">
-                {loading ? '...' : agendamentosCount}
-              </span>
-              <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mt-2">Agendamentos</p>
+          {[ {icon: CalendarCheck, label: 'Agendamentos', count: agendamentosCount, color: 'text-blue-600', bg: 'bg-blue-50'}, {icon: TrendingUp, label: 'Serviços Ativos', count: servicosAtivosCount, color: 'text-purple-600', bg: 'bg-purple-50'} ].map((stat, i) => (
+            <div key={i} className="bg-white p-5 rounded-[2rem] shadow-vitrified flex flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform">
+              <div className={`absolute -top-6 -right-6 w-24 h-24 ${stat.bg}/30 rounded-full`}></div>
+              <div className="relative z-10"><div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center mb-4`}><stat.icon size={20} /></div><span className="text-3xl font-bold text-gray-900 tracking-tight">{loading ? '...' : stat.count}</span><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">{stat.label}</p></div>
             </div>
+          ))}
+          <div className="hidden md:flex bg-white p-5 rounded-[2rem] shadow-vitrified flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform">
+            <div className="absolute -top-6 -right-6 w-24 h-24 bg-green-50/30 rounded-full"></div>
+            <div className="relative z-10"><div className="w-10 h-10 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center mb-4"><Star size={20} /></div><span className="text-3xl font-bold text-gray-900 tracking-tight">4.9</span><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Avaliação Média</p></div>
           </div>
-
-          <div className="bg-white p-5 rounded-[2rem] shadow-vitrified flex flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
-            <div className="absolute -top-6 -right-6 w-24 h-24 bg-purple-50/50 rounded-full transition-transform group-hover:scale-125"></div>
-            <div className="relative z-10">
-              <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-4">
-                <TrendingUp size={20} />
-              </div>
-              <span className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">
-                 {loading ? '...' : servicosAtivosCount}
-              </span>
-              <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mt-2">Serviços Ativos</p>
-            </div>
-          </div>
-
-          <div className="hidden md:flex bg-white p-5 rounded-[2rem] shadow-vitrified flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
-            <div className="absolute -top-6 -right-6 w-24 h-24 bg-green-50/50 rounded-full transition-transform group-hover:scale-125"></div>
-            <div className="relative z-10">
-              <div className="w-10 h-10 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center mb-4">
-                <Star size={20} />
-              </div>
-              <span className="text-3xl md:text-4xl font-bold text-gray-900 tracking-tight">4.9</span>
-              <p className="text-xs text-gray-400 font-semibold uppercase tracking-wider mt-2">Avaliação Média</p>
-            </div>
-          </div>
-
-          <div className="hidden md:flex bg-white p-5 rounded-[2rem] shadow-vitrified flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform duration-300">
-             <div className="relative z-10 flex items-center justify-center h-full">
-                <p className="text-gray-400 text-sm font-medium">Mais métricas em breve</p>
-             </div>
-          </div>
+          <div className="hidden md:flex bg-white p-5 rounded-[2rem] shadow-vitrified flex-col justify-center items-center h-36 text-center text-gray-400 text-sm font-bold">Mais métricas em breve</div>
         </div>
 
-        {/* TOP PROFESSIONALS SECTION */}
         {topProfessionals.length > 0 && (
             <div>
-                <div className="flex items-center space-x-2 mb-4 px-1">
-                    <Trophy size={18} className="text-yellow-500" />
-                    <h3 className="text-lg font-bold text-gray-900">Top Profissionais</h3>
-                </div>
-                
+                <div className="flex items-center space-x-2 mb-4 px-1"><Trophy size={18} className="text-yellow-500" /><h3 className="text-lg font-bold text-gray-900">Top Profissionais</h3></div>
                 <div className="flex space-x-4 overflow-x-auto no-scrollbar pb-2">
                     {topProfessionals.map((pro, index) => (
-                        <div 
-                            key={pro.uuid} 
-                            onClick={() => navigate(`/professional/${pro.uuid}`)}
-                            className="bg-white p-4 rounded-[1.8rem] shadow-sm border border-gray-50 min-w-[160px] flex flex-col items-center relative overflow-hidden cursor-pointer hover:shadow-md transition-all group"
-                        >
-                            {/* Rank Badge */}
-                            <div className={`absolute top-0 left-0 px-3 py-1.5 rounded-br-2xl text-[10px] font-bold text-white z-10 ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-400' : 'bg-gray-800'}`}>
-                                #{index + 1}
-                            </div>
-
-                            <div className="w-16 h-16 rounded-full p-1 bg-gradient-to-tr from-gray-100 to-gray-200 mb-3 mt-2 group-hover:scale-105 transition-transform">
-                                <img 
-                                    src={pro.fotoperfil || `https://ui-avatars.com/api/?name=${pro.nome}&background=random`} 
-                                    alt={pro.nome} 
-                                    className="w-full h-full rounded-full object-cover border-2 border-white"
-                                />
-                            </div>
-                            
+                        <div key={pro.uuid} onClick={() => navigate(`/professional/${pro.uuid}`)} className="bg-white p-4 rounded-[1.8rem] shadow-sm border border-gray-50 min-w-[160px] flex flex-col items-center relative overflow-hidden cursor-pointer group">
+                            <div className={`absolute top-0 left-0 px-3 py-1.5 rounded-br-2xl text-[10px] font-bold text-white z-10 ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-gray-400' : index === 2 ? 'bg-orange-400' : 'bg-gray-800'}`}>#{index + 1}</div>
+                            <div className="w-16 h-16 rounded-full p-1 bg-gradient-to-tr from-gray-100 to-gray-200 mb-3 mt-2 group-hover:scale-105 transition-transform"><img src={pro.fotoperfil || `https://ui-avatars.com/api/?name=${pro.nome}`} className="w-full h-full rounded-full object-cover border-2 border-white"/></div>
                             <h4 className="font-bold text-gray-900 text-sm text-center truncate w-full mb-1">{pro.nome}</h4>
-                            
-                            <div className="flex items-center space-x-1 mb-2">
-                                <Star size={10} className="text-yellow-500 fill-yellow-500" />
-                                <span className="text-xs font-bold text-gray-700">{pro.rating.toFixed(1)}</span>
-                            </div>
-
-                            <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-[10px] font-bold flex items-center w-full justify-center">
-                                <Briefcase size={10} className="mr-1" />
-                                {pro.serviceCount} serviços
-                            </div>
+                            <div className="flex items-center space-x-1 mb-2"><Star size={10} className="text-yellow-500 fill-yellow-500" /><span className="text-xs font-bold text-gray-900">{pro.rating.toFixed(1)}</span></div>
+                            <div className="bg-blue-50 text-ios-blue px-3 py-1 rounded-full text-[10px] font-bold flex items-center w-full justify-center"><Briefcase size={10} className="mr-1" />{pro.serviceCount} serviços</div>
                         </div>
                     ))}
                 </div>
             </div>
         )}
 
-        {/* Banner Section */}
-        <div className="bg-gray-900 rounded-[2rem] p-6 md:p-10 text-white shadow-lg relative overflow-hidden group w-full">
-          <div className="absolute right-0 bottom-0 opacity-10 transform translate-y-4 translate-x-4 transition-transform group-hover:scale-110 duration-700">
-             <Star size={140} />
-          </div>
-          <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-md border border-white/10 px-2.5 py-1 rounded-lg">
-             <span className="text-[10px] font-bold text-white uppercase tracking-wider">Em Breve</span>
-          </div>
-          <div className="relative z-10 max-w-lg">
-            <h3 className="text-xl md:text-3xl font-bold mb-2">Assinatura Premium</h3>
-            <p className="text-sm md:text-base text-gray-400 mb-6 font-medium">Tenha prioridade na busca, suporte dedicado e descontos exclusivos em todos os serviços.</p>
-            <button className="bg-white text-gray-900 px-6 py-3 rounded-[1.2rem] text-xs md:text-sm font-bold shadow-lg hover:bg-gray-100 transition-colors">
-                Saiba Mais
-            </button>
-          </div>
-        </div>
-
-        {/* Recent Services List */}
         <div>
-          <div className="flex justify-between items-center mb-4 px-1">
-            <h3 className="text-lg font-bold text-gray-900">Últimos Serviços</h3>
-            <button 
-              onClick={handleSmartNavigation}
-              className="text-ios-blue text-xs font-bold uppercase tracking-wide hover:opacity-70 transition-opacity"
-            >
-              Ver todos
-            </button>
-          </div>
-          
+          <div className="flex justify-between items-center mb-4 px-1"><h3 className="text-lg font-bold text-gray-900">Últimos Serviços</h3><button onClick={handleSmartNavigation} className="text-ios-blue text-xs font-bold uppercase tracking-wide">Ver todos</button></div>
           <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">
-            {loading ? (
-               <div className="flex flex-col space-y-3 col-span-full">
-                 {[1, 2].map(i => <div key={i} className="h-20 bg-white rounded-[1.5rem] animate-pulse"></div>)}
-               </div>
-            ) : recentServices.length > 0 ? (
-              recentServices.map((service) => (
-                <div 
-                    key={service.id} 
-                    onClick={() => handleServiceClick(service.id)}
-                    className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-50 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer group active:scale-[0.98]"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${service.color}`}>
-                       <Clock size={20} />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-gray-900 text-sm">{service.title}</h4>
-                      <p className="text-xs text-gray-400 font-medium mt-0.5">{service.date}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center">
-                    <ChevronRight size={18} className="text-gray-300 group-hover:text-gray-400 transition-colors" />
-                  </div>
+            {loading ? <div className="h-20 bg-white rounded-[1.5rem] animate-pulse w-full"></div> : recentServices.length > 0 ? recentServices.map((service) => (
+                <div key={service.id} onClick={() => handleServiceClick(service.id)} className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer group">
+                  <div className="flex items-center space-x-4"><div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${service.color}`}><Clock size={20} /></div><div><h4 className="font-bold text-gray-900 text-sm">{service.title}</h4><p className="text-xs text-gray-400 font-bold mt-0.5 uppercase tracking-wide">{service.status}</p></div></div>
+                  <ChevronRight size={18} className="text-gray-300" />
                 </div>
-              ))
-            ) : (
-              <div className="col-span-full text-center py-10 bg-white rounded-[2rem] border border-dashed border-gray-200">
-                <p className="text-gray-400 text-sm font-medium">Nenhum serviço agendado.</p>
-                {canSchedule && (
-                  <button 
-                    onClick={() => navigate('/search')}
-                    className="mt-3 text-ios-blue text-sm font-bold"
-                  >
-                    Agendar agora
-                  </button>
-                )}
-              </div>
-            )}
+              )) : <div className="col-span-full text-center py-10 bg-white rounded-[2rem] border border-dashed border-gray-200"><p className="text-gray-400 text-sm font-bold">Nenhum serviço agendado.</p></div>}
           </div>
         </div>
       </div>

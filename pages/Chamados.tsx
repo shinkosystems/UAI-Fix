@@ -6,7 +6,7 @@ import {
     Loader2, Search, Filter, Plus, X, Save, Send, FileText, 
     User as UserIcon, Calendar, DollarSign, CheckCircle, 
     AlertTriangle, ChevronRight, Ban, Clock, Briefcase, MapPin,
-    Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator, Lock, ArrowRightCircle, Bell
+    Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator, Lock, ArrowRightCircle, Bell, Smartphone, Banknote
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -160,26 +160,29 @@ const Chamados: React.FC = () => {
     };
 
     const fetchNotifications = async (role: string, uuid: string) => {
-      // Role already normalized from fetchUserRole
       let notifs: NotificationItem[] = [];
-
       try {
-          if (role === 'planejista' || role === 'orcamentista') {
-              const { data } = await supabase
-                  .from('planejamento')
-                  .select(`id, created_at, descricao, chaves (chaveunica, geral (nome))`)
-                  .eq('ativo', true)
-                  .order('created_at', { ascending: false })
-                  .limit(10);
+          if (role === 'planejista' || role === 'orcamentista' || role === 'gestor') {
+              const targetStatus = role === 'planejista' ? 'pendente' : (role === 'orcamentista' ? 'analise' : null);
+              
+              let query = supabase.from('chaves').select(`id, created_at, chaveunica, status, geral (nome)`);
+              
+              if (targetStatus) {
+                  query = query.eq('status', targetStatus);
+              } else {
+                  query = query.in('status', ['pendente', 'analise']);
+              }
+
+              const { data } = await query.order('created_at', { ascending: false }).limit(10);
               
               if (data) {
-                  notifs = data.map((item: any) => ({
-                      id: item.id,
-                      title: 'Planejamento Ativo',
-                      description: `Chave: ${item.chaves?.chaveunica} - ${item.chaves?.geral?.nome}`,
-                      date: new Date(item.created_at).toLocaleDateString('pt-BR'),
-                      type: 'planning',
-                      read: false
+                  notifs = data.map((item: any) => ({ 
+                      id: item.id, 
+                      title: item.status === 'analise' ? 'Novo Orçamento Pendente' : 'Novo Planejamento Pendente', 
+                      description: `Chave: ${item.chaveunica} - ${item.geral?.nome}`, 
+                      date: new Date(item.created_at).toLocaleDateString('pt-BR'), 
+                      type: 'planning', 
+                      read: false 
                   }));
               }
           } 
@@ -346,6 +349,32 @@ const Chamados: React.FC = () => {
         return false;
     };
 
+    const validateDates = () => {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0); // Consider only the day
+
+        const execDate = formData.planejamentoData ? new Date(formData.planejamentoData) : null;
+        const visitDate = formData.planejamentoVisita ? new Date(formData.planejamentoVisita) : null;
+
+        // Rule: No date can be in the past
+        if (execDate && execDate < now) {
+            alert("ERRO DE VALIDAÇÃO:\n\nA data de execução não pode ser anterior ao dia atual.");
+            return false;
+        }
+        if (visitDate && visitDate < now) {
+            alert("ERRO DE VALIDAÇÃO:\n\nA data da visita técnica não pode ser anterior ao dia atual.");
+            return false;
+        }
+
+        // Rule: Technical visit cannot be AFTER execution
+        if (execDate && visitDate && visitDate > execDate) {
+            alert("REGRA DE NEGÓCIO:\n\nA data da Visita Técnica nunca pode ser posterior à data de execução.");
+            return false;
+        }
+
+        return true;
+    };
+
     const handleEdit = (ticket: ChamadoExtended) => {
         setEditingItem(ticket);
         setNewResource('');
@@ -390,7 +419,7 @@ const Chamados: React.FC = () => {
             planejamentoDesc: plan?.descricao || '',
             planejamentoData: formattedDate,
             planejamentoRecursos: plan?.recursos || [],
-            planejamentoPagamento: plan?.pagamento || 'hora',
+            planejamentoPagamento: plan?.pagamento || 'Dinheiro',
             planejamentoVisita: formattedVisita
         });
 
@@ -433,6 +462,10 @@ const Chamados: React.FC = () => {
 
     const handleSendToBudget = async () => {
         if (!editingItem) return;
+        
+        // Business Rule Validations
+        if (!validateDates()) return;
+
         setSaving(true);
         try {
             const { error: chaveError } = await supabase
@@ -474,6 +507,10 @@ const Chamados: React.FC = () => {
 
     const handleSave = async () => {
         if (!editingItem) return;
+        
+        // Business Rule Validations
+        if (!validateDates()) return;
+
         setSaving(true);
         try {
             if (canEditStatus()) {
@@ -540,6 +577,10 @@ const Chamados: React.FC = () => {
 
     const handleSendProposal = async () => {
         if (!editingItem) return;
+        
+        // Business Rule Validations
+        if (!validateDates()) return;
+
         setSaving(true);
         try {
              const { error: chaveError } = await supabase.from('chaves').update({
@@ -582,15 +623,15 @@ const Chamados: React.FC = () => {
 
     const getStatusColor = (status: string) => {
         switch (status?.toLowerCase()) {
-            case 'pendente': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-            case 'analise': return 'bg-blue-100 text-blue-800 border-blue-200';
-            case 'aguardando_aprovacao': return 'bg-orange-100 text-orange-800 border-orange-200';
-            case 'aprovado': return 'bg-green-100 text-green-800 border-green-200';
-            case 'executando': return 'bg-purple-100 text-purple-800 border-purple-200';
-            case 'concluido': return 'bg-green-500 text-white border-green-600';
-            case 'cancelado': return 'bg-red-100 text-red-800 border-red-200';
-            case 'reprovado': return 'bg-red-100 text-red-800 border-red-200';
-            default: return 'bg-gray-100 text-gray-800 border-gray-200';
+            case 'pendente': return 'bg-yellow-100 text-yellow-900 border-yellow-200';
+            case 'analise': return 'bg-blue-100 text-blue-900 border-blue-200';
+            case 'aguardando_aprovacao': return 'bg-orange-100 text-orange-900 border-orange-200';
+            case 'aprovado': return 'bg-green-100 text-green-900 border-green-200';
+            case 'executando': return 'bg-purple-100 text-purple-900 border-purple-200';
+            case 'concluido': return 'bg-green-200 text-green-900 border-green-300';
+            case 'cancelado': return 'bg-red-100 text-red-900 border-red-200';
+            case 'reprovado': return 'bg-red-100 text-red-900 border-red-200';
+            default: return 'bg-gray-100 text-gray-900 border-gray-200';
         }
     };
 
@@ -606,7 +647,7 @@ const Chamados: React.FC = () => {
                     
                     <div className="flex items-center space-x-2">
                         {/* Role Badge */}
-                        <div className="px-3 py-1 bg-gray-100 rounded-full text-xs font-bold uppercase text-gray-500 border border-gray-200">
+                        <div className="px-3 py-1 bg-gray-100 rounded-full text-xs font-bold uppercase text-gray-700 border border-gray-200">
                             {currentUserRole || 'Carregando...'}
                         </div>
                         
@@ -724,12 +765,12 @@ const Chamados: React.FC = () => {
                                         {new Date(ticket.created_at).toLocaleDateString()}
                                     </div>
                                     {ticket.orcamentos && ticket.orcamentos.length > 0 ? (
-                                        <div className="flex items-center font-bold text-green-600">
+                                        <div className="flex items-center font-bold text-green-700">
                                             <DollarSign size={12} className="mr-1"/>
                                             R$ {ticket.orcamentos[0].preco.toFixed(2)}
                                         </div>
                                     ) : (
-                                        <div className="text-orange-400 font-bold flex items-center">
+                                        <div className="text-orange-600 font-bold flex items-center">
                                             <AlertTriangle size={12} className="mr-1"/> Sem Orçamento
                                         </div>
                                     )}
@@ -753,7 +794,7 @@ const Chamados: React.FC = () => {
                             <div>
                                 <h3 className="font-bold text-gray-900 text-lg">{editingItem.geral?.nome}</h3>
                                 <div className="flex items-center mt-1">
-                                    <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-md text-xs font-black font-mono tracking-wider flex items-center border border-gray-200">
+                                    <span className="bg-gray-100 text-gray-900 px-2 py-1 rounded-md text-xs font-black font-mono tracking-wider flex items-center border border-gray-200">
                                         <Hash size={10} className="mr-1 opacity-50"/> {editingItem.chaveunica}
                                     </span>
                                 </div>
@@ -771,7 +812,7 @@ const Chamados: React.FC = () => {
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Pedido</label>
                                     <div className="relative">
                                         <select 
-                                            className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-black outline-none capitalize focus:ring-2 focus:ring-black/10 ${!canEditStatus() ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none capitalize focus:ring-2 focus:ring-black/10 ${!canEditStatus() ? 'opacity-100 cursor-not-allowed' : ''}`}
                                             value={formData.status}
                                             disabled={!canEditStatus()}
                                             onChange={(e) => setFormData({...formData, status: e.target.value})}
@@ -790,7 +831,7 @@ const Chamados: React.FC = () => {
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional</label>
                                     <select 
-                                        className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-black outline-none ${!canEditPlanning() ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none ${!canEditPlanning() ? 'opacity-100 cursor-not-allowed' : ''}`}
                                         value={formData.profissionalUuid}
                                         disabled={!canEditPlanning()}
                                         onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
@@ -804,7 +845,7 @@ const Chamados: React.FC = () => {
                             </div>
 
                              {/* Planning Info (Controlled by Role) */}
-                            <div className={`bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3 relative ${!canEditPlanning() ? 'opacity-90' : ''}`}>
+                            <div className={`bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3 relative ${!canEditPlanning() ? 'opacity-100' : ''}`}>
                                 {!canEditPlanning() && (
                                     <div className="absolute top-2 right-2 text-gray-400" title="Somente leitura">
                                         <Lock size={14} />
@@ -820,7 +861,7 @@ const Chamados: React.FC = () => {
                                         <input 
                                             type="datetime-local" 
                                             disabled={!canEditPlanning()}
-                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-black outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:opacity-100"
                                             value={formData.planejamentoData}
                                             onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})}
                                         />
@@ -830,7 +871,7 @@ const Chamados: React.FC = () => {
                                         <input 
                                             type="datetime-local" 
                                             disabled={!canEditPlanning()}
-                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-black outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100"
+                                            className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-gray-100 disabled:opacity-100"
                                             value={formData.planejamentoVisita}
                                             onChange={(e) => setFormData({...formData, planejamentoVisita: e.target.value})}
                                         />
@@ -838,17 +879,22 @@ const Chamados: React.FC = () => {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-gray-400 ml-1">Tipo de Pagamento</label>
-                                    <select 
-                                        disabled={!canEditPlanning()}
-                                        className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-medium text-black outline-none disabled:bg-gray-100"
-                                        value={formData.planejamentoPagamento}
-                                        onChange={(e) => setFormData({...formData, planejamentoPagamento: e.target.value})}
-                                    >
-                                        <option value="">Selecione...</option>
-                                        <option value="hora">Por Hora</option>
-                                        <option value="empreitada">Por Empreitada</option>
-                                    </select>
+                                    <label className="text-[10px] font-bold text-gray-400 ml-1">Forma de Pagamento Preferencial</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {['PIX', 'Cartão de Crédito', 'Cartão de Débito', 'Dinheiro'].map(opt => (
+                                            <button
+                                                key={opt}
+                                                disabled={!canEditPlanning()}
+                                                onClick={() => setFormData({...formData, planejamentoPagamento: opt})}
+                                                className={`py-2 px-3 rounded-xl text-[10px] font-bold border transition-all flex items-center justify-center space-x-1 ${formData.planejamentoPagamento === opt ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}
+                                            >
+                                                {opt === 'PIX' && <Smartphone size={12}/>}
+                                                {opt.includes('Cartão') && <CreditCard size={12}/>}
+                                                {opt === 'Dinheiro' && <Banknote size={12}/>}
+                                                <span>{opt}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                             
@@ -872,75 +918,75 @@ const Chamados: React.FC = () => {
                                     )}
                                 </div>
                             ) : (
-                                <div className={`bg-blue-50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in fade-in slide-in-from-bottom-4 relative ${!canEditBudget() ? 'opacity-90' : ''}`}>
+                                <div className={`bg-blue-50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in fade-in slide-in-from-bottom-4 relative ${!canEditBudget() ? 'opacity-100' : ''}`}>
                                     {!canEditBudget() && (
                                         <div className="absolute top-2 right-2 text-blue-400" title="Somente leitura">
                                             <Lock size={14} />
                                         </div>
                                     )}
-                                    <h4 className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center justify-between">
+                                    <h4 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center justify-between">
                                         <span className="flex items-center"><DollarSign size={12} className="mr-1"/> Composição do Preço</span>
-                                        {canEditBudget() && <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">Editando</span>}
+                                        {canEditBudget() && <span className="text-[10px] bg-blue-200 text-blue-900 px-2 py-0.5 rounded-full">Editando</span>}
                                     </h4>
                                     
                                     {/* Cost Breakdown Inputs */}
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Custo Fixo (R$)</label>
+                                            <label className="text-[10px] font-bold text-blue-600 ml-1">Custo Fixo (R$)</label>
                                             <input 
                                                 type="number"
                                                 min="0"
                                                 step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs font-bold text-gray-900 disabled:bg-gray-100 disabled:opacity-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoCusto}
                                                 onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value)})}
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Custo Variável (R$)</label>
+                                            <label className="text-[10px] font-bold text-blue-600 ml-1">Custo Variável (R$)</label>
                                             <input 
                                                 type="number"
                                                 min="0"
                                                 step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs font-bold text-gray-900 disabled:bg-gray-100 disabled:opacity-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoCustoVariavel}
                                                 onChange={(e) => setFormData({...formData, orcamentoCustoVariavel: parseFloat(e.target.value)})}
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Mão de Obra (R$)</label>
+                                            <label className="text-[10px] font-bold text-blue-600 ml-1">Mão de Obra (R$)</label>
                                             <input 
                                                 type="number"
                                                 min="0"
                                                 step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs font-bold text-gray-900 disabled:bg-gray-100 disabled:opacity-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoHH}
                                                 onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value)})}
                                             />
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Imposto (R$)</label>
+                                            <label className="text-[10px] font-bold text-blue-600 ml-1">Imposto (R$)</label>
                                             <input 
                                                 type="number"
                                                 min="0"
                                                 step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs font-bold text-gray-900 disabled:bg-gray-100 disabled:opacity-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoImposto}
                                                 onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value)})}
                                             />
                                         </div>
                                         <div className="space-y-1 col-span-2">
-                                            <label className="text-[10px] font-bold text-green-600 ml-1">Margem de Lucro (R$)</label>
+                                            <label className="text-[10px] font-bold text-green-700 ml-1">Margem de Lucro (R$)</label>
                                             <input 
                                                 type="number"
                                                 min="0"
                                                 step="0.01"
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-green-50 border border-green-200 rounded-xl p-2 text-xs text-green-800 font-bold disabled:bg-gray-100 disabled:text-gray-500 outline-none focus:ring-2 focus:ring-green-300"
+                                                className="w-full bg-green-50 border border-green-200 rounded-xl p-2 text-xs text-green-900 font-black disabled:bg-gray-100 disabled:opacity-100 outline-none focus:ring-2 focus:ring-green-300"
                                                 value={formData.orcamentoLucro}
                                                 onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value)})}
                                             />
@@ -951,7 +997,7 @@ const Chamados: React.FC = () => {
                                                 type="button"
                                                 onClick={() => setFormData({ ...formData, orcamentoNotaFiscal: !formData.orcamentoNotaFiscal })}
                                                 disabled={!canEditBudget()}
-                                                className={`w-10 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out ${formData.orcamentoNotaFiscal ? 'bg-green-500' : 'bg-gray-300'} disabled:opacity-50`}
+                                                className={`w-10 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out ${formData.orcamentoNotaFiscal ? 'bg-green-500' : 'bg-gray-300'} disabled:opacity-100`}
                                             >
                                                 <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${formData.orcamentoNotaFiscal ? 'translate-x-4' : 'translate-x-0'}`} />
                                             </button>
@@ -961,10 +1007,10 @@ const Chamados: React.FC = () => {
                                     {/* Payment Details */}
                                     <div className="grid grid-cols-2 gap-3 pt-2 border-t border-blue-100">
                                         <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-blue-500 ml-1">Tipo de Pagamento</label>
+                                            <label className="text-[10px] font-bold text-blue-600 ml-1">Tipo de Pagamento Final</label>
                                             <select 
                                                 disabled={!canEditBudget()}
-                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs font-bold text-gray-900 disabled:bg-gray-100 disabled:opacity-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                 value={formData.orcamentoTipoPgto}
                                                 onChange={(e) => {
                                                     const type = e.target.value;
@@ -983,15 +1029,15 @@ const Chamados: React.FC = () => {
                                                 <option value="Transferência">Transferência</option>
                                             </select>
                                         </div>
-                                        {formData.orcamentoTipoPgto !== 'PIX' && (
+                                        {formData.orcamentoTipoPgto !== 'PIX' && formData.orcamentoTipoPgto !== 'Dinheiro' && (
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-blue-500 ml-1">Parcelas</label>
+                                                <label className="text-[10px] font-bold text-blue-600 ml-1">Parcelas</label>
                                                 <input 
                                                     type="number"
                                                     min="1"
                                                     max="12"
                                                     disabled={!canEditBudget()}
-                                                    className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs text-black disabled:bg-gray-100 outline-none focus:ring-2 focus:ring-blue-300"
+                                                    className="w-full bg-white border border-blue-200 rounded-xl p-2 text-xs font-bold text-gray-900 disabled:bg-gray-100 disabled:opacity-100 outline-none focus:ring-2 focus:ring-blue-300"
                                                     value={formData.orcamentoParcelas}
                                                     onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value)})}
                                                 />

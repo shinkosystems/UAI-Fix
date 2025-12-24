@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Geral } from '../types';
@@ -97,26 +98,31 @@ const Search: React.FC = () => {
   }, [searchTerm]);
 
   const fetchNotifications = async (role: string, uuid: string) => {
-      const normalizedRole = role.toLowerCase();
+      const normalizedRole = role.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       let notifs: NotificationItem[] = [];
 
       try {
-          if (normalizedRole === 'planejista' || normalizedRole === 'orcamentista') {
-              const { data } = await supabase
-                  .from('planejamento')
-                  .select(`id, created_at, descricao, chaves (chaveunica, geral (nome))`)
-                  .eq('ativo', true)
-                  .order('created_at', { ascending: false })
-                  .limit(10);
+          if (normalizedRole === 'planejista' || normalizedRole === 'orcamentista' || normalizedRole === 'gestor') {
+              const targetStatus = normalizedRole === 'planejista' ? 'pendente' : (normalizedRole === 'orcamentista' ? 'analise' : null);
+              
+              let query = supabase.from('chaves').select(`id, created_at, chaveunica, status, geral (nome)`);
+              
+              if (targetStatus) {
+                  query = query.eq('status', targetStatus);
+              } else {
+                  query = query.in('status', ['pendente', 'analise']);
+              }
+
+              const { data } = await query.order('created_at', { ascending: false }).limit(10);
               
               if (data) {
-                  notifs = data.map((item: any) => ({
-                      id: item.id,
-                      title: 'Planejamento Ativo',
-                      description: `Chave: ${item.chaves?.chaveunica} - ${item.chaves?.geral?.nome}`,
-                      date: new Date(item.created_at).toLocaleDateString('pt-BR'),
-                      type: 'planning',
-                      read: false
+                  notifs = data.map((item: any) => ({ 
+                      id: item.id, 
+                      title: item.status === 'analise' ? 'Novo Orçamento Pendente' : 'Novo Planejamento Pendente', 
+                      description: `Chave: ${item.chaveunica} - ${item.geral?.nome}`, 
+                      date: new Date(item.created_at).toLocaleDateString('pt-BR'), 
+                      type: 'planning', 
+                      read: false 
                   }));
               }
           } 
@@ -166,8 +172,8 @@ const Search: React.FC = () => {
 
   const handleNotificationClick = (notif: NotificationItem) => {
       setShowNotifications(false);
-      const type = userType.toLowerCase();
-      if (type === 'planejista' || type === 'orcamentista') navigate('/chamados');
+      const type = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (type === 'planejista' || type === 'orcamentista' || type === 'gestor') navigate('/chamados');
       else if (type === 'consumidor') navigate('/orders');
       else navigate('/calendar');
   };
