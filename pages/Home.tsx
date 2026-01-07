@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Geral } from '../types';
 import StoryCircle from '../components/StoryCircle';
-import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase, Calendar, MapPin, AlertTriangle, X, FileText, CheckCircle, User } from 'lucide-react';
+import { Bell, ChevronRight, TrendingUp, CalendarCheck, Clock, Star, Loader2, Trophy, Briefcase, Calendar, MapPin, AlertTriangle, X, FileText, CheckCircle, User, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ServiceItem {
@@ -36,7 +36,7 @@ interface NotificationItem {
   title: string;
   description: string;
   date: string;
-  type: 'agenda' | 'planning';
+  type: 'agenda' | 'planning' | 'approval';
   read: boolean;
 }
 
@@ -54,7 +54,8 @@ const Home: React.FC = () => {
   const [recentServices, setRecentServices] = useState<ServiceItem[]>([]);
   const [topProfessionals, setTopProfessionals] = useState<TopProfessional[]>([]);
   const [nextAppointment, setNextAppointment] = useState<NextAppointment | null>(null);
-
+  
+  const [pendingApprovalId, setPendingApprovalId] = useState<number | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [pendingReviewId, setPendingReviewId] = useState<number | null>(null);
@@ -107,6 +108,7 @@ const Home: React.FC = () => {
 
               await fetchNotifications(tipo, userUuid);
               await checkPendingReviews(userUuid);
+              await checkPendingApprovals(userUuid);
 
               const isInternal = ['gestor', 'planejista', 'orcamentista'].includes(normalizedType);
               const isProfessional = normalizedType === 'profissional';
@@ -180,8 +182,8 @@ const Home: React.FC = () => {
     } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
-  const checkPendingReviews = async (uuid: string) => {
-      const { data: concluded } = await supabase.from('chaves').select('id').eq('cliente', uuid).eq('status', 'concluido');
+  const checkPendingReviews = async (userUuid: string) => {
+      const { data: concluded } = await supabase.from('chaves').select('id').eq('cliente', userUuid).eq('status', 'concluido');
       if(!concluded?.length) return;
       const ids = concluded.map(c => c.id);
       const { data: reviews } = await supabase.from('avaliacoes').select('chave').in('chave', ids);
@@ -190,29 +192,34 @@ const Home: React.FC = () => {
       if(firstPending) setPendingReviewId(firstPending);
   };
 
+  const checkPendingApprovals = async (userUuid: string) => {
+      const { data } = await supabase
+          .from('chaves')
+          .select('id')
+          .eq('cliente', userUuid)
+          .eq('status', 'aguardando_aprovacao')
+          .limit(1)
+          .maybeSingle();
+      if (data) setPendingApprovalId(data.id);
+      else setPendingApprovalId(null);
+  };
+
   const fetchNotifications = async (role: string, uuid: string) => {
       const normalizedRole = role.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       let notifs: NotificationItem[] = [];
       try {
-          if (normalizedRole === 'planejista' || normalizedRole === 'orcamentista' || normalizedRole === 'gestor') {
-              // Status alvo baseado na função
-              const targetStatus = normalizedRole === 'planejista' ? 'pendente' : (normalizedRole === 'orcamentista' ? 'analise' : null);
-              
-              let query = supabase.from('chaves').select(`id, created_at, chaveunica, status, geral (nome)`);
-              
-              if (targetStatus) {
-                  query = query.eq('status', targetStatus);
-              } else {
-                  // Gestor vê pendentes e análise
-                  query = query.in('status', ['pendente', 'analise']);
-              }
-
-              const { data } = await query.order('created_at', { ascending: false }).limit(10);
+          if (['planejista', 'orcamentista', 'gestor'].includes(normalizedRole)) {
+              const { data } = await supabase
+                .from('chaves')
+                .select(`id, created_at, chaveunica, status, geral (nome)`)
+                .in('status', ['pendente', 'analise'])
+                .order('created_at', { ascending: false })
+                .limit(10);
               
               if (data) {
                   notifs = data.map((item: any) => ({ 
                       id: item.id, 
-                      title: item.status === 'analise' ? 'Novo Orçamento Pendente' : 'Novo Planejamento Pendente', 
+                      title: item.status === 'analise' ? 'Aguardando Orçamento' : 'Novo Chamado Pendente', 
                       description: `Chave: ${item.chaveunica} - ${item.geral?.nome}`, 
                       date: new Date(item.created_at).toLocaleDateString('pt-BR'), 
                       type: 'planning', 
@@ -221,15 +228,42 @@ const Home: React.FC = () => {
               }
           } 
           else {
-              const { data } = await supabase.from('agenda').select(`id, execucao, observacoes, chaves (geral (nome), status)`).or(`cliente.eq.${uuid},profissional.eq.${uuid}`).order('execucao', { ascending: false }).limit(10);
-              if (data) notifs = data.map((item: any) => ({ id: item.id, title: item.chaves?.geral?.nome || 'Serviço', description: `Status: ${item.chaves?.status}`, date: new Date(item.execucao).toLocaleDateString('pt-BR'), type: 'agenda', read: false }));
+              // Notificações para Consumidor/Profissional
+              const [agendaRes, chavesRes] = await Promise.all([
+                  supabase.from('agenda').select(`id, execucao, observacoes, chaves (geral (nome), status)`).or(`cliente.eq.${uuid},profissional.eq.${uuid}`).order('execucao', { ascending: false }).limit(5),
+                  supabase.from('chaves').select(`id, created_at, status, geral (nome)`).eq('cliente', uuid).eq('status', 'aguardando_aprovacao').limit(5)
+              ]);
+
+              if (chavesRes.data) {
+                  const approvalNotifs: NotificationItem[] = chavesRes.data.map(c => ({
+                      id: c.id,
+                      title: 'Orçamento Pronto!',
+                      description: `O orçamento para "${c.geral?.nome}" está disponível para sua aprovação.`,
+                      date: new Date(c.created_at).toLocaleDateString('pt-BR'),
+                      type: 'approval',
+                      read: false
+                  }));
+                  notifs = [...approvalNotifs];
+              }
+
+              if (agendaRes.data) {
+                  const agendaNotifs: NotificationItem[] = agendaRes.data.map((item: any) => ({ 
+                      id: item.id, 
+                      title: item.chaves?.geral?.nome || 'Serviço', 
+                      description: `Status: ${item.chaves?.status.replace('_',' ')}`, 
+                      date: new Date(item.execucao).toLocaleDateString('pt-BR'), 
+                      type: 'agenda', 
+                      read: false 
+                  }));
+                  notifs = [...notifs, ...agendaNotifs];
+              }
           }
-          setNotifications(notifs);
+          setNotifications(notifs.slice(0, 10));
       } catch (error) { console.error(error); }
   };
   
   const handleSmartNavigation = () => {
-      const type = userType.toLowerCase();
+      const type = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       if (type === 'consumidor' || type === 'profissional') navigate('/execution');
       else navigate('/calendar');
   };
@@ -238,8 +272,8 @@ const Home: React.FC = () => {
   const handleNotificationClick = (notif: NotificationItem) => {
       setShowNotifications(false);
       const type = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      if (type === 'planejista' || type === 'orcamentista' || type === 'gestor') navigate('/chamados');
-      else if (type === 'consumidor') navigate('/orders');
+      if (['planejista', 'orcamentista', 'gestor'].includes(type)) navigate('/chamados');
+      else if (type === 'consumidor' || notif.type === 'approval') navigate('/orders');
       else navigate('/calendar');
   };
 
@@ -261,8 +295,17 @@ const Home: React.FC = () => {
                         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white/50"><h3 className="font-bold text-gray-900 text-sm">Notificações</h3><button onClick={() => setShowNotifications(false)} className="text-gray-400"><X size={16} /></button></div>
                         <div className="max-h-80 overflow-y-auto">
                             {notifications.length > 0 ? notifications.map((notif) => (
-                                <div key={notif.id} onClick={() => handleNotificationClick(notif)} className="p-4 border-b border-gray-50 hover:bg-blue-50 transition-colors cursor-pointer group">
-                                    <div className="flex justify-between items-start mb-1"><span className="text-xs font-bold text-ios-blue bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 group-hover:bg-white">{notif.type === 'agenda' ? 'Agenda' : 'Planejamento'}</span><span className="text-[10px] text-gray-400">{notif.date}</span></div>
+                                <div key={notif.id} onClick={() => handleNotificationClick(notif)} className={`p-4 border-b border-gray-50 hover:bg-blue-50 transition-colors cursor-pointer group ${notif.type === 'approval' ? 'bg-orange-50/30' : ''}`}>
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                                            notif.type === 'approval' ? 'bg-orange-100 text-orange-700 border-orange-200' : 
+                                            notif.type === 'agenda' ? 'bg-blue-50 text-blue-700 border-blue-100' : 
+                                            'bg-gray-50 text-gray-700 border-gray-100'
+                                        }`}>
+                                            {notif.type === 'approval' ? 'Aprovação' : notif.type === 'agenda' ? 'Agenda' : 'Pedido'}
+                                        </span>
+                                        <span className="text-[10px] text-gray-400">{notif.date}</span>
+                                    </div>
                                     <h4 className="text-sm font-bold text-gray-900 leading-tight">{notif.title}</h4>
                                     <p className="text-xs text-gray-500 mt-1 line-clamp-2">{notif.description}</p>
                                 </div>
@@ -279,8 +322,26 @@ const Home: React.FC = () => {
               <div className="flex items-start space-x-3"><div className="bg-orange-100 p-2 rounded-xl text-orange-600 mt-1"><AlertTriangle size={20} /></div><div><h3 className="font-bold text-orange-900 text-sm">Perfil Incompleto</h3><p className="text-xs text-orange-700 mt-1 mb-2 max-w-xs">Precisamos dos seus dados para agendamentos.</p><button onClick={() => navigate('/profile')} className="bg-orange-500 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm">Completar Agora</button></div></div>
           </div>
       )}
+
+      {pendingApprovalId && !showProfileAlert && (
+          <div onClick={() => navigate('/orders')} className="mx-5 mb-4 bg-blue-600 rounded-[2rem] p-5 shadow-xl shadow-blue-200 flex items-center justify-between cursor-pointer active:scale-[0.98] transition-all group overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl group-hover:scale-110 transition-transform"></div>
+              <div className="flex items-center space-x-4 relative z-10">
+                  <div className="bg-white/20 backdrop-blur-md p-3 rounded-2xl text-white">
+                      <AlertCircle size={24} className="animate-pulse" />
+                  </div>
+                  <div>
+                      <h3 className="font-bold text-white text-base">Orçamento Disponível!</h3>
+                      <p className="text-blue-100 text-xs font-medium">Você tem um serviço aguardando sua aprovação.</p>
+                  </div>
+              </div>
+              <div className="bg-white/20 backdrop-blur-md p-2 rounded-full text-white relative z-10">
+                  <ChevronRight size={20} />
+              </div>
+          </div>
+      )}
       
-      {pendingReviewId && !showProfileAlert && (
+      {pendingReviewId && !showProfileAlert && !pendingApprovalId && (
           <div onClick={() => navigate('/orders', { state: { ratingOrderId: pendingReviewId } })} className="mx-5 mb-4 bg-yellow-50 border border-yellow-100 rounded-[2rem] p-5 shadow-sm flex items-center justify-between cursor-pointer hover:bg-yellow-100/50 transition-colors">
               <div className="flex items-center space-x-3"><div className="bg-yellow-100 p-2 rounded-xl text-yellow-600"><Star size={20} className="fill-yellow-600"/></div><div><h3 className="font-bold text-yellow-900 text-sm">Avaliação Pendente</h3><p className="text-xs text-yellow-700 mt-0.5">Você tem serviços concluídos para avaliar.</p></div></div>
               <ChevronRight size={18} className="text-yellow-400" />

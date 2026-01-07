@@ -10,7 +10,7 @@ interface NotificationItem {
   title: string;
   description: string;
   date: string;
-  type: 'agenda' | 'planning';
+  type: 'agenda' | 'planning' | 'approval';
   read: boolean;
 }
 
@@ -32,10 +32,8 @@ const Search: React.FC = () => {
   
   const navigate = useNavigate();
 
-  // Load User Data & Default grid (Primary Categories) on mount
   useEffect(() => {
     const init = async () => {
-        // 1. Get User City & Info
         const { data: { user: authUser } } = await supabase.auth.getUser();
         let currentUuid = authUser?.id;
 
@@ -55,19 +53,14 @@ const Search: React.FC = () => {
                 if (userData.cidade) setUserCityId(userData.cidade);
                 if (userData.nome && userData.nome !== 'Insere') setUserName(userData.nome.split(' ')[0]);
                 setUserType(userData.tipo || '');
-                
-                // Fetch notifications
                 fetchNotifications(userData.tipo || '', currentUuid);
             }
         }
-
-        // 2. Fetch Categories
         await fetchDefaultCategories();
     };
 
     init();
 
-    // Close notifications when clicking outside
     const handleClickOutside = (event: MouseEvent) => {
       if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
@@ -77,14 +70,12 @@ const Search: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Update counts when userCityId is set or categories change
   useEffect(() => {
     if (defaultCategories.length > 0) {
         fetchCounts(defaultCategories);
     }
   }, [userCityId, defaultCategories]);
 
-  // Handle Search Input with Debounce
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       if (searchTerm.length >= 2) {
@@ -102,23 +93,18 @@ const Search: React.FC = () => {
       let notifs: NotificationItem[] = [];
 
       try {
-          if (normalizedRole === 'planejista' || normalizedRole === 'orcamentista' || normalizedRole === 'gestor') {
-              const targetStatus = normalizedRole === 'planejista' ? 'pendente' : (normalizedRole === 'orcamentista' ? 'analise' : null);
-              
-              let query = supabase.from('chaves').select(`id, created_at, chaveunica, status, geral (nome)`);
-              
-              if (targetStatus) {
-                  query = query.eq('status', targetStatus);
-              } else {
-                  query = query.in('status', ['pendente', 'analise']);
-              }
-
-              const { data } = await query.order('created_at', { ascending: false }).limit(10);
+          if (['planejista', 'orcamentista', 'gestor'].includes(normalizedRole)) {
+              const { data } = await supabase
+                .from('chaves')
+                .select(`id, created_at, chaveunica, status, geral (nome)`)
+                .in('status', ['pendente', 'analise'])
+                .order('created_at', { ascending: false })
+                .limit(10);
               
               if (data) {
                   notifs = data.map((item: any) => ({ 
                       id: item.id, 
-                      title: item.status === 'analise' ? 'Novo Orçamento Pendente' : 'Novo Planejamento Pendente', 
+                      title: item.status === 'analise' ? 'Aguardando Orçamento' : 'Novo Chamado Pendente', 
                       description: `Chave: ${item.chaveunica} - ${item.geral?.nome}`, 
                       date: new Date(item.created_at).toLocaleDateString('pt-BR'), 
                       type: 'planning', 
@@ -126,45 +112,37 @@ const Search: React.FC = () => {
                   }));
               }
           } 
-          else if (normalizedRole === 'consumidor') {
-              const { data } = await supabase
-                  .from('agenda')
-                  .select(`id, execucao, observacoes, chaves (geral (nome), status)`)
-                  .eq('cliente', uuid)
-                  .order('execucao', { ascending: false })
-                  .limit(10);
-                  
-              if (data) {
-                  notifs = data.map((item: any) => ({
+          else {
+              const [agendaRes, chavesRes] = await Promise.all([
+                  supabase.from('agenda').select(`id, execucao, observacoes, chaves (geral (nome), status)`).or(`cliente.eq.${uuid},profissional.eq.${uuid}`).order('execucao', { ascending: false }).limit(5),
+                  supabase.from('chaves').select(`id, created_at, status, geral (nome)`).eq('cliente', uuid).eq('status', 'aguardando_aprovacao').limit(5)
+              ]);
+
+              if (chavesRes.data) {
+                  const approvalNotifs: NotificationItem[] = chavesRes.data.map(c => ({
+                      id: c.id,
+                      title: 'Orçamento Pronto!',
+                      description: `O orçamento para "${c.geral?.nome}" está disponível para sua aprovação.`,
+                      date: new Date(c.created_at).toLocaleDateString('pt-BR'),
+                      type: 'approval',
+                      read: false
+                  }));
+                  notifs = [...approvalNotifs];
+              }
+
+              if (agendaRes.data) {
+                  const agendaNotifs: NotificationItem[] = agendaRes.data.map((item: any) => ({
                       id: item.id,
                       title: item.chaves?.geral?.nome || 'Serviço Agendado',
-                      description: `Status: ${item.chaves?.status}. ${item.observacoes || ''}`,
+                      description: `Status: ${item.chaves?.status.replace('_',' ')}`,
                       date: new Date(item.execucao).toLocaleDateString('pt-BR'),
                       type: 'agenda',
                       read: false
                   }));
+                  notifs = [...notifs, ...agendaNotifs];
               }
           }
-          else if (normalizedRole === 'profissional') {
-              const { data } = await supabase
-                  .from('agenda')
-                  .select(`id, execucao, observacoes, chaves (geral (nome), status)`)
-                  .eq('profissional', uuid)
-                  .order('execucao', { ascending: false })
-                  .limit(10);
-              
-              if (data) {
-                   notifs = data.map((item: any) => ({
-                      id: item.id,
-                      title: 'Novo Agendamento',
-                      description: `${item.chaves?.geral?.nome} - Status: ${item.chaves?.status}`,
-                      date: new Date(item.execucao).toLocaleDateString('pt-BR'),
-                      type: 'agenda',
-                      read: false
-                  }));
-              }
-          }
-          setNotifications(notifs);
+          setNotifications(notifs.slice(0, 10));
       } catch (error) {
           console.error("Erro ao buscar notificações:", error);
       }
@@ -173,8 +151,8 @@ const Search: React.FC = () => {
   const handleNotificationClick = (notif: NotificationItem) => {
       setShowNotifications(false);
       const type = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      if (type === 'planejista' || type === 'orcamentista' || type === 'gestor') navigate('/chamados');
-      else if (type === 'consumidor') navigate('/orders');
+      if (['planejista', 'orcamentista', 'gestor'].includes(type)) navigate('/chamados');
+      else if (type === 'consumidor' || notif.type === 'approval') navigate('/orders');
       else navigate('/calendar');
   };
 
@@ -282,23 +260,14 @@ const Search: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-ios-bg">
-      {/* Sticky Header */}
       <div className="sticky top-0 bg-white/80 backdrop-blur-md z-20 px-5 pt-12 md:pt-6 pb-4 border-b border-gray-200">
         <div className="flex justify-between items-center mb-4">
              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Buscar</h1>
-             
-             {/* Notification Bell */}
              <div className="relative" ref={notificationRef}>
-                <button 
-                    onClick={() => setShowNotifications(!showNotifications)}
-                    className="relative p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
-                >
+                <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
                     <Bell size={20} className="text-gray-700" />
-                    {notifications.length > 0 && (
-                        <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>
-                    )}
+                    {notifications.length > 0 && <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
                 </button>
-                
                 {showNotifications && (
                     <div className="absolute right-0 top-12 w-80 bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
                         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
@@ -308,125 +277,57 @@ const Search: React.FC = () => {
                         <div className="max-h-64 overflow-y-auto">
                             {notifications.length > 0 ? (
                                 notifications.map((notif) => (
-                                    <div key={notif.id} onClick={() => handleNotificationClick(notif)} className="p-4 border-b border-gray-50 hover:bg-blue-50 cursor-pointer">
-                                        <div className="flex justify-between mb-1"><span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 rounded font-bold uppercase">{notif.type}</span><span className="text-[10px] text-gray-400">{notif.date}</span></div>
+                                    <div key={notif.id} onClick={() => handleNotificationClick(notif)} className={`p-4 border-b border-gray-50 hover:bg-blue-50 cursor-pointer ${notif.type === 'approval' ? 'bg-orange-50/30' : ''}`}>
+                                        <div className="flex justify-between mb-1">
+                                            <span className={`text-[10px] font-black px-1.5 rounded uppercase ${
+                                                notif.type === 'approval' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                                            }`}>
+                                                {notif.type === 'approval' ? 'Aprovação' : notif.type}
+                                            </span>
+                                            <span className="text-[10px] text-gray-400">{notif.date}</span>
+                                        </div>
                                         <h4 className="text-sm font-bold text-gray-900">{notif.title}</h4>
                                         <p className="text-xs text-gray-500 truncate">{notif.description}</p>
                                     </div>
                                 ))
-                            ) : (
-                                <div className="p-6 text-center text-xs text-gray-400">Nenhuma notificação nova.</div>
-                            )}
+                            ) : <div className="p-6 text-center text-xs text-gray-400">Nenhuma notificação nova.</div>}
                         </div>
                     </div>
                 )}
              </div>
         </div>
-
         <div className="relative max-w-2xl">
           <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
-          <input
-            type="text"
-            placeholder="Buscar serviços ou categorias..."
-            className="w-full bg-gray-100 text-gray-900 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          {searching && (
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <Loader2 className="animate-spin text-ios-blue" size={16} />
-            </div>
-          )}
+          <input type="text" placeholder="Buscar serviços ou categorias..." className="w-full bg-gray-100 text-gray-900 rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 transition-all" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          {searching && <div className="absolute right-3 top-1/2 transform -translate-y-1/2"><Loader2 className="animate-spin text-ios-blue" size={16} /></div>}
         </div>
       </div>
 
       <div className="p-5 pb-20">
         {showResults ? (
           <div>
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 ml-1">
-              Resultados para "{searchTerm}"
-            </h2>
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 ml-1">Resultados para "{searchTerm}"</h2>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden divide-y divide-gray-100 md:grid md:grid-cols-2 lg:grid-cols-3 md:divide-y-0 md:gap-4 md:bg-transparent md:border-none md:shadow-none">
-              {searchResults.length > 0 ? (
-                searchResults.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => handleItemClick(item)}
-                    className="w-full flex items-center p-4 hover:bg-gray-50 transition-colors text-left md:bg-white md:rounded-2xl md:shadow-sm md:border md:border-gray-100"
-                  >
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-4 ${item.primaria ? 'bg-blue-50 text-ios-blue' : 'bg-green-50 text-green-600'}`}>
-                      {item.imagem ? (
-                         <img src={item.imagem} alt="" className="w-full h-full object-cover rounded-lg" />
-                      ) : (
-                         item.primaria ? <LayoutGrid size={20} /> : <Box size={20} />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 text-sm">{item.nome}</h3>
-                      <div className="flex items-center space-x-2 text-xs text-gray-400 mt-0.5">
-                        <span>{item.primaria ? 'Categoria' : 'Serviço'}</span>
-                        <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                        <span className="flex items-center text-gray-500">
-                            <Users size={10} className="mr-1" />
-                            {counts[item.id] !== undefined ? counts[item.id] : (userCityId ? 0 : '-')}
-                        </span>
-                      </div>
-                    </div>
+              {searchResults.length > 0 ? searchResults.map((item) => (
+                  <button key={item.id} onClick={() => handleItemClick(item)} className="w-full flex items-center p-4 hover:bg-gray-50 transition-colors text-left md:bg-white md:rounded-2xl md:shadow-sm md:border md:border-gray-100">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center mr-4 ${item.primaria ? 'bg-blue-50 text-ios-blue' : 'bg-green-50 text-green-600'}`}>{item.imagem ? <img src={item.imagem} alt="" className="w-full h-full object-cover rounded-lg" /> : (item.primaria ? <LayoutGrid size={20} /> : <Box size={20} />)}</div>
+                    <div className="flex-1"><h3 className="font-semibold text-gray-900 text-sm">{item.nome}</h3><div className="flex items-center space-x-2 text-xs text-gray-400 mt-0.5"><span>{item.primaria ? 'Categoria' : 'Serviço'}</span><span className="w-1 h-1 rounded-full bg-gray-300"></span><span className="flex items-center text-gray-500"><Users size={10} className="mr-1" />{counts[item.id] !== undefined ? counts[item.id] : (userCityId ? 0 : '-')}</span></div></div>
                     <ChevronRight size={16} className="text-gray-300" />
                   </button>
-                ))
-              ) : (
-                !searching && (
-                  <div className="p-8 text-center text-gray-400 text-sm col-span-full">
-                    Nenhum resultado encontrado.
-                  </div>
-                )
-              )}
+                )) : !searching && <div className="p-8 text-center text-gray-400 text-sm col-span-full">Nenhum resultado encontrado.</div>}
             </div>
           </div>
         ) : (
           <div>
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 ml-1">
-              Categorias Principais
-            </h2>
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 ml-1">Categorias Principais</h2>
             {loadingDefault ? (
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="h-40 bg-gray-200 rounded-3xl animate-pulse"></div>
-                ))}
-              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">{[1, 2, 3, 4, 5].map(i => <div key={i} className="h-40 bg-gray-200 rounded-3xl animate-pulse"></div>)}</div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {defaultCategories.map((cat) => (
-                  <div 
-                    key={cat.id}
-                    onClick={() => handleItemClick(cat)}
-                    className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 relative overflow-hidden group hover:shadow-md transition-all cursor-pointer aspect-square flex flex-col justify-end"
-                  >
-                    <div className="absolute inset-0 z-0">
-                      <img 
-                         src={cat.imagem || `https://picsum.photos/seed/${cat.id}/400`} 
-                         alt={cat.nome} 
-                         className="w-full h-full object-cover opacity-90 group-hover:scale-110 transition-transform duration-700"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
-                    </div>
-
-                    <div className="relative z-10 w-full">
-                      <div className="flex justify-between items-end">
-                        <div>
-                            <h3 className="text-white font-bold text-lg leading-tight mb-1">{cat.nome}</h3>
-                            <div className="flex items-center text-white/80 text-xs font-medium">
-                                <span>Explorar</span>
-                                <ArrowRight size={12} className="ml-1" />
-                            </div>
-                        </div>
-                        <div className="bg-black/30 backdrop-blur-md px-2 py-1 rounded-lg text-white text-[10px] font-bold flex items-center border border-white/10">
-                            <Users size={10} className="mr-1" />
-                            {counts[cat.id] !== undefined ? counts[cat.id] : (userCityId ? 0 : '...')}
-                        </div>
-                      </div>
-                    </div>
+                  <div key={cat.id} onClick={() => handleItemClick(cat)} className="bg-white rounded-3xl p-4 shadow-sm border border-gray-100 relative overflow-hidden group hover:shadow-md transition-all cursor-pointer aspect-square flex flex-col justify-end">
+                    <div className="absolute inset-0 z-0"><img src={cat.imagem || `https://picsum.photos/seed/${cat.id}/400`} alt={cat.nome} className="w-full h-full object-cover opacity-90 group-hover:scale-110 transition-transform duration-700" /><div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div></div>
+                    <div className="relative z-10 w-full"><div className="flex justify-between items-end"><div><h3 className="text-white font-bold text-lg leading-tight mb-1">{cat.nome}</h3><div className="flex items-center text-white/80 text-xs font-medium"><span>Explorar</span><ArrowRight size={12} className="ml-1" /></div></div><div className="bg-black/30 backdrop-blur-md px-2 py-1 rounded-lg text-white text-[10px] font-bold flex items-center border border-white/10"><Users size={10} className="mr-1" />{counts[cat.id] !== undefined ? counts[cat.id] : (userCityId ? 0 : '...')}</div></div></div>
                   </div>
                 ))}
               </div>

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao, Agenda, OrdemServico } from '../types';
-import { Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus } from 'lucide-react';
+import { Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban, AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface OrderExtended extends Chave {
@@ -25,6 +25,8 @@ const ClientOrders: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ModalTab>('geral');
   const [userType, setUserType] = useState<string>('');
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [processingAction, setProcessingAction] = useState(false);
+  const [uploading, setUploading] = useState(false);
   
   const [executionData, setExecutionData] = useState({
       status: '',
@@ -54,9 +56,12 @@ const ClientOrders: React.FC = () => {
       }
   }, [loading, location.state, orders]);
 
-  const normalizedUserType = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const normalizedUserType = (userType || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const isConsumer = normalizedUserType === 'consumidor';
+  const isProfessional = normalizedUserType === 'profissional';
   const isManager = normalizedUserType === 'gestor';
+  
+  const canActAsClient = isConsumer || isManager;
   const canCreateOrder = isConsumer || isManager;
 
   const toLocalISOString = (s: string) => { 
@@ -81,7 +86,9 @@ const ClientOrders: React.FC = () => {
   const loadData = async (uuid: string, role: string) => {
     const normRole = role.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     let query = supabase.from('chaves').select('*').order('id', { ascending: false });
-    if (normRole === 'profissional') query = query.eq('profissional', uuid); else query = query.eq('cliente', uuid);
+    
+    if (normRole === 'profissional') query = query.eq('profissional', uuid); 
+    else if (normRole !== 'gestor' && normRole !== 'planejista' && normRole !== 'orcamentista') query = query.eq('cliente', uuid);
 
     const { data: chavesData } = await query;
     if (!chavesData?.length) { setOrders([]); return; }
@@ -100,16 +107,22 @@ const ClientOrders: React.FC = () => {
     const sMap = Object.fromEntries(services.data?.map(s => [s.id, s]) || []);
     const uMap = Object.fromEntries(users.data?.map(u => [u.uuid, u]) || []);
     
-    setOrders(chavesData.map(c => ({
-        ...c,
-        geral: sMap[c.atividade],
-        profissional: uMap[normRole === 'profissional' ? c.cliente : c.profissional],
-        orcamentos: budgets.data?.filter(b => b.chave === c.id) || [],
-        planejamento: plans.data?.filter(p => p.chave === c.id) || [],
-        avaliacao: reviews.data?.find(r => r.chave === c.id),
-        agenda: agenda.data?.filter(a => a.chave === c.id) || [],
-        ordemServico: os.data?.filter(o => o.chave === c.id) || []
-    })));
+    setOrders(chavesData.map(c => {
+        const rawPro = c.profissional;
+        const proUuid = typeof rawPro === 'string' ? rawPro : (rawPro as any)?.uuid;
+        const otherUserUuid = normRole === 'profissional' ? c.cliente : proUuid;
+        
+        return {
+            ...c,
+            geral: sMap[c.atividade],
+            profissional: uMap[otherUserUuid] || null,
+            orcamentos: budgets.data?.filter(b => b.chave === c.id) || [],
+            planejamento: plans.data?.filter(p => p.chave === c.id) || [],
+            avaliacao: reviews.data?.find(r => r.chave === c.id),
+            agenda: agenda.data?.filter(a => a.chave === c.id) || [],
+            ordemServico: os.data?.filter(o => o.chave === c.id) || []
+        };
+    }));
   };
 
   const handleOpenDetails = (order: OrderExtended) => {
@@ -128,8 +141,7 @@ const ClientOrders: React.FC = () => {
     setRatingScore(order.avaliacao?.nota || 0);
     setRatingComment(order.avaliacao?.comentario || '');
     
-    // Se o pedido está concluído e sou o cliente sem avaliação, vai direto pra aba avaliação
-    if (order.status === 'concluido' && isConsumer && !order.avaliacao) {
+    if (order.status === 'concluido' && canActAsClient && !order.avaliacao) {
         setActiveTab('avaliacao');
     } else {
         setActiveTab('geral');
@@ -138,20 +150,156 @@ const ClientOrders: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handleProposalDecision = async (orderId: number, approved: boolean) => {
+      if (!selectedOrder) return;
+      const actionText = approved ? "aprovar" : "recusar";
+      if (!window.confirm(`Deseja ${actionText} este orçamento?`)) return;
+      
+      setProcessingAction(true);
+      try {
+          // 1. Validar se temos os dados necessários para o fluxo continuar
+          const plan = selectedOrder.planejamento?.[0];
+          const rawPro = selectedOrder.profissional;
+          const proUuid = typeof rawPro === 'string' ? rawPro : (rawPro as any)?.uuid;
+
+          if (approved && (!plan || !proUuid)) {
+              throw new Error("Dados de planejamento ou profissional ausentes. Não é possível agendar.");
+          }
+
+          const newStatus = approved ? 'aguardando_profissional' : 'reprovado';
+          
+          // 2. Atualizar status do chamado
+          const { error: updateError } = await supabase
+            .from('chaves')
+            .update({ status: newStatus })
+            .eq('id', orderId);
+          
+          if (updateError) throw updateError;
+          
+          // 3. Se aprovado, criar/atualizar registro na agenda para o profissional ver
+          if (approved && plan && proUuid) {
+              const { data: existingAgenda } = await supabase.from('agenda').select('id').eq('chave', orderId).maybeSingle();
+              
+              const agendaPayload = {
+                  chave: orderId,
+                  cliente: selectedOrder.cliente,
+                  profissional: proUuid,
+                  execucao: plan.execucao,
+                  observacoes: plan.descricao || 'Serviço aprovado pelo cliente.'
+              };
+
+              if (existingAgenda) {
+                  await supabase.from('agenda').update(agendaPayload).eq('id', existingAgenda.id);
+              } else {
+                  await supabase.from('agenda').insert(agendaPayload);
+              }
+          }
+          
+          alert(approved ? "Sucesso! O orçamento foi aprovado e o profissional já pode confirmar o agendamento." : "Orçamento recusado.");
+          await fetchOrders();
+          setIsModalOpen(false);
+      } catch (e: any) {
+          console.error("Erro ao aprovar:", e);
+          alert("Ocorreu um erro: " + (e.message || "Erro desconhecido"));
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
+  const handleProfessionalDecision = async (order: OrderExtended, accept: boolean) => {
+      const msg = accept 
+          ? "Aceitar este serviço e confirmar o agendamento em sua agenda?" 
+          : "Recusar este serviço? Ele voltará para a etapa de planejamento para outro profissional.";
+      
+      if (!window.confirm(msg)) return;
+      
+      setProcessingAction(true);
+      try {
+          if (accept) {
+              const { error } = await supabase.from('chaves').update({ status: 'aprovado' }).eq('id', order.id);
+              if (error) throw error;
+              alert("Serviço aceito com sucesso! O agendamento está confirmado.");
+          } else {
+              const { error: chaveError } = await supabase.from('chaves').update({ status: 'pendente', profissional: null }).eq('id', order.id);
+              if (chaveError) throw chaveError;
+              if (order.agenda && order.agenda.length > 0) {
+                  await supabase.from('agenda').delete().eq('id', order.agenda[0].id);
+              }
+              alert("Serviço recusado. O pedido retornou para o planejamento.");
+          }
+          await fetchOrders();
+          setIsModalOpen(false);
+      } catch (e: any) { alert(e.message); } finally { setProcessingAction(false); }
+  };
+
+  const handleSaveProfessionalEdits = async () => {
+      if (!selectedOrder || !isProfessional) return;
+      setProcessingAction(true);
+      try {
+          const { error: chaveError } = await supabase.from('chaves').update({ 
+              status: executionData.status,
+              fotoantes: executionData.fotoantes,
+              fotodepois: executionData.fotodepois
+          }).eq('id', selectedOrder.id);
+          if (chaveError) throw chaveError;
+
+          if (selectedOrder.agenda?.length) {
+              const { error: agendaError } = await supabase.from('agenda').update({ 
+                  observacoes: executionData.observacoes 
+              }).eq('id', selectedOrder.agenda[0].id);
+              if (agendaError) throw agendaError;
+          }
+
+          alert("Dados atualizados com sucesso!");
+          await fetchOrders();
+          setIsModalOpen(false);
+      } catch (error: any) {
+          alert("Erro ao salvar: " + error.message);
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'antes' | 'depois') => {
+      if (!isProfessional || !e.target.files?.length) return;
+      setUploading(true);
+      try {
+          const file = e.target.files[0];
+          const path = `pedidos/${selectedOrder?.chaveunica || 'order'}_${target}_${Date.now()}.${file.name.split('.').pop()}`;
+          const { error } = await supabase.storage.from('imagens').upload(path, file);
+          if (error) throw error;
+          const { data } = supabase.storage.from('imagens').getPublicUrl(path);
+          setExecutionData(prev => ({
+              ...prev,
+              [target === 'antes' ? 'fotoantes' : 'fotodepois']: [...prev[target === 'antes' ? 'fotoantes' : 'fotodepois'], data.publicUrl]
+          }));
+      } catch (error: any) { alert(error.message); } finally { setUploading(false); }
+  };
+
+  const handleDeleteImage = (index: number, target: 'antes' | 'depois') => {
+      if (!isProfessional || !window.confirm("Remover imagem?")) return;
+      setExecutionData(prev => ({
+          ...prev,
+          [target === 'antes' ? 'fotoantes' : 'fotodepois']: prev[target === 'antes' ? 'fotoantes' : 'fotodepois'].filter((_, i) => i !== index)
+      }));
+  };
+
   const handleSubmitRating = async () => {
       if (!selectedOrder || !ratingScore) return;
       setSubmittingRating(true);
       try {
+          const rawPro = selectedOrder.profissional;
+          const proUuid = typeof rawPro === 'string' ? rawPro : (rawPro as any)?.uuid;
           const { error } = await supabase.from('avaliacoes').insert({
               chave: selectedOrder.id,
-              profissional: selectedOrder.profissional?.uuid,
+              profissional: proUuid,
               cliente: currentUserId,
               nota: ratingScore,
               comentario: ratingComment
           });
           if (error) throw error;
-          alert("Avaliação enviada com sucesso! Obrigado pelo feedback.");
-          await loadData(currentUserId, userType);
+          alert("Avaliação enviada com sucesso!");
+          await fetchOrders();
           setIsModalOpen(false);
       } catch (e: any) { alert(e.message); } finally { setSubmittingRating(false); }
   };
@@ -160,47 +308,54 @@ const ClientOrders: React.FC = () => {
     switch (s?.toLowerCase()) {
       case 'concluido': return 'bg-green-100 text-green-900 border-green-200';
       case 'executando': return 'bg-purple-100 text-purple-900 border-purple-200';
+      case 'aguardando_aprovacao': return 'bg-orange-100 text-orange-900 border-orange-200';
+      case 'aguardando_profissional': return 'bg-cyan-100 text-cyan-900 border-cyan-200';
       case 'cancelado': return 'bg-red-100 text-red-900 border-red-200';
+      case 'aprovado': return 'bg-green-50 text-green-700 border-green-100';
+      case 'reprovado': return 'bg-red-50 text-red-700 border-red-100';
       default: return 'bg-blue-100 text-blue-900 border-blue-200';
     }
   };
+
+  const getStatusLabel = (s: string) => {
+      switch (s?.toLowerCase()) {
+          case 'aguardando_aprovacao': return 'Proposta Recebida';
+          case 'aguardando_profissional': return 'Aguardando Profissional';
+          case 'aprovado': return 'Agendado';
+          case 'reprovado': return 'Proposta Negada';
+          default: return s.replace('_', ' ');
+      }
+  }
+
+  const isConcluded = selectedOrder?.status?.toLowerCase() === 'concluido';
 
   return (
     <div className="min-h-screen bg-ios-bg pb-20">
       <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-20 border-b border-gray-200 flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Meus Pedidos</h1>
         {canCreateOrder && (
-            <button 
-                onClick={() => navigate('/search')}
-                className="bg-black text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-gray-200 active:scale-95 transition-all"
-            >
-                <Plus size={16} />
-                <span>Novo Pedido</span>
-            </button>
+            <button onClick={() => navigate('/search')} className="bg-black text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg active:scale-95 transition-all"><Plus size={16} /><span>Novo Pedido</span></button>
         )}
       </div>
 
       <div className="p-5 space-y-6 max-w-4xl mx-auto">
         {loading ? <div className="flex justify-center py-20"><Loader2 className="animate-spin text-ios-blue"/></div> : orders.length === 0 ? <div className="text-center py-20 bg-white rounded-3xl border-dashed border-2 border-gray-100 text-gray-400 font-bold">Nenhum pedido encontrado.</div> : (
           orders.map(order => (
-            <div key={order.id} onClick={() => handleOpenDetails(order)} className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 transition-all cursor-pointer hover:shadow-md active:scale-[0.98]">
-              <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center space-x-3"><div className="w-10 h-10 bg-gray-100 rounded-xl overflow-hidden shadow-inner">{order.geral?.imagem && <img src={order.geral.imagem} className="w-full h-full object-cover"/>}</div><div><h3 className="font-bold text-gray-900 leading-tight">{order.geral?.nome}</h3><p className="text-[10px] font-mono font-black text-gray-400 uppercase">#{order.chaveunica}</p></div></div>
-                  <span className={`px-3 py-1 text-[10px] font-bold rounded-full border uppercase ${getStatusColor(order.status)}`}>{order.status}</span>
+            <div key={order.id} onClick={() => handleOpenDetails(order)} className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] relative overflow-hidden group">
+              <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-2xl text-[10px] font-black uppercase tracking-wider border-l border-b transition-colors ${getStatusColor(order.status)}`}>{getStatusLabel(order.status)}</div>
+              <div className="flex items-center space-x-4 mt-2 mb-4">
+                  <div className="w-14 h-14 bg-gray-100 rounded-2xl overflow-hidden shadow-inner flex-shrink-0">{order.geral?.imagem ? <img src={order.geral.imagem} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-300"><Calendar size={24}/></div>}</div>
+                  <div className="min-w-0 flex-1"><h3 className="font-bold text-gray-900 text-lg leading-tight truncate group-hover:text-ios-blue transition-colors">{order.geral?.nome}</h3><p className="text-[10px] font-mono font-black text-gray-400 uppercase mt-0.5 tracking-widest">ID: {order.chaveunica}</p></div>
               </div>
-              <div className="flex justify-between items-end mt-4">
-                  <div className="flex items-center space-x-2"><img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome}`} className="w-6 h-6 rounded-full border border-gray-100"/><span className="text-xs font-bold text-gray-900">{order.profissional?.nome}</span></div>
-                  {order.orcamentos?.length > 0 && <span className="text-lg font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</span>}
-              </div>
-              {order.status === 'concluido' && isConsumer && !order.avaliacao && (
-                  <div className="mt-4 pt-3 border-t border-yellow-100 flex items-center text-yellow-600 justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Star size={14} className="fill-yellow-600 animate-pulse"/>
-                        <span className="text-xs font-black uppercase">Avaliação Pendente</span>
-                      </div>
-                      <div className="bg-yellow-500 text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase shadow-sm">Avaliar Agora</div>
+              <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+                  <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 rounded-full bg-white border border-gray-200 overflow-hidden"><img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`} className="w-full h-full object-cover"/></div>
+                      <div className="min-w-0"><p className="text-[9px] font-black text-gray-400 uppercase leading-none mb-1">{isProfessional ? 'Cliente' : 'Profissional'}</p><p className="text-xs font-bold text-gray-900 truncate">{order.profissional?.nome || 'Não definido'}</p></div>
                   </div>
-              )}
+                  <div className="text-right">{order.orcamentos?.length > 0 ? <span className="text-base font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</span> : <span className="text-[10px] font-black text-gray-400 uppercase">Aguardando Orçamento</span>}</div>
+              </div>
+              {order.status === 'aguardando_aprovacao' && canActAsClient && <div className="mt-4 pt-3 border-t border-orange-100 flex items-center justify-between"><p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-1"><AlertCircle size={12}/> Orçamento disponível para aprovação</p><div className="bg-orange-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg animate-pulse">Decidir Agora</div></div>}
+              {order.status === 'aguardando_profissional' && isProfessional && <div className="mt-4 pt-3 border-t border-cyan-100 flex items-center justify-between"><p className="text-[10px] font-black text-cyan-600 uppercase flex items-center gap-1"><AlertCircle size={12}/> O cliente aprovou! Confirme sua agenda.</p><div className="bg-cyan-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg">Aceitar ou Recusar</div></div>}
             </div>
           ))
         )}
@@ -214,185 +369,145 @@ const ClientOrders: React.FC = () => {
                     <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:text-gray-900 transition-colors"><X size={20} /></button>
                 </div>
 
-                {/* Tabs Row - Custom Design for iOS Feel */}
-                <div className="flex border-b border-gray-100 bg-white">
-                    <button 
-                        onClick={() => setActiveTab('geral')} 
-                        className={`flex-1 py-4 text-sm font-bold transition-all relative ${activeTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}
-                    >
-                        Informações
-                        {activeTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
-                    </button>
-                    
-                    {!isConsumer && (
-                        <>
-                            <button 
-                                onClick={() => setActiveTab('fotos')} 
-                                className={`flex-1 py-4 text-sm font-bold transition-all relative ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}
-                            >
-                                Fotos
-                                {activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
-                            </button>
-                            <button 
-                                onClick={() => setActiveTab('obs')} 
-                                className={`flex-1 py-4 text-sm font-bold transition-all relative ${activeTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}
-                            >
-                                Anotações
-                                {activeTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
-                            </button>
-                        </>
-                    )}
-                    
-                    {selectedOrder.status === 'concluido' && (
-                        <button 
-                            onClick={() => setActiveTab('avaliacao')} 
-                            className={`flex-1 py-4 text-sm font-bold transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}
-                        >
-                            Avaliação
-                            {activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
-                        </button>
-                    )}
+                <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar">
+                    <button onClick={() => setActiveTab('geral')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Informações{activeTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
+                    {(isProfessional || isManager) && (<><button onClick={() => setActiveTab('fotos')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Fotos{activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button><button onClick={() => setActiveTab('obs')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Anotações{activeTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button></>)}
+                    {(selectedOrder.status === 'concluido' && canActAsClient) && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-white no-scrollbar">
                     {activeTab === 'geral' && (
                         <div className="space-y-6 animate-in fade-in duration-300">
-                             <div className="bg-gray-50/50 p-6 rounded-[2rem] border border-gray-100">
-                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-4 block">Status do Serviço</label>
-                                <div className={`inline-flex px-5 py-2 rounded-xl text-xs font-black border uppercase mb-6 ${getStatusColor(selectedOrder.status)}`}>{selectedOrder.status}</div>
+                             <div className="bg-gray-50/50 p-6 rounded-[2rem] border border-gray-100 shadow-inner">
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-4 block">Status Atual</label>
+                                {isProfessional ? (
+                                    <div className="space-y-4">
+                                        <select 
+                                            disabled={isConcluded || processingAction}
+                                            className="w-full bg-white border border-gray-200 rounded-xl p-4 text-sm font-black text-gray-900 outline-none disabled:opacity-50 appearance-none shadow-sm"
+                                            value={executionData.status}
+                                            onChange={(e) => setExecutionData({...executionData, status: e.target.value})}
+                                        >
+                                            <option value="pendente">Pendente</option>
+                                            <option value="aprovado">Aprovado</option>
+                                            <option value="executando">Executando</option>
+                                            <option value="concluido">Concluído</option>
+                                            <option value="cancelado">Cancelado</option>
+                                        </select>
+                                        {isConcluded && <p className="text-[9px] font-bold text-gray-400 uppercase text-center flex items-center justify-center gap-1"><Lock size={10}/> Status travado (Serviço Concluído)</p>}
+                                    </div>
+                                ) : (
+                                    <div className={`inline-flex px-5 py-2 rounded-xl text-xs font-black border uppercase mb-6 ${getStatusColor(selectedOrder.status)}`}>{getStatusLabel(selectedOrder.status)}</div>
+                                )}
                                 
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div>
-                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Início</p>
-                                        <p className="text-sm font-bold text-gray-900">
-                                            {selectedOrder.ordemServico?.[0]?.datainicio ? new Date(selectedOrder.ordemServico[0].datainicio).toLocaleString('pt-BR') : 'Aguardando'}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Fim / Conclusão</p>
-                                        <p className="text-sm font-bold text-gray-900">
-                                            {selectedOrder.ordemServico?.[0]?.datafim ? new Date(selectedOrder.ordemServico[0].datafim).toLocaleString('pt-BR') : 'Em andamento'}
-                                        </p>
-                                    </div>
+                                <div className="grid grid-cols-2 gap-6 mt-6">
+                                    <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Data Planejada</p><p className="text-sm font-bold text-gray-900">{selectedOrder.planejamento?.[0]?.execucao ? new Date(selectedOrder.planejamento[0].execucao).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Não definida'}</p></div>
+                                    <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Valor do Serviço</p><p className="text-sm font-black text-gray-900">{selectedOrder.orcamentos?.[0]?.preco ? `R$ ${selectedOrder.orcamentos[0].preco.toFixed(2)}` : 'Em processamento'}</p></div>
                                 </div>
-                             </div>
 
-                             <div className="bg-blue-50/50 p-6 rounded-[2rem] border border-blue-100">
-                                 <h4 className="text-[10px] font-black text-blue-900 uppercase tracking-[0.15em] mb-4">Profissional Atribuído</h4>
-                                 <div className="flex items-center space-x-4">
-                                     <div className="w-14 h-14 rounded-full border-2 border-white shadow-sm overflow-hidden bg-gray-200">
-                                         <img src={selectedOrder.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${selectedOrder.profissional?.nome}`} className="w-full h-full object-cover"/>
-                                     </div>
-                                     <div>
-                                         <p className="text-base font-black text-blue-900 leading-tight">{selectedOrder.profissional?.nome}</p>
-                                         <p className="text-xs text-blue-700 font-bold mt-0.5">Contatado via UAI Fix</p>
-                                     </div>
-                                 </div>
+                                {selectedOrder.status === 'aguardando_aprovacao' && canActAsClient && (
+                                    <div className="mt-8 p-6 bg-white rounded-3xl border border-orange-100 space-y-5 shadow-sm animate-in slide-in-from-bottom-4">
+                                        <div className="flex items-center gap-3 text-orange-700"><AlertCircle size={20} className="flex-shrink-0"/><p className="text-xs font-bold leading-tight">O orçamento está pronto para sua decisão. Você aceita o valor para agendar o serviço?</p></div>
+                                        <div className="flex flex-col gap-2">
+                                            <button onClick={() => handleProposalDecision(selectedOrder.id, true)} disabled={processingAction} className="w-full bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={18}/> : <><ThumbsUp size={18}/><span>{processingAction ? 'Aprovando...' : 'Aprovar Orçamento'}</span></>}</button>
+                                            <button onClick={() => handleProposalDecision(selectedOrder.id, false)} disabled={processingAction} className="w-full bg-white border border-red-100 text-red-500 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"><ThumbsDown size={14}/><span>Recusar Proposta</span></button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {selectedOrder.status === 'aguardando_profissional' && isProfessional && (
+                                    <div className="mt-6 p-5 bg-cyan-50 rounded-3xl border border-cyan-100 space-y-4 shadow-sm animate-in zoom-in duration-300">
+                                        <div className="flex items-center gap-3 text-cyan-800"><AlertCircle size={20}/><p className="text-xs font-black leading-tight">O CLIENTE APROVOU!<br/><span className="font-medium opacity-80 uppercase text-[10px]">Confirme se esta data e horário estão disponíveis em sua agenda.</span></p></div>
+                                        <div className="flex gap-3"><button onClick={() => handleProfessionalDecision(selectedOrder, true)} disabled={processingAction} className="flex-[2] bg-black text-white py-4 rounded-2xl font-black text-xs shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={18}/> : <><Check size={16}/> ACEITAR</>}</button><button onClick={() => handleProfessionalDecision(selectedOrder, false)} disabled={processingAction} className="flex-1 bg-white border border-red-100 text-red-500 py-4 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center justify-center gap-2"><Ban size={16}/> RECUSAR</button></div>
+                                    </div>
+                                )}
                              </div>
                         </div>
                     )}
 
-                    {activeTab === 'fotos' && !isConsumer && (
+                    {activeTab === 'fotos' && (
                         <div className="space-y-6 animate-in fade-in duration-300">
                             <div>
-                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos do 'Antes' (Profissional)</h4>
+                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos do 'Antes'</h4>
                                 <div className="grid grid-cols-3 gap-2">
-                                    {executionData.fotoantes.length > 0 ? executionData.fotoantes.map((url, i) => (
-                                        <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden shadow-sm border border-gray-100"><img src={url} className="w-full h-full object-cover"/></div>
-                                    )) : <div className="col-span-3 py-10 text-center text-gray-300 text-xs italic bg-gray-50 rounded-2xl border border-dashed">Nenhuma foto enviada.</div>}
+                                    {executionData.fotoantes.map((url, i) => (
+                                        <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
+                                            <img src={url} className="w-full h-full object-cover"/>
+                                            {isProfessional && !isConcluded && <button onClick={() => handleDeleteImage(i, 'antes')} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full"><Trash2 size={12}/></button>}
+                                        </div>
+                                    ))}
+                                    {isProfessional && !isConcluded && (
+                                        <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                                            {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={20} className="text-gray-300"/>}
+                                            <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'antes')} />
+                                        </label>
+                                    )}
                                 </div>
                             </div>
                             <div>
                                 <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos da Conclusão</h4>
                                 <div className="grid grid-cols-3 gap-2">
-                                    {executionData.fotodepois.length > 0 ? executionData.fotodepois.map((url, i) => (
-                                        <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden shadow-sm border border-gray-100"><img src={url} className="w-full h-full object-cover"/></div>
-                                    )) : <div className="col-span-3 py-10 text-center text-gray-300 text-xs italic bg-gray-50 rounded-2xl border border-dashed">Aguardando registro do profissional.</div>}
+                                    {executionData.fotodepois.map((url, i) => (
+                                        <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
+                                            <img src={url} className="w-full h-full object-cover"/>
+                                            {isProfessional && !isConcluded && <button onClick={() => handleDeleteImage(i, 'depois')} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full"><Trash2 size={12}/></button>}
+                                        </div>
+                                    ))}
+                                    {isProfessional && !isConcluded && (
+                                        <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                                            {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={20} className="text-gray-300"/>}
+                                            <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'depois')} />
+                                        </label>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {activeTab === 'obs' && !isConsumer && (
+                    {activeTab === 'obs' && (
                         <div className="space-y-4 animate-in fade-in duration-300">
                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Notas e Observações</label>
-                            <div className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed">
-                                {executionData.observacoes || "O profissional ainda não registrou anotações para este serviço."}
-                            </div>
+                            {isProfessional ? (
+                                <textarea 
+                                    disabled={isConcluded || processingAction}
+                                    className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed outline-none focus:ring-2 focus:ring-yellow-200 disabled:opacity-70"
+                                    value={executionData.observacoes}
+                                    onChange={(e) => setExecutionData({...executionData, observacoes: e.target.value})}
+                                    placeholder="Suas anotações sobre o serviço..."
+                                />
+                            ) : (
+                                <div className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed">{executionData.observacoes || "Nenhuma anotação registrada."}</div>
+                            )}
                         </div>
                     )}
 
                     {activeTab === 'avaliacao' && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                            <div className="text-center space-y-2 mt-4">
-                                <h4 className="text-xl font-black text-gray-900">Como foi o serviço?</h4>
-                                <p className="text-xs text-gray-500 font-medium">Sua avaliação ajuda a manter a qualidade da plataforma.</p>
-                            </div>
-
+                            <div className="text-center space-y-2 mt-4"><h4 className="text-xl font-black text-gray-900">Como foi o serviço?</h4><p className="text-xs text-gray-500 font-medium">Sua avaliação ajuda a manter a qualidade da plataforma.</p></div>
                             {!selectedOrder.avaliacao ? (
                                 <div className="space-y-8">
-                                    <div className="flex justify-center space-x-3">
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                            <button
-                                                key={star}
-                                                type="button"
-                                                onClick={() => setRatingScore(star)}
-                                                onMouseEnter={() => setHoverRating(star)}
-                                                onMouseLeave={() => setHoverRating(0)}
-                                                className="transition-all active:scale-90"
-                                            >
-                                                <Star
-                                                    size={44}
-                                                    className={`${
-                                                        (hoverRating || ratingScore) >= star
-                                                            ? 'fill-yellow-400 text-yellow-400'
-                                                            : 'text-gray-200'
-                                                    }`}
-                                                />
-                                            </button>
-                                        ))}
-                                    </div>
-                                    
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.1em] ml-1">Comentário Adicional</label>
-                                        <textarea
-                                            value={ratingComment}
-                                            onChange={(e) => setRatingComment(e.target.value)}
-                                            placeholder="Descreva sua experiência com o profissional..."
-                                            className="w-full bg-gray-50 border border-gray-200 rounded-[1.5rem] p-5 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[120px] resize-none"
-                                        />
-                                    </div>
-
-                                    <button
-                                        onClick={handleSubmitRating}
-                                        disabled={submittingRating || !ratingScore}
-                                        className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl hover:shadow-2xl active:scale-[0.98] transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
-                                    >
-                                        {submittingRating ? <Loader2 className="animate-spin" size={20}/> : <><Send size={18}/><span>Enviar Avaliação</span></>}
-                                    </button>
+                                    <div className="flex justify-center space-x-3">{[1, 2, 3, 4, 5].map((star) => (<button key={star} type="button" onClick={() => setRatingScore(star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="transition-all active:scale-90"><Star size={44} className={`${(hoverRating || ratingScore) >= star ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}/></button>))}</div>
+                                    <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.1em] ml-1">Comentário Adicional</label><textarea value={ratingComment} onChange={(e) => setRatingComment(e.target.value)} placeholder="Descreva sua experiência..." className="w-full bg-gray-50 border border-gray-200 rounded-[1.5rem] p-5 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[120px] resize-none"/></div>
+                                    <button onClick={handleSubmitRating} disabled={submittingRating || !ratingScore} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center space-x-2 disabled:opacity-50">{submittingRating ? <Loader2 className="animate-spin" size={20}/> : <><Send size={18}/><span>Enviar Avaliação</span></>}</button>
                                 </div>
                             ) : (
-                                <div className="bg-green-50 p-8 rounded-[2.5rem] border border-green-100 text-center space-y-4">
-                                    <div className="flex justify-center space-x-1">
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                            <Star key={star} size={22} className={star <= (selectedOrder.avaliacao?.nota || 0) ? 'fill-green-500 text-green-500' : 'text-green-200'} />
-                                        ))}
-                                    </div>
-                                    <h5 className="font-black text-green-900 text-sm uppercase tracking-wider">Avaliação Enviada</h5>
-                                    <p className="text-sm font-bold text-green-800 leading-relaxed italic">"{selectedOrder.avaliacao?.comentario}"</p>
-                                </div>
+                                <div className="bg-green-50 p-8 rounded-[2.5rem] border border-green-100 text-center space-y-4"><div className="flex justify-center space-x-1">{[1, 2, 3, 4, 5].map((star) => (<Star key={star} size={22} className={star <= (selectedOrder.avaliacao?.nota || 0) ? 'fill-green-500 text-green-500' : 'text-green-200'} />))}</div><h5 className="font-black text-green-900 text-sm uppercase tracking-wider">Avaliação Enviada</h5><p className="text-sm font-bold text-green-800 leading-relaxed italic">"{selectedOrder.avaliacao?.comentario}"</p></div>
                             )}
                         </div>
                     )}
                 </div>
 
-                <div className="p-6 border-t border-gray-100 bg-white">
-                    <button 
-                        onClick={() => setIsModalOpen(false)} 
-                        className="w-full bg-white border border-gray-200 text-gray-900 py-4 rounded-2xl font-bold shadow-sm active:scale-95 transition-all hover:bg-gray-50"
-                    >
-                        Fechar Detalhes
-                    </button>
+                <div className="p-6 border-t border-gray-100 bg-gray-50 flex gap-3">
+                    <button onClick={() => setIsModalOpen(false)} className="flex-1 bg-white border border-gray-200 text-gray-900 py-4 rounded-2xl font-bold shadow-sm active:scale-95 transition-all">Fechar</button>
+                    {isProfessional && !isConcluded && (
+                        <button 
+                            onClick={handleSaveProfessionalEdits} 
+                            disabled={processingAction} 
+                            className="flex-[2] bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-95 transition-all flex justify-center items-center gap-2"
+                        >
+                            {processingAction ? <Loader2 className="animate-spin" size={20}/> : <><Save size={18}/><span>Salvar Dados</span></>}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
