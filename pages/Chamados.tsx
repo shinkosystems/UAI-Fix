@@ -217,7 +217,8 @@ const Chamados: React.FC = () => {
     const canEditPlanning = () => {
         const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         if (r === 'gestor') return true;
-        if (r === 'planejista' || r === 'orcamentista') return !['concluido', 'cancelado'].includes(formData.status);
+        // Orçamentista e Profissional não editam planejamento
+        if (r === 'planejista') return !['concluido', 'cancelado'].includes(formData.status);
         return false;
     };
 
@@ -232,8 +233,7 @@ const Chamados: React.FC = () => {
         const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         if (r === 'gestor') return true;
         if (r === 'profissional') return !['concluido', 'cancelado'].includes(editingItem?.status || '');
-        if (r === 'orcamentista') return !['executando', 'concluido', 'cancelado'].includes(formData.status);
-        if (r === 'planejista') return editingItem?.orcamentos && editingItem.orcamentos.length === 0;
+        // Orçamentista e Planejista não editam status manualmente através de seletor livre
         return false;
     };
 
@@ -243,7 +243,10 @@ const Chamados: React.FC = () => {
         const hasBudget = ticket.orcamentos && ticket.orcamentos.length > 0;
         const budget = hasBudget ? ticket.orcamentos[0] : null;
         const plan = ticket.planejamento && ticket.planejamento.length > 0 ? ticket.planejamento[0] : null;
-        setShowBudgetForm(hasBudget || currentUserRole === 'orcamentista' || currentUserRole === 'gestor');
+        
+        const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        // Orçamento oculto para Planejistas E Profissionais
+        setShowBudgetForm(r !== 'planejista' && r !== 'profissional' && (hasBudget || currentUserRole === 'orcamentista' || currentUserRole === 'gestor'));
         
         let formattedDate = '', formattedVisita = '';
         if (plan?.execucao) formattedDate = toLocalISOString(plan.execucao);
@@ -311,6 +314,93 @@ const Chamados: React.FC = () => {
         } catch (error: any) { alert(error.message); } finally { setSaving(false); }
     };
 
+    const handleSendToBudget = async () => {
+        if (!editingItem) return;
+        if (!formData.profissionalUuid) return alert("Selecione um profissional antes de enviar.");
+        if (!formData.planejamentoData) return alert("Defina a data de execução prevista.");
+
+        setSaving(true);
+        try {
+            const { error: chaveError } = await supabase
+                .from('chaves')
+                .update({ 
+                    profissional: formData.profissionalUuid, 
+                    status: 'analise',
+                    planejista: currentUserId
+                })
+                .eq('id', editingItem.id);
+            
+            if (chaveError) throw chaveError;
+
+            const p: any = { 
+                chave: editingItem.id,
+                descricao: formData.planejamentoDesc, 
+                recursos: formData.planejamentoRecursos, 
+                pagamento: formData.planejamentoPagamento,
+                execucao: new Date(formData.planejamentoData).toISOString(),
+                visita: formData.planejamentoVisita ? new Date(formData.planejamentoVisita).toISOString() : null,
+                ativo: true
+            };
+
+            if (editingItem.planejamento?.length) {
+                await supabase.from('planejamento').update(p).eq('id', editingItem.planejamento[0].id);
+            } else {
+                await supabase.from('planejamento').insert(p);
+            }
+
+            alert("Chamado enviado para o orçamentista com sucesso!");
+            await fetchData();
+            setIsModalOpen(false);
+        } catch (error: any) { alert(error.message); } finally { setSaving(false); }
+    };
+
+    const handleSendToConsumer = async () => {
+        if (!editingItem) return;
+        if (formData.orcamentoPreco <= 0) return alert("O valor do orçamento deve ser maior que zero.");
+
+        setSaving(true);
+        try {
+            const { error: chaveError } = await supabase
+                .from('chaves')
+                .update({ 
+                    status: 'aguardando_aprovacao',
+                    orcamentista: currentUserId
+                })
+                .eq('id', editingItem.id);
+            
+            if (chaveError) throw chaveError;
+
+            const b = { 
+                chave: editingItem.id, 
+                preco: formData.orcamentoPreco, 
+                custofixo: formData.orcamentoCusto, 
+                custovariavel: formData.orcamentoCustoVariavel, 
+                hh: formData.orcamentoHH, 
+                imposto: formData.orcamentoImposto, 
+                lucro: formData.orcamentoLucro, 
+                tipopagmto: formData.orcamentoTipoPgto, 
+                parcelas: formData.orcamentoParcelas, 
+                observacaocliente: formData.orcamentoObs, 
+                notafiscal: formData.orcamentoNotaFiscal, 
+                ativo: true 
+            };
+
+            if (editingItem.orcamentos?.length) {
+                await supabase.from('orcamentos').update(b).eq('id', editingItem.orcamentos[0].id);
+            } else {
+                await supabase.from('orcamentos').insert(b);
+            }
+
+            alert("Orçamento enviado para o consumidor!");
+            await fetchData();
+            setIsModalOpen(false);
+        } catch (error: any) {
+            alert("Erro ao enviar orçamento: " + error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const getStatusColor = (s: string) => {
         switch (s?.toLowerCase()) {
             case 'pendente': return 'bg-yellow-100 text-yellow-900 border-yellow-200';
@@ -324,6 +414,11 @@ const Chamados: React.FC = () => {
             default: return 'bg-gray-100 text-gray-900 border-gray-200';
         }
     };
+
+    const normRole = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const isPlanejista = normRole === 'planejista';
+    const isOrcamentista = normRole === 'orcamentista';
+    const isProfissional = normRole === 'profissional';
 
     return (
         <div className="min-h-screen bg-ios-bg pb-20">
@@ -372,14 +467,14 @@ const Chamados: React.FC = () => {
                                         <div className="flex items-center font-bold text-ios-blue"><Clock size={12} className="mr-1"/> Execução: {new Date(t.planejamento[0].execucao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}</div>
                                     )}
                                 </div>
-                                {t.orcamentos?.length ? (
+                                {!isProfissional && t.orcamentos?.length ? (
                                     <div className="flex flex-col items-end">
                                         <div className="flex items-center font-bold text-green-700 text-sm"><DollarSign size={14} className="mr-0.5"/>R$ {t.orcamentos[0].preco.toFixed(2)}</div>
                                         {t.orcamentos[0].tipopagmto === 'Cartão de Crédito' && t.orcamentos[0].parcelas > 1 && (
                                             <div className="text-[9px] font-bold text-gray-400 uppercase">{t.orcamentos[0].parcelas}x Parcelas</div>
                                         )}
                                     </div>
-                                ) : <div className="text-orange-600 font-bold flex items-center text-[10px] uppercase"><AlertTriangle size={12} className="mr-1"/> Sem Orçamento</div>}
+                                ) : !isProfissional && <div className="text-orange-600 font-bold flex items-center text-[10px] uppercase"><AlertTriangle size={12} className="mr-1"/> Sem Orçamento</div>}
                             </div>
                         </div>
                     )) : (<div className="col-span-full text-center py-12 text-gray-400">Nenhum chamado encontrado.</div>)}
@@ -391,53 +486,107 @@ const Chamados: React.FC = () => {
                     <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
                             <div><h3 className="font-bold text-gray-900 text-lg">{editingItem.geral?.nome}</h3><div className="flex items-center mt-1"><span className="bg-gray-100 text-gray-900 px-2 py-1 rounded-md text-xs font-black font-mono tracking-wider flex items-center border border-gray-200"><Hash size={10} className="mr-1 opacity-50"/> {editingItem.chaveunica}</span></div></div>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100"><X size={20} /></button>
+                            <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
                         </div>
                         
                         <div className="p-6 overflow-y-auto space-y-6 flex-1 no-scrollbar">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Pedido</label><select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none capitalize focus:ring-2 focus:ring-black/10" value={formData.status} disabled={!canEditStatus()} onChange={(e) => setFormData({...formData, status: e.target.value})}><option value="pendente">Pendente</option><option value="analise">Em Análise</option><option value="aguardando_aprovacao">Aguardando Aprovação</option><option value="aguardando_profissional">Aguardando Profissional</option><option value="aprovado">Aprovado</option><option value="executando">Executando</option><option value="concluido">Concluído</option><option value="cancelado">Cancelado</option><option value="reprovado">Reprovado</option></select></div>
-                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional</label><select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none" value={formData.profissionalUuid} disabled={!canEditPlanning()} onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}><option value="">Selecione...</option>{professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}</select></div>
-                            </div>
                             
-                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3 relative">
-                                <div className="flex justify-between items-center">
-                                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center"><FileText size={12} className="mr-1"/> Detalhes do Planejamento</h4>
-                                    {!canEditPlanning() && <Lock size={10} className="text-gray-300"/>}
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 ml-1">Execução</label><input type="datetime-local" disabled={!canEditPlanning()} className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none disabled:opacity-70" value={formData.planejamentoData} onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})}/></div>
-                                    <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 ml-1">Visita Técnica</label><input type="datetime-local" disabled={!canEditPlanning()} className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none disabled:opacity-70" value={formData.planejamentoVisita} onChange={(e) => setFormData({...formData, planejamentoVisita: e.target.value})}/></div>
-                                </div>
-                            </div>
-
-                            {showBudgetForm && (
-                                <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in slide-in-from-right-4">
-                                    <div className="flex justify-between items-center"><h4 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center"><DollarSign size={12} className="mr-1"/> Orçamento Financeiro</h4><div className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase shadow-sm">Total: R$ {formData.orcamentoPreco.toFixed(2)}</div></div>
-                                    
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Custo Fixo (Peças)</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoCusto} onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value) || 0})}/></div>
-                                        <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Mão de Obra (HH)</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoHH} onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value) || 0})}/></div>
-                                        <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Lucro Estimado</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoLucro} onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value) || 0})}/></div>
-                                        <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Impostos (%)</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoImposto} onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value) || 0})}/></div>
+                            {isPlanejista ? (
+                                <div className="space-y-6 animate-in fade-in duration-300">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional</label>
+                                        <select 
+                                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-black/10" 
+                                            value={formData.profissionalUuid} 
+                                            onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
+                                        >
+                                            <option value="">Selecione o melhor profissional...</option>
+                                            {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
+                                        </select>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Tipo de Pagamento</label><select disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none" value={formData.orcamentoTipoPgto} onChange={(e) => setFormData({...formData, orcamentoTipoPgto: e.target.value})}><option value="Dinheiro">Dinheiro</option><option value="PIX">PIX</option><option value="Cartão de Crédito">Cartão de Crédito</option><option value="Cartão de Débito">Cartão de Débito</option></select></div>
-                                        {formData.orcamentoTipoPgto === 'Cartão de Crédito' && (
-                                            <div className="space-y-1 animate-in zoom-in duration-200"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Parcelas</label><input type="number" min="1" max="12" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none" value={formData.orcamentoParcelas} onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value) || 1})}/></div>
-                                        )}
+                                    <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
+                                        <div className="flex items-center gap-2 mb-2 text-gray-600"><FileText size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Detalhes do Planejamento</h4></div>
+                                        <div className="grid grid-cols-1 gap-4">
+                                            <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1">Execução Prevista</label><input type="datetime-local" className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.planejamentoData} onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})} /></div>
+                                            <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1">Visita Técnica (Opcional)</label><input type="datetime-local" className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.planejamentoVisita} onChange={(e) => setFormData({...formData, planejamentoVisita: e.target.value})} /></div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-yellow-50 p-5 rounded-3xl border border-yellow-100"><label className="text-[10px] font-black text-yellow-700 uppercase tracking-wider mb-2 block">Informações Técnicas</label><textarea className="w-full bg-white/50 border border-yellow-200 rounded-2xl p-4 text-sm font-medium text-gray-800 min-h-[100px] outline-none" placeholder="Detalhes técnicos para o orçamentista..." value={formData.planejamentoDesc} onChange={(e) => setFormData({...formData, planejamentoDesc: e.target.value})} /></div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Pedido</label>
+                                            {isOrcamentista ? (
+                                                <div className={`w-full px-4 py-3 rounded-2xl text-xs font-black uppercase border text-center ${getStatusColor(formData.status)}`}>{formData.status.replace('_',' ')}</div>
+                                            ) : (
+                                                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none capitalize focus:ring-2 focus:ring-black/10" value={formData.status} disabled={!canEditStatus()} onChange={(e) => setFormData({...formData, status: e.target.value})}>
+                                                    <option value="pendente">Pendente</option>
+                                                    <option value="analise">Em Análise</option>
+                                                    <option value="aguardando_aprovacao">Aguardando Aprovação</option>
+                                                    <option value="aguardando_profissional">Aguardando Profissional</option>
+                                                    <option value="aprovado">Aprovado</option>
+                                                    <option value="executando">Executando</option>
+                                                    <option value="concluido">Concluído</option>
+                                                    <option value="cancelado">Cancelado</option>
+                                                    <option value="reprovado">Reprovado</option>
+                                                </select>
+                                            )}
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional</label>
+                                            <select 
+                                                className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none disabled:opacity-80" 
+                                                value={formData.profissionalUuid} 
+                                                disabled={!canEditPlanning()} 
+                                                onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
+                                            >
+                                                <option value="">Selecione...</option>
+                                                {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
+                                            </select>
+                                        </div>
                                     </div>
                                     
-                                    <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Observação para o Cliente</label><textarea disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none resize-none min-h-[60px]" value={formData.orcamentoObs} onChange={(e) => setFormData({...formData, orcamentoObs: e.target.value})} placeholder="Instruções sobre o valor..."/></div>
-                                </div>
+                                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3 relative">
+                                        <div className="flex justify-between items-center"><h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center"><FileText size={12} className="mr-1"/> Detalhes do Planejamento</h4>{(!canEditPlanning() || isOrcamentista || isProfissional) && <Lock size={10} className="text-gray-300"/>}</div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 ml-1">Execução</label><input type="datetime-local" disabled={true} className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none opacity-80" value={formData.planejamentoData} /></div>
+                                            <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 ml-1">Visita Técnica</label><input type="datetime-local" disabled={true} className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none opacity-80" value={formData.planejamentoVisita} /></div>
+                                        </div>
+                                    </div>
+
+                                    {showBudgetForm && !isProfissional && (
+                                        <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in slide-in-from-right-4">
+                                            <div className="flex justify-between items-center"><h4 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center"><DollarSign size={12} className="mr-1"/> Orçamento Financeiro</h4><div className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase shadow-sm">Total: R$ {formData.orcamentoPreco.toFixed(2)}</div></div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Custo Fixo (Peças)</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoCusto} onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value) || 0})}/></div>
+                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Mão de Obra (HH)</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoHH} onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value) || 0})}/></div>
+                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Lucro Estimado</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoLucro} onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value) || 0})}/></div>
+                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Impostos (%)</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoImposto} onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value) || 0})}/></div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Tipo de Pagamento</label><select disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none" value={formData.orcamentoTipoPgto} onChange={(e) => setFormData({...formData, orcamentoTipoPgto: e.target.value})}><option value="Dinheiro">Dinheiro</option><option value="PIX">PIX</option><option value="Cartão de Crédito">Cartão de Crédito</option><option value="Cartão de Débito">Cartão de Débito</option></select></div>
+                                                {formData.orcamentoTipoPgto === 'Cartão de Crédito' && (
+                                                    <div className="space-y-1 animate-in zoom-in duration-200"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Parcelas</label><input type="number" min="1" max="12" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none" value={formData.orcamentoParcelas} onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value) || 1})}/></div>
+                                                )}
+                                            </div>
+                                            <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Observação para o Cliente</label><textarea disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none resize-none min-h-[60px]" value={formData.orcamentoObs} onChange={(e) => setFormData({...formData, orcamentoObs: e.target.value})} placeholder="Instruções sobre o valor..."/></div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                         
                         <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto space-y-3">
-                            <button onClick={handleSave} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">
-                                {saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}
-                            </button>
+                            {isPlanejista ? (
+                                <button onClick={handleSendToBudget} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar para Orçamento</span></>}</button>
+                            ) : isOrcamentista ? (
+                                <button onClick={handleSendToConsumer} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar Orçamento</span></>}</button>
+                            ) : (
+                                <button onClick={handleSave} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}</button>
+                            )}
                         </div>
                     </div>
                 </div>

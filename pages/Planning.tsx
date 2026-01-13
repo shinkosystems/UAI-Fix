@@ -39,9 +39,11 @@ const Planning: React.FC = () => {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Retorna o exato momento atual formatado para o atributo 'min' do input datetime-local
   const getTodayMin = () => {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
+    // Formato: YYYY-MM-DDTHH:mm
     return new Date(now.getTime() - offset).toISOString().slice(0, 16);
   };
 
@@ -144,9 +146,16 @@ const Planning: React.FC = () => {
 
     const selectedDate = new Date(date);
     const now = new Date();
+    
+    // Zera segundos e milissegundos para uma comparação justa de minutos
     now.setSeconds(0, 0);
-    if (selectedDate < now) {
-        setErrorMsg("A data e hora do serviço não podem ser anteriores ao momento atual.");
+    
+    // Permite uma pequena tolerância de 1 minuto para não barrar o usuário 
+    // se ele escolher o horário atual e demorar alguns segundos para clicar.
+    const nowWithTolerance = new Date(now.getTime() - 60000); 
+
+    if (selectedDate.getTime() < nowWithTolerance.getTime()) {
+        setErrorMsg("Não é possível agendar serviços para uma data ou horário que já passou.");
         return;
     }
 

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao, Agenda, OrdemServico } from '../types';
-import { Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban, AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban, AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown, Lock, Banknote, MapPin } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface OrderExtended extends Chave {
@@ -61,7 +61,7 @@ const ClientOrders: React.FC = () => {
   const isProfessional = normalizedUserType === 'profissional';
   const isManager = normalizedUserType === 'gestor';
   
-  const canActAsClient = isConsumer || isManager;
+  const canActAsClient = true; // Na tela Meus Pedidos, o usuário age como dono do pedido
   const canCreateOrder = isConsumer || isManager;
 
   const toLocalISOString = (s: string) => { 
@@ -87,8 +87,13 @@ const ClientOrders: React.FC = () => {
     const normRole = role.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     let query = supabase.from('chaves').select('*').order('id', { ascending: false });
     
-    if (normRole === 'profissional') query = query.eq('profissional', uuid); 
-    else if (normRole !== 'gestor' && normRole !== 'planejista' && normRole !== 'orcamentista') query = query.eq('cliente', uuid);
+    // REGRA DE OURO: Profissionais veem onde trabalham, todos os outros veem apenas onde são clientes (incluindo Gestores)
+    if (normRole === 'profissional') {
+        query = query.eq('profissional', uuid); 
+    } else {
+        // Gestores, Consumidores e Equipe Interna veem apenas os seus próprios pedidos pessoais nesta tela
+        query = query.eq('cliente', uuid);
+    }
 
     const { data: chavesData } = await query;
     if (!chavesData?.length) { setOrders([]); return; }
@@ -141,7 +146,7 @@ const ClientOrders: React.FC = () => {
     setRatingScore(order.avaliacao?.nota || 0);
     setRatingComment(order.avaliacao?.comentario || '');
     
-    if (order.status === 'concluido' && canActAsClient && !order.avaliacao) {
+    if (order.status === 'concluido' && !order.avaliacao) {
         setActiveTab('avaliacao');
     } else {
         setActiveTab('geral');
@@ -151,24 +156,20 @@ const ClientOrders: React.FC = () => {
   };
 
   const handleProposalDecision = async (orderId: number, approved: boolean) => {
-      if (!selectedOrder) return;
-      const actionText = approved ? "aprovar" : "recusar";
-      if (!window.confirm(`Deseja ${actionText} este orçamento?`)) return;
+      if (!selectedOrder || processingAction) return;
       
       setProcessingAction(true);
       try {
-          // 1. Validar se temos os dados necessários para o fluxo continuar
           const plan = selectedOrder.planejamento?.[0];
           const rawPro = selectedOrder.profissional;
           const proUuid = typeof rawPro === 'string' ? rawPro : (rawPro as any)?.uuid;
 
           if (approved && (!plan || !proUuid)) {
-              throw new Error("Dados de planejamento ou profissional ausentes. Não é possível agendar.");
+              throw new Error("Dados de agendamento incompletos no sistema.");
           }
 
           const newStatus = approved ? 'aguardando_profissional' : 'reprovado';
           
-          // 2. Atualizar status do chamado
           const { error: updateError } = await supabase
             .from('chaves')
             .update({ status: newStatus })
@@ -176,7 +177,6 @@ const ClientOrders: React.FC = () => {
           
           if (updateError) throw updateError;
           
-          // 3. Se aprovado, criar/atualizar registro na agenda para o profissional ver
           if (approved && plan && proUuid) {
               const { data: existingAgenda } = await supabase.from('agenda').select('id').eq('chave', orderId).maybeSingle();
               
@@ -195,41 +195,39 @@ const ClientOrders: React.FC = () => {
               }
           }
           
-          alert(approved ? "Sucesso! O orçamento foi aprovado e o profissional já pode confirmar o agendamento." : "Orçamento recusado.");
           await fetchOrders();
           setIsModalOpen(false);
+          if (!approved) alert("Proposta recusada.");
       } catch (e: any) {
-          console.error("Erro ao aprovar:", e);
-          alert("Ocorreu um erro: " + (e.message || "Erro desconhecido"));
+          console.error("Erro ao processar:", e);
+          alert("Erro: " + (e.message || "Erro desconhecido"));
       } finally {
           setProcessingAction(false);
       }
   };
 
   const handleProfessionalDecision = async (order: OrderExtended, accept: boolean) => {
-      const msg = accept 
-          ? "Aceitar este serviço e confirmar o agendamento em sua agenda?" 
-          : "Recusar este serviço? Ele voltará para a etapa de planejamento para outro profissional.";
-      
-      if (!window.confirm(msg)) return;
+      if (processingAction) return;
       
       setProcessingAction(true);
       try {
           if (accept) {
               const { error } = await supabase.from('chaves').update({ status: 'aprovado' }).eq('id', order.id);
               if (error) throw error;
-              alert("Serviço aceito com sucesso! O agendamento está confirmado.");
           } else {
               const { error: chaveError } = await supabase.from('chaves').update({ status: 'pendente', profissional: null }).eq('id', order.id);
               if (chaveError) throw chaveError;
               if (order.agenda && order.agenda.length > 0) {
                   await supabase.from('agenda').delete().eq('id', order.agenda[0].id);
               }
-              alert("Serviço recusado. O pedido retornou para o planejamento.");
           }
           await fetchOrders();
           setIsModalOpen(false);
-      } catch (e: any) { alert(e.message); } finally { setProcessingAction(false); }
+      } catch (e: any) { 
+          alert("Erro ao processar decisão: " + e.message); 
+      } finally { 
+          setProcessingAction(false); 
+      }
   };
 
   const handleSaveProfessionalEdits = async () => {
@@ -250,7 +248,7 @@ const ClientOrders: React.FC = () => {
               if (agendaError) throw agendaError;
           }
 
-          alert("Dados atualizados com sucesso!");
+          alert("Dados atualizados!");
           await fetchOrders();
           setIsModalOpen(false);
       } catch (error: any) {
@@ -298,7 +296,7 @@ const ClientOrders: React.FC = () => {
               comentario: ratingComment
           });
           if (error) throw error;
-          alert("Avaliação enviada com sucesso!");
+          alert("Avaliação enviada!");
           await fetchOrders();
           setIsModalOpen(false);
       } catch (e: any) { alert(e.message); } finally { setSubmittingRating(false); }
@@ -352,10 +350,11 @@ const ClientOrders: React.FC = () => {
                       <div className="w-8 h-8 rounded-full bg-white border border-gray-200 overflow-hidden"><img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`} className="w-full h-full object-cover"/></div>
                       <div className="min-w-0"><p className="text-[9px] font-black text-gray-400 uppercase leading-none mb-1">{isProfessional ? 'Cliente' : 'Profissional'}</p><p className="text-xs font-bold text-gray-900 truncate">{order.profissional?.nome || 'Não definido'}</p></div>
                   </div>
-                  <div className="text-right">{order.orcamentos?.length > 0 ? <span className="text-base font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</span> : <span className="text-[10px] font-black text-gray-400 uppercase">Aguardando Orçamento</span>}</div>
+                  {!isProfessional && (
+                      <div className="text-right">{order.orcamentos?.length > 0 ? <span className="text-base font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</span> : <span className="text-[10px] font-black text-gray-400 uppercase">Aguardando Orçamento</span>}</div>
+                  )}
               </div>
-              {order.status === 'aguardando_aprovacao' && canActAsClient && <div className="mt-4 pt-3 border-t border-orange-100 flex items-center justify-between"><p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-1"><AlertCircle size={12}/> Orçamento disponível para aprovação</p><div className="bg-orange-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg animate-pulse">Decidir Agora</div></div>}
-              {order.status === 'aguardando_profissional' && isProfessional && <div className="mt-4 pt-3 border-t border-cyan-100 flex items-center justify-between"><p className="text-[10px] font-black text-cyan-600 uppercase flex items-center gap-1"><AlertCircle size={12}/> O cliente aprovou! Confirme sua agenda.</p><div className="bg-cyan-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg">Aceitar ou Recusar</div></div>}
+              {order.status === 'aguardando_aprovacao' && <div className="mt-4 pt-3 border-t border-orange-100 flex items-center justify-between"><p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-1"><AlertCircle size={12}/> Orçamento pronto!</p><div className="bg-orange-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg animate-pulse">Decidir Agora</div></div>}
             </div>
           ))
         )}
@@ -366,13 +365,13 @@ const ClientOrders: React.FC = () => {
             <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
                 <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
                     <div><h3 className="font-bold text-gray-900 text-lg leading-tight">{selectedOrder.geral?.nome}</h3><p className="text-xs font-mono font-black text-gray-400 uppercase tracking-wider">#{selectedOrder.chaveunica}</p></div>
-                    <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:text-gray-900 transition-colors"><X size={20} /></button>
+                    <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-900 transition-colors"><X size={20} /></button>
                 </div>
 
                 <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar">
                     <button onClick={() => setActiveTab('geral')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Informações{activeTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
                     {(isProfessional || isManager) && (<><button onClick={() => setActiveTab('fotos')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Fotos{activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button><button onClick={() => setActiveTab('obs')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Anotações{activeTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button></>)}
-                    {(selectedOrder.status === 'concluido' && canActAsClient) && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
+                    {(selectedOrder.status === 'concluido') && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-white no-scrollbar">
@@ -394,31 +393,65 @@ const ClientOrders: React.FC = () => {
                                             <option value="concluido">Concluído</option>
                                             <option value="cancelado">Cancelado</option>
                                         </select>
-                                        {isConcluded && <p className="text-[9px] font-bold text-gray-400 uppercase text-center flex items-center justify-center gap-1"><Lock size={10}/> Status travado (Serviço Concluído)</p>}
+                                        {isConcluded && <p className="text-[9px] font-bold text-gray-400 uppercase text-center flex items-center justify-center gap-1"><Lock size={10}/> Status travado (Concluído)</p>}
                                     </div>
                                 ) : (
                                     <div className={`inline-flex px-5 py-2 rounded-xl text-xs font-black border uppercase mb-6 ${getStatusColor(selectedOrder.status)}`}>{getStatusLabel(selectedOrder.status)}</div>
                                 )}
                                 
-                                <div className="grid grid-cols-2 gap-6 mt-6">
-                                    <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Data Planejada</p><p className="text-sm font-bold text-gray-900">{selectedOrder.planejamento?.[0]?.execucao ? new Date(selectedOrder.planejamento[0].execucao).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Não definida'}</p></div>
-                                    <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Valor do Serviço</p><p className="text-sm font-black text-gray-900">{selectedOrder.orcamentos?.[0]?.preco ? `R$ ${selectedOrder.orcamentos[0].preco.toFixed(2)}` : 'Em processamento'}</p></div>
+                                <div className={`grid ${isProfessional ? 'grid-cols-1' : 'grid-cols-2'} gap-6 mt-6`}>
+                                    <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Data Sugerida</p><p className="text-sm font-bold text-gray-900">{selectedOrder.planejamento?.[0]?.execucao ? new Date(selectedOrder.planejamento[0].execucao).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Não definida'}</p></div>
+                                    {!isProfessional && (
+                                        <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Valor Total</p><p className="text-sm font-black text-gray-900">{selectedOrder.orcamentos?.[0]?.preco ? `R$ ${selectedOrder.orcamentos[0].preco.toFixed(2)}` : 'Calculando...'}</p></div>
+                                    )}
                                 </div>
 
-                                {selectedOrder.status === 'aguardando_aprovacao' && canActAsClient && (
+                                {selectedOrder.status === 'aguardando_aprovacao' && (
                                     <div className="mt-8 p-6 bg-white rounded-3xl border border-orange-100 space-y-5 shadow-sm animate-in slide-in-from-bottom-4">
-                                        <div className="flex items-center gap-3 text-orange-700"><AlertCircle size={20} className="flex-shrink-0"/><p className="text-xs font-bold leading-tight">O orçamento está pronto para sua decisão. Você aceita o valor para agendar o serviço?</p></div>
+                                        <div className="flex items-center gap-3 text-orange-700"><AlertCircle size={20} className="flex-shrink-0"/><p className="text-xs font-bold leading-tight">Deseja aprovar este valor para agendar o serviço?</p></div>
                                         <div className="flex flex-col gap-2">
-                                            <button onClick={() => handleProposalDecision(selectedOrder.id, true)} disabled={processingAction} className="w-full bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={18}/> : <><ThumbsUp size={18}/><span>{processingAction ? 'Aprovando...' : 'Aprovar Orçamento'}</span></>}</button>
+                                            <button onClick={() => handleProposalDecision(selectedOrder.id, true)} disabled={processingAction} className="w-full bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={18}/> : <><ThumbsUp size={18}/><span>Aprovar Orçamento</span></>}</button>
                                             <button onClick={() => handleProposalDecision(selectedOrder.id, false)} disabled={processingAction} className="w-full bg-white border border-red-100 text-red-500 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"><ThumbsDown size={14}/><span>Recusar Proposta</span></button>
                                         </div>
                                     </div>
                                 )}
 
                                 {selectedOrder.status === 'aguardando_profissional' && isProfessional && (
-                                    <div className="mt-6 p-5 bg-cyan-50 rounded-3xl border border-cyan-100 space-y-4 shadow-sm animate-in zoom-in duration-300">
-                                        <div className="flex items-center gap-3 text-cyan-800"><AlertCircle size={20}/><p className="text-xs font-black leading-tight">O CLIENTE APROVOU!<br/><span className="font-medium opacity-80 uppercase text-[10px]">Confirme se esta data e horário estão disponíveis em sua agenda.</span></p></div>
-                                        <div className="flex gap-3"><button onClick={() => handleProfessionalDecision(selectedOrder, true)} disabled={processingAction} className="flex-[2] bg-black text-white py-4 rounded-2xl font-black text-xs shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={18}/> : <><Check size={16}/> ACEITAR</>}</button><button onClick={() => handleProfessionalDecision(selectedOrder, false)} disabled={processingAction} className="flex-1 bg-white border border-red-100 text-red-500 py-4 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center justify-center gap-2"><Ban size={16}/> RECUSAR</button></div>
+                                    <div className="mt-6 p-6 bg-cyan-50 rounded-[2.5rem] border border-cyan-100 space-y-5 shadow-sm animate-in zoom-in duration-300">
+                                        <div className="flex items-center gap-3 text-cyan-800">
+                                            <AlertCircle size={20} className="flex-shrink-0"/>
+                                            <p className="text-sm font-black leading-tight">O CLIENTE APROVOU!<br/><span className="font-medium opacity-80 uppercase text-[10px]">Confirme os dados abaixo para aceitar o serviço.</span></p>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 gap-3">
+                                            <div className="bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-cyan-100 shadow-sm flex items-center space-x-3">
+                                                <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center"><Banknote size={24}/></div>
+                                                <div>
+                                                    <p className="text-[10px] font-black text-gray-400 uppercase">Valor a Receber</p>
+                                                    <p className="text-lg font-black text-gray-900">R$ {selectedOrder.orcamentos?.[0]?.preco.toFixed(2) || '0.00'}</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-cyan-100 shadow-sm space-y-2">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center flex-shrink-0"><MapPin size={24}/></div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase">Local do Serviço</p>
+                                                        <p className="text-xs font-bold text-gray-900 truncate">
+                                                            {selectedOrder.profissional?.rua}, {selectedOrder.profissional?.numero}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="pl-[52px] border-t border-cyan-50/50 pt-2">
+                                                    <p className="text-[10px] text-gray-500 font-medium">{selectedOrder.profissional?.bairro} • {selectedOrder.profissional?.complemento || 'Sem compl.'}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-3 pt-2">
+                                            <button onClick={() => handleProfessionalDecision(selectedOrder, true)} disabled={processingAction} className="flex-[2] bg-black text-white py-4 rounded-2xl font-black text-xs shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={18}/> : <><Check size={16}/> ACEITAR SERVIÇO</>}</button>
+                                            <button onClick={() => handleProfessionalDecision(selectedOrder, false)} disabled={processingAction} className="flex-1 bg-white border border-red-100 text-red-500 py-4 rounded-2xl font-black text-xs active:scale-95 transition-all flex items-center justify-center gap-2"><Ban size={16}/> RECUSAR</button>
+                                        </div>
                                     </div>
                                 )}
                              </div>
@@ -483,7 +516,7 @@ const ClientOrders: React.FC = () => {
 
                     {activeTab === 'avaliacao' && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                            <div className="text-center space-y-2 mt-4"><h4 className="text-xl font-black text-gray-900">Como foi o serviço?</h4><p className="text-xs text-gray-500 font-medium">Sua avaliação ajuda a manter a qualidade da plataforma.</p></div>
+                            <div className="text-center space-y-2 mt-4"><h4 className="text-xl font-black text-gray-900">Como foi o serviço?</h4><p className="text-xs text-gray-500 font-medium">Sua avaliação ajuda a manter a qualidade.</p></div>
                             {!selectedOrder.avaliacao ? (
                                 <div className="space-y-8">
                                     <div className="flex justify-center space-x-3">{[1, 2, 3, 4, 5].map((star) => (<button key={star} type="button" onClick={() => setRatingScore(star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="transition-all active:scale-90"><Star size={44} className={`${(hoverRating || ratingScore) >= star ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}/></button>))}</div>
@@ -497,7 +530,7 @@ const ClientOrders: React.FC = () => {
                     )}
                 </div>
 
-                <div className="p-6 border-t border-gray-100 bg-gray-50 flex gap-3">
+                <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto flex gap-3">
                     <button onClick={() => setIsModalOpen(false)} className="flex-1 bg-white border border-gray-200 text-gray-900 py-4 rounded-2xl font-bold shadow-sm active:scale-95 transition-all">Fechar</button>
                     {isProfessional && !isConcluded && (
                         <button 
@@ -505,7 +538,7 @@ const ClientOrders: React.FC = () => {
                             disabled={processingAction} 
                             className="flex-[2] bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-95 transition-all flex justify-center items-center gap-2"
                         >
-                            {processingAction ? <Loader2 className="animate-spin" size={20}/> : <><Save size={18}/><span>Salvar Dados</span></>}
+                            {processingAction ? <Loader2 className="animate-spin" size={20}/> : <><Save size={18}/><span>Salvar Alterações</span></>}
                         </button>
                     )}
                 </div>
