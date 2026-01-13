@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao, Agenda, OrdemServico } from '../types';
-import { Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban, AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown, Lock, Banknote, MapPin } from 'lucide-react';
+import { Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban, AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown, Lock, Banknote, MapPin, UserCheck } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface OrderExtended extends Chave {
@@ -371,13 +371,13 @@ const ClientOrders: React.FC = () => {
             <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
                 <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
                     <div><h3 className="font-bold text-gray-900 text-lg leading-tight">{selectedOrder.geral?.nome}</h3><p className="text-xs font-mono font-black text-gray-400 uppercase tracking-wider">#{selectedOrder.chaveunica}</p></div>
-                    <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-900 transition-colors"><X size={20} /></button>
+                    <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
                 </div>
 
                 <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar">
                     <button onClick={() => setActiveTab('geral')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Informações{activeTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
                     {(isProfessional || isManager) && (<><button onClick={() => setActiveTab('fotos')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Fotos{activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button><button onClick={() => setActiveTab('obs')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Anotações{activeTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button></>)}
-                    {(selectedOrder.status === 'concluido' && isTicketOwner) && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
+                    {(selectedOrder.status === 'concluido' && (isTicketOwner || isProfessional)) && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-white no-scrollbar">
@@ -522,7 +522,13 @@ const ClientOrders: React.FC = () => {
 
                     {activeTab === 'avaliacao' && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                            <div className="text-center space-y-2 mt-4"><h4 className="text-xl font-black text-gray-900">Como foi o serviço?</h4><p className="text-xs text-gray-500 font-medium">Sua avaliação ajuda a manter a qualidade.</p></div>
+                            {isTicketOwner && !selectedOrder.avaliacao && (
+                                <div className="text-center space-y-2 mt-4">
+                                    <h4 className="text-xl font-black text-gray-900">Como foi o serviço?</h4>
+                                    <p className="text-xs text-gray-500 font-medium">Sua avaliação ajuda a manter a qualidade.</p>
+                                </div>
+                            )}
+                            
                             {isTicketOwner && !selectedOrder.avaliacao ? (
                                 <div className="space-y-8">
                                     <div className="flex justify-center space-x-3">{[1, 2, 3, 4, 5].map((star) => (<button key={star} type="button" onClick={() => setRatingScore(star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="transition-all active:scale-90"><Star size={44} className={`${(hoverRating || ratingScore) >= star ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}/></button>))}</div>
@@ -530,7 +536,31 @@ const ClientOrders: React.FC = () => {
                                     <button onClick={handleSubmitRating} disabled={submittingRating || !ratingScore} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center space-x-2 disabled:opacity-50">{submittingRating ? <Loader2 className="animate-spin" size={20}/> : <><Send size={18}/><span>Enviar Avaliação</span></>}</button>
                                 </div>
                             ) : selectedOrder.avaliacao ? (
-                                <div className="bg-green-50 p-8 rounded-[2.5rem] border border-green-100 text-center space-y-4"><div className="flex justify-center space-x-1">{[1, 2, 3, 4, 5].map((star) => (<Star key={star} size={22} className={star <= (selectedOrder.avaliacao?.nota || 0) ? 'fill-green-500 text-green-500' : 'text-green-200'} />))}</div><h5 className="font-black text-green-900 text-sm uppercase tracking-wider">Avaliação Enviada</h5><p className="text-sm font-bold text-green-800 leading-relaxed italic">"{selectedOrder.avaliacao?.comentario}"</p></div>
+                                <div className="bg-green-50 p-8 rounded-[2.5rem] border border-green-100 text-center space-y-4">
+                                    <div className="flex justify-center items-center gap-2 mb-2">
+                                        <div className="bg-white p-2 rounded-full shadow-sm"><UserCheck size={20} className="text-green-600"/></div>
+                                        <h5 className="font-black text-green-900 text-sm uppercase tracking-wider">Serviço Avaliado</h5>
+                                    </div>
+                                    <div className="flex justify-center space-x-1">
+                                        {[1, 2, 3, 4, 5].map((star) => (<Star key={star} size={28} className={star <= (selectedOrder.avaliacao?.nota || 0) ? 'fill-green-500 text-green-500' : 'text-green-200'} />))}
+                                    </div>
+                                    <p className="text-base font-bold text-green-800 leading-relaxed italic mt-4">"{selectedOrder.avaliacao?.comentario}"</p>
+                                    {isProfessional && (
+                                        <div className="mt-4 pt-4 border-t border-green-100/50">
+                                            <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">Feedback do Cliente</p>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : isProfessional ? (
+                                <div className="flex flex-col items-center justify-center py-16 space-y-4">
+                                    <div className="bg-gray-100 p-6 rounded-full text-gray-400">
+                                        <Clock size={48} />
+                                    </div>
+                                    <div className="text-center">
+                                        <h4 className="text-lg font-black text-gray-900">Aguardando Avaliação</h4>
+                                        <p className="text-sm text-gray-500 max-w-[200px] mx-auto mt-1">O cliente ainda não enviou o feedback sobre este serviço.</p>
+                                    </div>
+                                </div>
                             ) : (
                                 <div className="text-center py-10 text-gray-400 font-bold">Apenas o cliente pode avaliar este pedido.</div>
                             )}
