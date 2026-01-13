@@ -86,7 +86,6 @@ const CalendarPage: React.FC = () => {
         const internal = ['gestor', 'planejista', 'orcamentista'].includes(normType);
 
         let query = supabase.from('agenda').select('*');
-        // Gestores veem tudo. Clientes e Pros veem apenas o que lhes pertence.
         if (!internal) {
             query = query.or(`cliente.eq.${user.id},profissional.eq.${user.id}`);
         }
@@ -126,9 +125,15 @@ const CalendarPage: React.FC = () => {
             };
         });
 
-        // Separar o que é novo (aguardando aceite do profissional) do que já está na agenda ativa
-        const pending = enriched.filter(ev => ev.chaveData?.status === 'aguardando_profissional' && ev.profissional === user.id);
-        const filteredEvents = enriched.filter(ev => ev.chaveData?.status !== 'aguardando_profissional');
+        // REGRA: Profissional não vê eventos cuja chave esteja em triagem (pendente) ou orçamento (analise)
+        const visibleForPro = enriched.filter(ev => {
+            if (!isProfessional) return true;
+            const status = ev.chaveData?.status?.toLowerCase();
+            return status !== 'pendente' && status !== 'analise';
+        });
+
+        const pending = visibleForPro.filter(ev => ev.chaveData?.status === 'aguardando_profissional' && ev.profissional === user.id);
+        const filteredEvents = visibleForPro.filter(ev => ev.chaveData?.status !== 'aguardando_profissional');
 
         setEvents(filteredEvents);
         setPendingAcceptance(pending);

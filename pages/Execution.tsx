@@ -117,8 +117,15 @@ const Execution: React.FC = () => {
             };
         });
 
-        const pending = enriched.filter(ev => ev.chaveData?.status === 'aguardando_profissional' && ev.profissional === user.id);
-        const filteredEvents = enriched.filter(ev => ev.chaveData?.status !== 'aguardando_profissional');
+        // REGRA DE OURO: Profissional só tem contato com o card no aceite ou execução
+        const visibleForPro = enriched.filter(ev => {
+            if (!isProfessional) return true;
+            const status = ev.chaveData?.status?.toLowerCase();
+            return status !== 'pendente' && status !== 'analise';
+        });
+
+        const pending = visibleForPro.filter(ev => ev.chaveData?.status === 'aguardando_profissional' && ev.profissional === user.id);
+        const filteredEvents = visibleForPro.filter(ev => ev.chaveData?.status !== 'aguardando_profissional');
 
         setEvents(filteredEvents);
         setPendingAcceptance(pending);

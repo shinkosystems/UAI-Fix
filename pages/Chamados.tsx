@@ -193,7 +193,14 @@ const Chamados: React.FC = () => {
 
     const getFilteredTickets = () => {
         let filtered = tickets;
-        if (currentUserRole === 'profissional') filtered = filtered.filter(t => t.profissional === currentUserId);
+        
+        // Regra de Ouro: Profissionais só veem o que está além do planejamento/orçamento interno
+        if (currentUserRole === 'profissional') {
+            filtered = filtered.filter(t => 
+                t.profissional === currentUserId && 
+                !['pendente', 'analise'].includes(t.status.toLowerCase())
+            );
+        }
 
         if (activeTab === 'novos') {
             if (currentUserRole === 'planejista') filtered = filtered.filter(t => t.status === 'pendente');
@@ -217,7 +224,6 @@ const Chamados: React.FC = () => {
     const canEditPlanning = () => {
         const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         if (r === 'gestor') return true;
-        // Orçamentista e Profissional não editam planejamento
         if (r === 'planejista') return !['concluido', 'cancelado'].includes(formData.status);
         return false;
     };
@@ -233,7 +239,6 @@ const Chamados: React.FC = () => {
         const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         if (r === 'gestor') return true;
         if (r === 'profissional') return !['concluido', 'cancelado'].includes(editingItem?.status || '');
-        // Orçamentista e Planejista não editam status manualmente através de seletor livre
         return false;
     };
 
@@ -245,7 +250,6 @@ const Chamados: React.FC = () => {
         const plan = ticket.planejamento && ticket.planejamento.length > 0 ? ticket.planejamento[0] : null;
         
         const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        // Orçamento oculto para Planejistas E Profissionais
         setShowBudgetForm(r !== 'planejista' && r !== 'profissional' && (hasBudget || currentUserRole === 'orcamentista' || currentUserRole === 'gestor'));
         
         let formattedDate = '', formattedVisita = '';

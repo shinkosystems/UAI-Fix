@@ -89,7 +89,8 @@ const ClientOrders: React.FC = () => {
     
     // REGRA DE OURO: Profissionais veem onde trabalham, todos os outros veem apenas onde são clientes (incluindo Gestores)
     if (normRole === 'profissional') {
-        query = query.eq('profissional', uuid); 
+        // Profissional só vê o chamado quando ele precisa agir (Aceite/Recusa) ou já está executando
+        query = query.eq('profissional', uuid).not('status', 'in', '("pendente","analise")'); 
     } else {
         // Gestores, Consumidores e Equipe Interna veem apenas os seus próprios pedidos pessoais nesta tela
         query = query.eq('cliente', uuid);
@@ -146,7 +147,8 @@ const ClientOrders: React.FC = () => {
     setRatingScore(order.avaliacao?.nota || 0);
     setRatingComment(order.avaliacao?.comentario || '');
     
-    if (order.status === 'concluido' && !order.avaliacao) {
+    // REGRA: Somente o cliente é direcionado automaticamente para a aba de avaliação ao abrir um pedido concluído não avaliado
+    if (order.status === 'concluido' && !order.avaliacao && currentUserId === order.cliente) {
         setActiveTab('avaliacao');
     } else {
         setActiveTab('geral');
@@ -284,6 +286,9 @@ const ClientOrders: React.FC = () => {
 
   const handleSubmitRating = async () => {
       if (!selectedOrder || !ratingScore) return;
+      // Segurança extra: verificar se quem avalia é o cliente
+      if (currentUserId !== selectedOrder.cliente) return alert("Apenas o cliente pode avaliar este serviço.");
+      
       setSubmittingRating(true);
       try {
           const rawPro = selectedOrder.profissional;
@@ -326,6 +331,7 @@ const ClientOrders: React.FC = () => {
   }
 
   const isConcluded = selectedOrder?.status?.toLowerCase() === 'concluido';
+  const isTicketOwner = currentUserId === selectedOrder?.cliente;
 
   return (
     <div className="min-h-screen bg-ios-bg pb-20">
@@ -348,9 +354,9 @@ const ClientOrders: React.FC = () => {
               <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
                   <div className="flex items-center space-x-3">
                       <div className="w-8 h-8 rounded-full bg-white border border-gray-200 overflow-hidden"><img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`} className="w-full h-full object-cover"/></div>
-                      <div className="min-w-0"><p className="text-[9px] font-black text-gray-400 uppercase leading-none mb-1">{isProfessional ? 'Cliente' : 'Profissional'}</p><p className="text-xs font-bold text-gray-900 truncate">{order.profissional?.nome || 'Não definido'}</p></div>
+                      <div className="min-w-0"><p className="text-[9px] font-black text-gray-400 uppercase leading-none mb-1">{currentUserId === order.cliente ? 'Profissional' : 'Cliente'}</p><p className="text-xs font-bold text-gray-900 truncate">{order.profissional?.nome || 'Não definido'}</p></div>
                   </div>
-                  {!isProfessional && (
+                  {currentUserId === order.cliente && (
                       <div className="text-right">{order.orcamentos?.length > 0 ? <span className="text-base font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</span> : <span className="text-[10px] font-black text-gray-400 uppercase">Aguardando Orçamento</span>}</div>
                   )}
               </div>
@@ -371,7 +377,7 @@ const ClientOrders: React.FC = () => {
                 <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar">
                     <button onClick={() => setActiveTab('geral')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Informações{activeTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
                     {(isProfessional || isManager) && (<><button onClick={() => setActiveTab('fotos')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Fotos{activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button><button onClick={() => setActiveTab('obs')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Anotações{activeTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button></>)}
-                    {(selectedOrder.status === 'concluido') && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
+                    {(selectedOrder.status === 'concluido' && isTicketOwner) && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-white no-scrollbar">
@@ -517,14 +523,16 @@ const ClientOrders: React.FC = () => {
                     {activeTab === 'avaliacao' && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                             <div className="text-center space-y-2 mt-4"><h4 className="text-xl font-black text-gray-900">Como foi o serviço?</h4><p className="text-xs text-gray-500 font-medium">Sua avaliação ajuda a manter a qualidade.</p></div>
-                            {!selectedOrder.avaliacao ? (
+                            {isTicketOwner && !selectedOrder.avaliacao ? (
                                 <div className="space-y-8">
                                     <div className="flex justify-center space-x-3">{[1, 2, 3, 4, 5].map((star) => (<button key={star} type="button" onClick={() => setRatingScore(star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="transition-all active:scale-90"><Star size={44} className={`${(hoverRating || ratingScore) >= star ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}/></button>))}</div>
                                     <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.1em] ml-1">Comentário Adicional</label><textarea value={ratingComment} onChange={(e) => setRatingComment(e.target.value)} placeholder="Descreva sua experiência..." className="w-full bg-gray-50 border border-gray-200 rounded-[1.5rem] p-5 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[120px] resize-none"/></div>
                                     <button onClick={handleSubmitRating} disabled={submittingRating || !ratingScore} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center space-x-2 disabled:opacity-50">{submittingRating ? <Loader2 className="animate-spin" size={20}/> : <><Send size={18}/><span>Enviar Avaliação</span></>}</button>
                                 </div>
-                            ) : (
+                            ) : selectedOrder.avaliacao ? (
                                 <div className="bg-green-50 p-8 rounded-[2.5rem] border border-green-100 text-center space-y-4"><div className="flex justify-center space-x-1">{[1, 2, 3, 4, 5].map((star) => (<Star key={star} size={22} className={star <= (selectedOrder.avaliacao?.nota || 0) ? 'fill-green-500 text-green-500' : 'text-green-200'} />))}</div><h5 className="font-black text-green-900 text-sm uppercase tracking-wider">Avaliação Enviada</h5><p className="text-sm font-bold text-green-800 leading-relaxed italic">"{selectedOrder.avaliacao?.comentario}"</p></div>
+                            ) : (
+                                <div className="text-center py-10 text-gray-400 font-bold">Apenas o cliente pode avaliar este pedido.</div>
                             )}
                         </div>
                     )}
