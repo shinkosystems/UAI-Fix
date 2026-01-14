@@ -659,7 +659,20 @@ const Settings: React.FC = () => {
                     ) : (
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Tipo de Usuário</label><select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.tipo} onChange={(e) => setFormData({...formData, tipo: e.target.value})} disabled={!!editingId}><option value="Consumidor">Consumidor</option><option value="Profissional">Profissional</option><option value="Gestor">Gestor</option><option value="Planejista">Planejista</option><option value="Orcamentista">Orçamentista</option></select></div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Tipo de Usuário</label>
+                                    <select 
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" 
+                                        value={formData.tipo} 
+                                        onChange={(e) => setFormData({...formData, tipo: e.target.value})}
+                                    >
+                                        <option value="Consumidor">Consumidor</option>
+                                        <option value="Profissional">Profissional</option>
+                                        <option value="Gestor">Gestor</option>
+                                        <option value="Planejista">Planejista</option>
+                                        <option value="Orcamentista">Orçamentista</option>
+                                    </select>
+                                </div>
                                 <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ativo?</label><select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.ativo ? 'true' : 'false'} onChange={(e) => setFormData({...formData, ativo: e.target.value === 'true'})}><option value="true">Sim</option><option value="false">Não</option></select></div>
                             </div>
                             <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nome Completo</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.nome || ''} onChange={(e) => setFormData({...formData, nome: e.target.value})} placeholder="Nome do usuário" /></div>
@@ -692,6 +705,7 @@ const Settings: React.FC = () => {
                                 <div className="space-y-2 mb-3"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Rua</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.rua || ''} onChange={(e) => setFormData({...formData, rua: e.target.value})} /></div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Número</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.numero || ''} onChange={(e) => setFormData({...formData, numero: e.target.value})} /></div>
+                                    {/* FIX: Replaced setBairro with setFormData to update the bairro property in the component state */}
                                     <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Bairro</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.bairro || ''} onChange={(e) => setFormData({...formData, bairro: e.target.value})} /></div>
                                 </div>
                             </div>
