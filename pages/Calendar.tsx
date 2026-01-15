@@ -125,11 +125,11 @@ const CalendarPage: React.FC = () => {
             };
         });
 
-        // REGRA: Profissional não vê eventos cuja chave esteja em triagem (pendente) ou orçamento (analise)
+        // REGRA: Profissional não vê eventos cuja chave esteja em triagem (pendente), orçamento (analise) ou aguardando aprovação (aguardando_aprovacao)
         const visibleForPro = enriched.filter(ev => {
             if (!isProfessional) return true;
             const status = ev.chaveData?.status?.toLowerCase();
-            return status !== 'pendente' && status !== 'analise';
+            return !['pendente', 'analise', 'aguardando_aprovacao'].includes(status || '');
         });
 
         const pending = visibleForPro.filter(ev => ev.chaveData?.status === 'aguardando_profissional' && ev.profissional === user.id);
@@ -507,7 +507,7 @@ const CalendarPage: React.FC = () => {
                                     className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed outline-none focus:ring-2 focus:ring-ios-blue/30"
                                     value={formData.observacoes}
                                     onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
-                                    placeholder="Suas anotações sobre la execução deste serviço..."
+                                    placeholder="Suas anotações sobre a execução deste serviço..."
                                 />
                             ) : (
                                 <div className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed">{formData.observacoes || "Nenhuma anotação registrada."}</div>

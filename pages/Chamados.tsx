@@ -197,7 +197,7 @@ const Chamados: React.FC = () => {
         if (currentUserRole === 'profissional') {
             filtered = filtered.filter(t => 
                 t.profissional === currentUserId && 
-                !['pendente', 'analise'].includes(t.status.toLowerCase())
+                !['pendente', 'analise', 'aguardando_aprovacao'].includes(t.status.toLowerCase())
             );
         }
 

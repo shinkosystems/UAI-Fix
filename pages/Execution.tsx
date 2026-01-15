@@ -117,11 +117,12 @@ const Execution: React.FC = () => {
             };
         });
 
-        // REGRA DE OURO: Profissional só tem contato com o card no aceite ou execução
+        // REGRA DE OURO: Profissional só tem contato com o card no aceite ou execução.
+        // ADICIONADO: 'aguardando_aprovacao' agora também oculta o pedido para o profissional.
         const visibleForPro = enriched.filter(ev => {
             if (!isProfessional) return true;
             const status = ev.chaveData?.status?.toLowerCase();
-            return status !== 'pendente' && status !== 'analise';
+            return !['pendente', 'analise', 'aguardando_aprovacao'].includes(status || '');
         });
 
         const pending = visibleForPro.filter(ev => ev.chaveData?.status === 'aguardando_profissional' && ev.profissional === user.id);
@@ -452,7 +453,7 @@ const Execution: React.FC = () => {
                                                 if (!e.target.files?.length) return;
                                                 setUploading(true);
                                                 const file = e.target.files[0];
-                                                const path = `execucao/${selectedEvent.chaveData?.chaveunica}_antes_${Date.now()}.${file.name.split('.').pop()}`;
+                                                const path = `execucao/${selectedEvent.chaveData?.chaveunica}_depois_${Date.now()}.${file.name.split('.').pop()}`;
                                                 await supabase.storage.from('imagens').upload(path, file);
                                                 const { data } = supabase.storage.from('imagens').getPublicUrl(path);
                                                 setFormData(prev => ({...prev, fotoantes: [...prev.fotoantes, data.publicUrl]}));

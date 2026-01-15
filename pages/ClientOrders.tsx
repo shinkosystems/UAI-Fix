@@ -89,8 +89,9 @@ const ClientOrders: React.FC = () => {
     
     // REGRA DE OURO: Profissionais veem onde trabalham, todos os outros veem apenas onde são clientes (incluindo Gestores)
     if (normRole === 'profissional') {
-        // Profissional só vê o chamado quando ele precisa agir (Aceite/Recusa) ou já está executando
-        query = query.eq('profissional', uuid).not('status', 'in', '("pendente","analise")'); 
+        // Profissional só vê o chamado quando ele precisa agir (Aceite/Recusa) ou já está executando.
+        // ADICIONADO: 'aguardando_aprovacao' agora também oculta o pedido para o profissional.
+        query = query.eq('profissional', uuid).not('status', 'in', '("pendente","analise","aguardando_aprovacao")'); 
     } else {
         // Gestores, Consumidores e Equipe Interna veem apenas os seus próprios pedidos pessoais nesta tela
         query = query.eq('cliente', uuid);
@@ -159,6 +160,12 @@ const ClientOrders: React.FC = () => {
 
   const handleProposalDecision = async (orderId: number, approved: boolean) => {
       if (!selectedOrder || processingAction) return;
+      
+      // SEGURANÇA: Apenas o cliente do chamado pode aprovar o orçamento
+      if (currentUserId !== selectedOrder.cliente) {
+          alert("Apenas o cliente que solicitou o serviço pode aprovar o orçamento.");
+          return;
+      }
       
       setProcessingAction(true);
       try {
@@ -360,7 +367,13 @@ const ClientOrders: React.FC = () => {
                       <div className="text-right">{order.orcamentos?.length > 0 ? <span className="text-base font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</span> : <span className="text-[10px] font-black text-gray-400 uppercase">Aguardando Orçamento</span>}</div>
                   )}
               </div>
-              {order.status === 'aguardando_aprovacao' && <div className="mt-4 pt-3 border-t border-orange-100 flex items-center justify-between"><p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-1"><AlertCircle size={12}/> Orçamento pronto!</p><div className="bg-orange-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg animate-pulse">Decidir Agora</div></div>}
+              {/* REGRA: Selo "Decidir Agora" aparece apenas para o CLIENTE do pedido */}
+              {order.status === 'aguardando_aprovacao' && currentUserId === order.cliente && (
+                  <div className="mt-4 pt-3 border-t border-orange-100 flex items-center justify-between">
+                      <p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-1"><AlertCircle size={12}/> Orçamento pronto!</p>
+                      <div className="bg-orange-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg animate-pulse">Decidir Agora</div>
+                  </div>
+              )}
             </div>
           ))
         )}
@@ -412,7 +425,8 @@ const ClientOrders: React.FC = () => {
                                     )}
                                 </div>
 
-                                {selectedOrder.status === 'aguardando_aprovacao' && (
+                                {/* REGRA: Botões de aprovação de orçamento aparecem apenas para o CLIENTE */}
+                                {selectedOrder.status === 'aguardando_aprovacao' && currentUserId === selectedOrder.cliente && (
                                     <div className="mt-8 p-6 bg-white rounded-3xl border border-orange-100 space-y-5 shadow-sm animate-in slide-in-from-bottom-4">
                                         <div className="flex items-center gap-3 text-orange-700"><AlertCircle size={20} className="flex-shrink-0"/><p className="text-xs font-bold leading-tight">Deseja aprovar este valor para agendar o serviço?</p></div>
                                         <div className="flex flex-col gap-2">
@@ -422,6 +436,7 @@ const ClientOrders: React.FC = () => {
                                     </div>
                                 )}
 
+                                {/* REGRA: O Profissional decide sobre o serviço apenas APÓS a aprovação do orçamento pelo cliente */}
                                 {selectedOrder.status === 'aguardando_profissional' && isProfessional && (
                                     <div className="mt-6 p-6 bg-cyan-50 rounded-[2.5rem] border border-cyan-100 space-y-5 shadow-sm animate-in zoom-in duration-300">
                                         <div className="flex items-center gap-3 text-cyan-800">
