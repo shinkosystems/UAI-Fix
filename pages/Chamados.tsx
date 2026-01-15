@@ -194,7 +194,6 @@ const Chamados: React.FC = () => {
     const getFilteredTickets = () => {
         let filtered = tickets;
         
-        // Regra de Ouro: Profissionais só veem o que está além do planejamento/orçamento interno
         if (currentUserRole === 'profissional') {
             filtered = filtered.filter(t => 
                 t.profissional === currentUserId && 
@@ -223,14 +222,14 @@ const Chamados: React.FC = () => {
 
     const canEditPlanning = () => {
         const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (r === 'gestor') return true;
+        if (r === 'gestor') return !['concluido', 'cancelado'].includes(formData.status);
         if (r === 'planejista') return !['concluido', 'cancelado'].includes(formData.status);
         return false;
     };
 
     const canEditBudget = () => {
         const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (r === 'gestor') return true;
+        if (r === 'gestor') return formData.status === 'analise' || formData.status === 'aguardando_aprovacao';
         if (r === 'orcamentista') return !['executando', 'concluido', 'cancelado'].includes(formData.status);
         return false; 
     };
@@ -248,9 +247,17 @@ const Chamados: React.FC = () => {
         const hasBudget = ticket.orcamentos && ticket.orcamentos.length > 0;
         const budget = hasBudget ? ticket.orcamentos[0] : null;
         const plan = ticket.planejamento && ticket.planejamento.length > 0 ? ticket.planejamento[0] : null;
+        const status = (ticket.status || 'pendente').toLowerCase();
         
         const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        setShowBudgetForm(r !== 'planejista' && r !== 'profissional' && (hasBudget || currentUserRole === 'orcamentista' || currentUserRole === 'gestor'));
+        
+        // Lógica de visualização do Orçamento para o Gestor
+        // Se for gestor e o status for pendente, NÃO mostramos o formulário financeiro (força planejamento)
+        // Se já estiver em análise ou etapas posteriores, mostramos.
+        const shouldShowBudget = r !== 'planejista' && r !== 'profissional' && 
+                               (hasBudget || (r === 'orcamentista' || (r === 'gestor' && status !== 'pendente')));
+        
+        setShowBudgetForm(shouldShowBudget);
         
         let formattedDate = '', formattedVisita = '';
         if (plan?.execucao) formattedDate = toLocalISOString(plan.execucao);
@@ -258,7 +265,7 @@ const Chamados: React.FC = () => {
 
         setFormData({
             profissionalUuid: (ticket.profissional as string) || '',
-            status: (ticket.status || 'pendente').toLowerCase(), 
+            status: status, 
             orcamentoPreco: budget?.preco || 0,
             orcamentoCusto: budget?.custofixo || 0,
             orcamentoCustoVariavel: budget?.custovariavel || 0,
@@ -423,6 +430,12 @@ const Chamados: React.FC = () => {
     const isPlanejista = normRole === 'planejista';
     const isOrcamentista = normRole === 'orcamentista';
     const isProfissional = normRole === 'profissional';
+    const isGestor = normRole === 'gestor';
+
+    // Determina se o usuário está agindo como planejista (Gestor em chamado pendente ou Planejista nato)
+    const actingAsPlanning = isPlanejista || (isGestor && formData.status === 'pendente');
+    // Determina se o usuário está agindo como orçamentista (Gestor em chamado analise ou Orçamentista nato)
+    const actingAsBudget = isOrcamentista || (isGestor && formData.status === 'analise');
 
     return (
         <div className="min-h-screen bg-ios-bg pb-20">
@@ -495,7 +508,7 @@ const Chamados: React.FC = () => {
                         
                         <div className="p-6 overflow-y-auto space-y-6 flex-1 no-scrollbar">
                             
-                            {isPlanejista ? (
+                            {actingAsPlanning ? (
                                 <div className="space-y-6 animate-in fade-in duration-300">
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional</label>
@@ -584,9 +597,9 @@ const Chamados: React.FC = () => {
                         </div>
                         
                         <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto space-y-3">
-                            {isPlanejista ? (
+                            {actingAsPlanning ? (
                                 <button onClick={handleSendToBudget} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar para Orçamento</span></>}</button>
-                            ) : isOrcamentista ? (
+                            ) : actingAsBudget ? (
                                 <button onClick={handleSendToConsumer} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar Orçamento</span></>}</button>
                             ) : (
                                 <button onClick={handleSave} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}</button>
