@@ -290,7 +290,7 @@ const Settings: React.FC = () => {
             cidade: null,
             cidade_data: null,
             estado: null,
-            displayStateUf: '', // Inicializa vazio
+            displayStateUf: '', 
             ativo: true,
             uuid: '', 
             fotoperfil: '',
@@ -364,6 +364,33 @@ const Settings: React.FC = () => {
         const payload = { ...dataToSave };
         
         if (activeTab === 'users') {
+            // VALIDAÇÃO DE CAMPOS OBRIGATÓRIOS (CONFORME SOLICITADO PELO USUÁRIO)
+            // Todos os campos devem ser preenchidos exceto senha.
+            const requiredFields = [
+                { key: 'nome', label: 'Nome' },
+                { key: 'email', label: 'E-mail' },
+                { key: 'tipo', label: 'Tipo de Usuário' },
+                { key: 'cpf', label: 'CPF' },
+                { key: 'whatsapp', label: 'WhatsApp/Telefone' },
+                { key: 'sexo', label: 'Sexo' },
+                { key: 'cep', label: 'CEP' },
+                { key: 'cidade', label: 'Cidade' },
+                { key: 'rua', label: 'Rua' },
+                { key: 'numero', label: 'Número' },
+                { key: 'bairro', label: 'Bairro' }
+            ];
+
+            for (const field of requiredFields) {
+                if (!payload[field.key] || (typeof payload[field.key] === 'string' && !payload[field.key].trim())) {
+                    throw new Error(`O campo "${field.label}" é obrigatório.`);
+                }
+            }
+
+            // Validação adicional para profissionais
+            if (payload.tipo.toLowerCase() === 'profissional' && (!payload.atividade || payload.atividade.length === 0)) {
+                throw new Error('Profissionais devem ter pelo menos uma especialidade selecionada.');
+            }
+
             delete payload.rating;
             delete payload.reviewCount;
             delete payload.cidade_data;
@@ -371,18 +398,21 @@ const Settings: React.FC = () => {
             if (!payload.atividade) payload.atividade = [];
 
             if (!editingId) {
-                if (!password || password.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
-                if (!payload.email) throw new Error("Email é obrigatório.");
-                if (!payload.cpf) throw new Error("CPF é obrigatório.");
-                if (!payload.cidade) throw new Error("Cidade é obrigatória.");
+                // Para novos usuários, se a senha estiver vazia, usamos uma senha padrão segura
+                // Já que o Supabase Auth exige uma senha para o signUp
+                const finalPassword = password && password.trim() !== '' ? password : 'UaiFix@2025';
+                
+                if (finalPassword.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
 
                 const tempClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
                     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
                 });
+                
                 const { data: authData, error: authError } = await tempClient.auth.signUp({
                     email: payload.email,
-                    password: password
+                    password: finalPassword
                 });
+                
                 if (authError) throw authError;
                 if (!authData.user) throw new Error("Erro ao criar usuário na autenticação.");
                 payload.uuid = authData.user.id;
@@ -660,7 +690,7 @@ const Settings: React.FC = () => {
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Tipo de Usuário</label>
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Tipo de Usuário <span className="text-red-500 ml-0.5">*</span></label>
                                     <select 
                                         className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" 
                                         value={formData.tipo} 
@@ -673,46 +703,56 @@ const Settings: React.FC = () => {
                                         <option value="Orcamentista">Orçamentista</option>
                                     </select>
                                 </div>
-                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ativo?</label><select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.ativo ? 'true' : 'false'} onChange={(e) => setFormData({...formData, ativo: e.target.value === 'true'})}><option value="true">Sim</option><option value="false">Não</option></select></div>
+                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ativo? <span className="text-red-500 ml-0.5">*</span></label><select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.ativo ? 'true' : 'false'} onChange={(e) => setFormData({...formData, ativo: e.target.value === 'true'})}><option value="true">Sim</option><option value="false">Não</option></select></div>
                             </div>
-                            <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nome Completo</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.nome || ''} onChange={(e) => setFormData({...formData, nome: e.target.value})} placeholder="Nome do usuário" /></div>
+                            <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nome Completo <span className="text-red-500 ml-0.5">*</span></label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.nome || ''} onChange={(e) => setFormData({...formData, nome: e.target.value})} placeholder="Nome do usuário" /></div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Email</label><input type="email" className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.email || ''} onChange={(e) => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com" disabled={!!editingId} /></div>
+                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Email <span className="text-red-500 ml-0.5">*</span></label><input type="email" className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.email || ''} onChange={(e) => setFormData({...formData, email: e.target.value})} placeholder="email@exemplo.com" disabled={!!editingId} /></div>
                                 <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Senha {editingId && '(Opcional)'}</label><input type="password" className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={editingId ? "Deixe em branco para manter" : "Mínimo 6 caracteres"} /></div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">CPF</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.cpf || ''} onChange={(e) => setFormData({...formData, cpf: formatCpf(e.target.value)})} maxLength={14} placeholder="000.000.000-00" /></div>
-                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Telefone</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.whatsapp || ''} onChange={(e) => setFormData({...formData, whatsapp: formatPhone(e.target.value)})} maxLength={15} placeholder="(00) 00000-0000" /></div>
+                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">CPF <span className="text-red-500 ml-0.5">*</span></label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.cpf || ''} onChange={(e) => setFormData({...formData, cpf: formatCpf(e.target.value)})} maxLength={14} placeholder="000.000.000-00" /></div>
+                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Telefone <span className="text-red-500 ml-0.5">*</span></label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.whatsapp || ''} onChange={(e) => setFormData({...formData, whatsapp: formatPhone(e.target.value)})} maxLength={15} placeholder="(00) 00000-0000" /></div>
                             </div>
 
                             <div className="pt-2 border-t border-gray-100">
                                 <h4 className="text-xs font-bold text-gray-900 mb-3 flex items-center"><MapPin size={14} className="mr-1"/> Endereço</h4>
                                 <div className="grid grid-cols-2 gap-4 mb-3">
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">CEP</label>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">CEP <span className="text-red-500 ml-0.5">*</span></label>
                                         <div className="relative"><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.cep || ''} onChange={(e) => setFormData({...formData, cep: formatCep(e.target.value)})} onBlur={fetchCepData} maxLength={9} placeholder="00000-000" />{loadingCep && <Loader2 size={16} className="animate-spin absolute right-4 top-1/2 -translate-y-1/2 text-ios-blue"/>}</div>
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Cidade</label>
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Cidade <span className="text-red-500 ml-0.5">*</span></label>
                                         <div onClick={() => setIsCitySearchOpen(true)} className="relative cursor-pointer"><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none cursor-pointer" value={getFormCityDisplay()} readOnly /><Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"/></div>
                                     </div>
                                 </div>
-                                {/* EXIBIÇÃO DO ESTADO BASEADO NO CEP OU SELEÇÃO DE CIDADE */}
-                                <div className="space-y-2 mb-3">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Estado (UF)</label>
-                                    <input className="w-full bg-gray-100 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-black outline-none cursor-default" value={formData.displayStateUf || 'Preencha o CEP ou cidade'} readOnly />
+                                <div className="grid grid-cols-2 gap-4 mb-3">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Estado (UF) <span className="text-red-500 ml-0.5">*</span></label>
+                                        <input className="w-full bg-gray-100 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-black outline-none cursor-default" value={formData.displayStateUf || 'Preencha o CEP ou cidade'} readOnly />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Sexo <span className="text-red-500 ml-0.5">*</span></label>
+                                        <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.sexo || ''} onChange={(e) => setFormData({...formData, sexo: e.target.value})}>
+                                            <option value="">Selecione...</option>
+                                            <option value="Masculino">Masculino</option>
+                                            <option value="Feminino">Feminino</option>
+                                            <option value="Outro">Outro</option>
+                                        </select>
+                                    </div>
                                 </div>
-                                <div className="space-y-2 mb-3"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Rua</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.rua || ''} onChange={(e) => setFormData({...formData, rua: e.target.value})} /></div>
+                                <div className="space-y-2 mb-3"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Rua <span className="text-red-500 ml-0.5">*</span></label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.rua || ''} onChange={(e) => setFormData({...formData, rua: e.target.value})} /></div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Número</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.numero || ''} onChange={(e) => setFormData({...formData, numero: e.target.value})} /></div>
-                                    {/* FIX: Replaced setBairro with setFormData to update the bairro property in the component state */}
-                                    <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Bairro</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.bairro || ''} onChange={(e) => setFormData({...formData, bairro: e.target.value})} /></div>
+                                    <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Número <span className="text-red-500 ml-0.5">*</span></label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.numero || ''} onChange={(e) => setFormData({...formData, numero: e.target.value})} /></div>
+                                    <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Bairro <span className="text-red-500 ml-0.5">*</span></label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.bairro || ''} onChange={(e) => setFormData({...formData, bairro: e.target.value})} /></div>
                                 </div>
+                                <div className="space-y-2 mt-3"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Complemento</label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.complemento || ''} onChange={(e) => setFormData({...formData, complemento: e.target.value})} /></div>
                             </div>
 
-                            {formData.tipo === 'Profissional' && (
+                            {formData.tipo && formData.tipo.toLowerCase() === 'profissional' && (
                                 <div className="pt-2 border-t border-gray-100">
-                                    <h4 className="text-xs font-bold text-gray-900 mb-3 flex items-center"><Briefcase size={14} className="mr-1"/> Especialidades</h4>
+                                    <h4 className="text-xs font-bold text-gray-900 mb-3 flex items-center"><Briefcase size={14} className="mr-1"/> Especialidades <span className="text-red-500 ml-0.5">*</span></h4>
                                     <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100 max-h-40 overflow-y-auto"><input className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs mb-2 outline-none text-black" placeholder="Filtrar especialidades..." value={activitySearchTerm} onChange={(e) => setActivitySearchTerm(e.target.value)} /><div className="grid grid-cols-2 gap-2">{filteredActivities.map(act => (<div key={act.id} onClick={() => toggleActivity(act.id)} className={`flex items-center p-2 rounded-xl border text-xs cursor-pointer transition-all ${formData.atividade?.includes(act.id) ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-200'}`}><div className={`w-3 h-3 rounded-full mr-2 border ${formData.atividade?.includes(act.id) ? 'bg-white border-white' : 'bg-transparent border-gray-300'}`}></div><span className="truncate">{act.nome}</span></div>))}</div></div>
                                 </div>
                             )}
