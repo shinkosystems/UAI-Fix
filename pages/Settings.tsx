@@ -252,12 +252,17 @@ const Settings: React.FC = () => {
   });
 
   const handleEdit = (item: any) => {
-    const normalizedItem = {
-        ...item,
-        tipo: item.tipo ? formatUserType(item.tipo) : 'Consumidor',
-        displayStateUf: item.estado ? getStateUf(item.estado) : '' // Inicializa sigla visual
-    };
-    setFormData(normalizedItem);
+    if (activeTab === 'users') {
+        const normalizedItem = {
+            ...item,
+            tipo: item.tipo ? formatUserType(item.tipo) : 'Consumidor',
+            displayStateUf: item.estado ? getStateUf(item.estado) : ''
+        };
+        setFormData(normalizedItem);
+    } else {
+        // Serviços não precisam de normalização de campos de usuário
+        setFormData({ ...item });
+    }
     setActivitySearchTerm(''); 
     setPassword('');
     setEditingId(item.id);
@@ -361,11 +366,24 @@ const Settings: React.FC = () => {
     setSaving(true);
     try {
         const table = activeTab === 'services' ? 'geral' : 'users';
-        const payload = { ...dataToSave };
+        let payload: any = {};
         
-        if (activeTab === 'users') {
+        if (activeTab === 'services') {
+            // WHITE-LIST estrita para evitar enviar campos inexistentes como 'displayStateUf'
+            payload = {
+                nome: dataToSave.nome,
+                imagem: dataToSave.imagem,
+                primaria: dataToSave.primaria,
+                dependencia: dataToSave.dependencia || null,
+                ativa: dataToSave.ativa
+            };
+        } else if (activeTab === 'users') {
+            payload = { ...dataToSave };
+            
+            // REMOVER campos de UI que não pertencem a tabela 'users'
+            delete payload.displayStateUf;
+
             // VALIDAÇÃO DE CAMPOS OBRIGATÓRIOS (CONFORME SOLICITADO PELO USUÁRIO)
-            // Todos os campos devem ser preenchidos exceto senha.
             const requiredFields = [
                 { key: 'nome', label: 'Nome' },
                 { key: 'email', label: 'E-mail' },
@@ -394,14 +412,10 @@ const Settings: React.FC = () => {
             delete payload.rating;
             delete payload.reviewCount;
             delete payload.cidade_data;
-            delete payload.displayStateUf; // Não salva no banco
             if (!payload.atividade) payload.atividade = [];
 
             if (!editingId) {
-                // Para novos usuários, se a senha estiver vazia, usamos uma senha padrão segura
-                // Já que o Supabase Auth exige uma senha para o signUp
                 const finalPassword = password && password.trim() !== '' ? password : 'UaiFix@2025';
-                
                 if (finalPassword.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
 
                 const tempClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -428,7 +442,7 @@ const Settings: React.FC = () => {
 
         setIsModalOpen(false);
         fetchData(); 
-        alert(editingId ? "Atualizado com sucesso." : "Usuário criado com sucesso!");
+        alert(editingId ? "Atualizado com sucesso." : "Registro criado com sucesso!");
     } catch (error: any) {
         console.error('Error saving:', error);
         alert(`Erro ao salvar: ${error.message}`);
@@ -527,12 +541,12 @@ const Settings: React.FC = () => {
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Buscar Nome/Email</label>
                     <div className="relative">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 pl-9 pr-3 text-sm text-black focus:ring-2 focus:ring-blue-100 outline-none" placeholder="Buscar..." value={filterName} onChange={(e) => setFilterName(e.target.value)} />
+                        <input className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 pl-9 pr-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" placeholder="Buscar..." value={filterName} onChange={(e) => setFilterName(e.target.value)} />
                     </div>
                 </div>
                 <div className="space-y-1">
                      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Tipo</label>
-                     <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-blue-100 outline-none" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+                     <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
                         <option value="all">Todos</option>
                         <option value="consumidor">Consumidor</option>
                         <option value="profissional">Profissional</option>
@@ -543,11 +557,11 @@ const Settings: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Cidade (Nome)</label>
-                    <input className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-blue-100 outline-none" placeholder="Ex: Lafaiete" value={filterCity} onChange={(e) => setFilterCity(e.target.value)} />
+                    <input className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" placeholder="Ex: Lafaiete" value={filterCity} onChange={(e) => setFilterCity(e.target.value)} />
                 </div>
                 <div className="space-y-1">
                      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Status</label>
-                     <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-blue-100 outline-none" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                     <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
                         <option value="all">Todos</option>
                         <option value="active">Ativos</option>
                         <option value="inactive">Inativos</option>
@@ -562,12 +576,12 @@ const Settings: React.FC = () => {
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Buscar Serviço</label>
                     <div className="relative">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 pl-9 pr-3 text-sm text-black focus:ring-2 focus:ring-blue-100 outline-none" placeholder="Buscar..." value={serviceFilterName} onChange={(e) => setServiceFilterName(e.target.value)} />
+                        <input className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 pl-9 pr-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" placeholder="Buscar..." value={serviceFilterName} onChange={(e) => setServiceFilterName(e.target.value)} />
                     </div>
                 </div>
                 <div className="space-y-1">
                      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Status</label>
-                     <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-blue-100 outline-none" value={serviceFilterStatus} onChange={(e) => setServiceFilterStatus(e.target.value)}>
+                     <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" value={serviceFilterStatus} onChange={(e) => setServiceFilterStatus(e.target.value)}>
                         <option value="all">Todos</option>
                         <option value="active">Ativos</option>
                         <option value="inactive">Inativos</option>
@@ -576,7 +590,7 @@ const Settings: React.FC = () => {
                 {serviceSubTab === 'secondary' && (
                     <div className="space-y-1 md:col-span-2">
                         <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Categoria Pai</label>
-                        <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-blue-100 outline-none" value={serviceFilterParent} onChange={(e) => setServiceFilterParent(e.target.value)}>
+                        <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" value={serviceFilterParent} onChange={(e) => setServiceFilterParent(e.target.value)}>
                             <option value="all">Todas as categorias</option>
                             {primaryCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.nome}</option>)}
                         </select>
