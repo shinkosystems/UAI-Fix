@@ -447,7 +447,7 @@ const Chamados: React.FC = () => {
                                     <div className="w-12 h-12 bg-gray-50 rounded-2xl flex-shrink-0 overflow-hidden">
                                         {t.geral?.imagem ? <img src={t.geral.imagem} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-300"><FileText size={20}/></div>}
                                     </div>
-                                    {(isPlanejista || isGestor) && t.planejamento?.[0]?.imagem_pedido && (
+                                    {(isPlanejista || isGestor || isOrcamentista) && t.planejamento?.[0]?.imagem_pedido && (
                                         <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-ios-blue text-white rounded-lg flex items-center justify-center border-2 border-white shadow-sm">
                                             <ImageIcon size={10} />
                                         </div>
@@ -499,7 +499,7 @@ const Chamados: React.FC = () => {
                             {modalSubTab === 'geral' && (
                                 actingAsPlanning ? (
                                     <div className="space-y-6 animate-in fade-in duration-300">
-                                        {(isPlanejista || isGestor) && editingItem.planejamento?.[0]?.imagem_pedido && (
+                                        {(isPlanejista || isGestor || isOrcamentista) && editingItem.planejamento?.[0]?.imagem_pedido && (
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente (Original)</label>
                                                 <div className="w-full h-48 bg-gray-50 rounded-[2rem] overflow-hidden border border-gray-100 shadow-inner">
@@ -572,7 +572,7 @@ const Chamados: React.FC = () => {
                                     </div>
                                 ) : (
                                     <>
-                                        {(isOrcamentista || isGestor) && editingItem.planejamento?.[0]?.imagem_pedido && (
+                                        {(isOrcamentista || isGestor || isPlanejista) && editingItem.planejamento?.[0]?.imagem_pedido && (
                                             <div className="space-y-2 mb-4">
                                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente (Análise)</label>
                                                 <div className="w-full h-48 bg-gray-50 rounded-[2rem] overflow-hidden border border-gray-100 shadow-inner">
