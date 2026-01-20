@@ -63,8 +63,8 @@ const Chamados: React.FC = () => {
         orcamentoLucro: 0,
         orcamentoTipoPgto: 'Dinheiro',
         orcamentoParcelas: 1,
-        orcamentoNotaFiscal: false,
         orcamentoObs: '',
+        orcamentoNotaFiscal: false,
         planejamentoDesc: '',
         planejamentoData: '',
         planejamentoRecursos: [] as string[],
@@ -95,7 +95,6 @@ const Chamados: React.FC = () => {
         return videoExtensions.some(ext => url.toLowerCase().includes(ext)) || url.toLowerCase().includes('video');
     };
 
-    // Helper para extrair flexibilidade de agenda da descrição
     const extractFlexibility = (desc: string | undefined | null) => {
         if (!desc) return null;
         const marker = "[FLEXIBILIDADE DE AGENDA]:";
@@ -105,7 +104,6 @@ const Chamados: React.FC = () => {
         return null;
     };
 
-    // Helper para extrair apenas a descrição original (sem a flexibilidade)
     const extractOriginalDesc = (desc: string | undefined | null) => {
         if (!desc) return "";
         const marker = "[FLEXIBILIDADE DE AGENDA]:";
@@ -141,14 +139,19 @@ const Chamados: React.FC = () => {
     useEffect(() => {
         if (showBudgetForm) {
             const custoFixo = parseFloat(formData.orcamentoCusto.toString()) || 0;
-            const custoVariavel = parseFloat(formData.orcamentoCustoVariavel.toString()) || 0;
             const hh = parseFloat(formData.orcamentoHH.toString()) || 0;
-            const imposto = parseFloat(formData.orcamentoImposto.toString()) || 0;
             const lucro = parseFloat(formData.orcamentoLucro.toString()) || 0;
-            const total = custoFixo + custoVariavel + hh + imposto + lucro;
-            if (total !== formData.orcamentoPreco) setFormData(prev => ({ ...prev, orcamentoPreco: total }));
+            const impostoPercent = parseFloat(formData.orcamentoImposto.toString()) || 0;
+            
+            const subtotal = custoFixo + hh + lucro;
+            const impostoValor = subtotal * (impostoPercent / 100);
+            const total = subtotal + impostoValor;
+            
+            if (Math.abs(total - formData.orcamentoPreco) > 0.01) {
+                setFormData(prev => ({ ...prev, orcamentoPreco: total }));
+            }
         }
-    }, [formData.orcamentoCusto, formData.orcamentoCustoVariavel, formData.orcamentoHH, formData.orcamentoImposto, formData.orcamentoLucro]);
+    }, [formData.orcamentoCusto, formData.orcamentoHH, formData.orcamentoImposto, formData.orcamentoLucro]);
 
     const fetchUserRole = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -323,7 +326,20 @@ const Chamados: React.FC = () => {
             await supabase.from('chaves').update(updatesChave).eq('id', editingItem.id);
 
             if (showBudgetForm && !isProfessional && !isPlanejista) {
-                const b = { chave: editingItem.id, preco: formData.orcamentoPreco, custofixo: formData.orcamentoCusto, custovariavel: formData.orcamentoCustoVariavel, hh: formData.orcamentoHH, imposto: formData.orcamentoImposto, lucro: formData.orcamentoLucro, tipopagmto: formData.orcamentoTipoPgto, parcelas: formData.orcamentoParcelas, observacaocliente: formData.orcamentoObs, notafiscal: formData.orcamentoNotaFiscal, ativo: true };
+                const b = { 
+                    chave: editingItem.id, 
+                    preco: formData.orcamentoPreco, 
+                    custofixo: formData.orcamentoCusto, 
+                    custovariavel: formData.orcamentoCustoVariavel, 
+                    hh: formData.orcamentoHH, 
+                    imposto: formData.orcamentoImposto, 
+                    lucro: formData.orcamentoLucro, 
+                    tipopagmto: formData.orcamentoTipoPgto, 
+                    parcelas: formData.orcamentoParcelas, 
+                    observacaocliente: formData.orcamentoObs, 
+                    notafiscal: formData.orcamentoNotaFiscal, 
+                    ativo: true 
+                };
                 if (editingItem.orcamentos?.length) await supabase.from('orcamentos').update(b).eq('id', editingItem.orcamentos[0].id);
                 else await supabase.from('orcamentos').insert(b);
             }
@@ -400,7 +416,20 @@ const Chamados: React.FC = () => {
         setSaving(true);
         try {
             await supabase.from('chaves').update({ status: 'aguardando_aprovacao', orcamentista: currentUserId }).eq('id', editingItem.id);
-            const b = { chave: editingItem.id, preco: formData.orcamentoPreco, custofixo: formData.orcamentoCusto, custovariavel: formData.orcamentoCustoVariavel, hh: formData.orcamentoHH, imposto: formData.orcamentoImposto, lucro: formData.orcamentoLucro, tipopagmto: formData.orcamentoTipoPgto, parcelas: formData.orcamentoParcelas, observacaocliente: formData.orcamentoObs, notafiscal: formData.orcamentoNotaFiscal, ativo: true };
+            const b = { 
+                chave: editingItem.id, 
+                preco: formData.orcamentoPreco, 
+                custofixo: formData.orcamentoCusto, 
+                custovariavel: formData.orcamentoCustoVariavel, 
+                hh: formData.orcamentoHH, 
+                imposto: formData.orcamentoImposto, 
+                lucro: formData.orcamentoLucro, 
+                tipopagmto: formData.orcamentoTipoPgto, 
+                parcelas: formData.orcamentoParcelas, 
+                observacaocliente: formData.orcamentoObs, 
+                notafiscal: formData.orcamentoNotaFiscal, 
+                ativo: true 
+            };
             if (editingItem.orcamentos?.length) await supabase.from('orcamentos').update(b).eq('id', editingItem.orcamentos[0].id);
             else await supabase.from('orcamentos').insert(b);
             alert("Orçamento enviado para o consumidor!");
@@ -576,7 +605,7 @@ const Chamados: React.FC = () => {
                                                 value={formData.status}
                                                 onChange={(e) => setFormData({...formData, status: e.target.value})}
                                             >
-                                                <option value="aprovado">Aprovado (Na Agenda)</option>
+                                                <option value="aprovado">Aprovado pelo Consumidor</option>
                                                 <option value="executando">Executando</option>
                                                 <option value="concluido">Concluído</option>
                                                 <option value="cancelado">Cancelado</option>
@@ -589,8 +618,8 @@ const Chamados: React.FC = () => {
                                                 <p className="text-xs font-bold text-gray-900">{editingItem.planejamento?.[0]?.execucao ? new Date(editingItem.planejamento[0].execucao).toLocaleString('pt-BR') : 'A definir'}</p>
                                             </div>
                                             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                                                <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Ganhos</p>
-                                                <p className="text-xs font-black text-green-700">R$ {editingItem.orcamentos?.[0]?.preco.toFixed(2) || '0.00'}</p>
+                                                <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Ganhos (Mão de Obra)</p>
+                                                <p className="text-xs font-black text-green-700">R$ {editingItem.orcamentos?.[0]?.hh.toFixed(2) || '0.00'}</p>
                                             </div>
                                         </div>
 
@@ -613,6 +642,104 @@ const Chamados: React.FC = () => {
                                                 </div>
                                             </div>
                                         )}
+                                    </div>
+                                ) : actingAsBudget ? (
+                                    <div className="space-y-6 animate-in fade-in duration-300">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {editingItem.planejamento?.[0]?.imagem_pedido && (
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente</label>
+                                                    <div className="w-full h-32 bg-gray-50 rounded-2xl overflow-hidden border border-gray-100 shadow-inner">
+                                                        <img src={editingItem.planejamento[0].imagem_pedido} className="w-full h-full object-contain" />
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div className="space-y-4">
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional Alocado</label>
+                                                    <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-900 flex items-center gap-2">
+                                                        <UserIcon size={14} className="text-gray-400" />
+                                                        {editingItem.profissionalData?.nome || 'Não definido'}
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Execução Marcada</label>
+                                                    <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-900 flex items-center gap-2">
+                                                        <Calendar size={14} className="text-gray-400" />
+                                                        {editingItem.planejamento?.[0]?.execucao ? new Date(editingItem.planejamento[0].execucao).toLocaleString('pt-BR') : 'Não definida'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><Banknote size={12} className="mr-1"/> Pagamento Preferencial (Cliente)</label>
+                                            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-sm font-black text-blue-900 flex items-center gap-2">
+                                                <CheckCircle size={16} className="text-blue-600" />
+                                                {editingItem.planejamento?.[0]?.pagamento || 'Não informado'}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Pedido</label>
+                                            <select className="w-full bg-white border border-gray-200 rounded-2xl p-3 text-sm font-black text-gray-900 outline-none shadow-sm" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
+                                                <option value="analise">Em Análise</option>
+                                                <option value="aguardando_aprovacao">Enviar para Aprovação</option>
+                                                <option value="cancelado">Cancelado</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 space-y-6 shadow-sm">
+                                            <div className="flex justify-between items-center border-b border-blue-100 pb-3">
+                                                <h4 className="text-xs font-black text-blue-900 uppercase tracking-widest flex items-center"><DollarSign size={14} className="mr-1"/> Detalhamento do Orçamento</h4>
+                                                <div className="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-black">Preço Final: R$ {formData.orcamentoPreco.toFixed(2)}</div>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Custo Fixo (Peças)</label>
+                                                    <input type="number" step="0.01" className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-300 outline-none" value={formData.orcamentoCusto} onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value) || 0})}/>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Mão de Obra</label>
+                                                    <input type="number" step="0.01" className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-300 outline-none" value={formData.orcamentoHH} onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value) || 0})}/>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Lucro Estimado</label>
+                                                    <input type="number" step="0.01" className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-300 outline-none" value={formData.orcamentoLucro} onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value) || 0})}/>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Imposto (%)</label>
+                                                    <input type="number" step="0.1" className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-300 outline-none" value={formData.orcamentoImposto} onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value) || 0})}/>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4 pt-2">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Tipo de Pagamento</label>
+                                                    <select className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.orcamentoTipoPgto} onChange={(e) => setFormData({...formData, orcamentoTipoPgto: e.target.value})}>
+                                                        <option value="Dinheiro">Dinheiro</option>
+                                                        <option value="PIX">PIX</option>
+                                                        <option value="Cartão de Débito">Cartão de Débito</option>
+                                                        <option value="Cartão de Crédito">Cartão de Crédito</option>
+                                                    </select>
+                                                </div>
+
+                                                {formData.orcamentoTipoPgto === 'Cartão de Crédito' && (
+                                                    <div className="space-y-1.5 animate-in slide-in-from-top-2">
+                                                        <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Número de Parcelas</label>
+                                                        <select className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.orcamentoParcelas} onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value)})}>
+                                                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n}x</option>)}
+                                                        </select>
+                                                    </div>
+                                                )}
+
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Observação para o Cliente</label>
+                                                    <textarea className="w-full bg-white border border-blue-200 rounded-xl p-4 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-300 min-h-[100px] resize-none" value={formData.orcamentoObs} onChange={(e) => setFormData({...formData, orcamentoObs: e.target.value})} placeholder="Mensagem que o cliente verá ao analisar o orçamento..."/>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 ) : (
                                     <>
@@ -750,22 +877,52 @@ const Chamados: React.FC = () => {
                             )}
 
                             {modalSubTab === 'obs' && (
-                                <div className="space-y-4 animate-in fade-in duration-300">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Notas e Observações</label>
-                                    <textarea 
-                                        disabled={editingItem.status === 'concluido' || (!isProfessional && !isGestor)}
-                                        className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed outline-none focus:ring-2 focus:ring-yellow-200 disabled:opacity-70 shadow-inner"
-                                        value={isInternal ? extractOriginalDesc(formData.planejamentoDesc) : formData.planejamentoDesc}
-                                        onChange={(e) => {
-                                            if (isInternal) {
-                                                const flex = extractFlexibility(formData.planejamentoDesc);
-                                                setFormData({...formData, planejamentoDesc: flex ? `${e.target.value}\n\n[FLEXIBILIDADE DE AGENDA]:\n${flex}` : e.target.value});
-                                            } else {
-                                                setFormData({...formData, planejamentoDesc: e.target.value});
-                                            }
-                                        }}
-                                        placeholder="Instruções técnicas ou anotações de serviço..."
-                                    />
+                                <div className="space-y-6 animate-in fade-in duration-300">
+                                    {(isProfessional || isInternal) && (
+                                        <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-4 shadow-sm">
+                                            <div className="flex items-center gap-2 text-blue-800">
+                                                <UserIcon size={18} />
+                                                <h4 className="text-[10px] font-black uppercase tracking-widest">Relato do Consumidor</h4>
+                                            </div>
+                                            <div className="bg-white/80 p-4 rounded-2xl border border-blue-100/50 text-sm font-bold text-blue-900 leading-relaxed italic shadow-inner">
+                                                "{extractOriginalDesc(editingItem.planejamento?.[0]?.descricao) || "Consumidor não deixou descrição."}"
+                                            </div>
+                                            {editingItem.planejamento?.[0]?.imagem_pedido && (
+                                                <div className="space-y-2">
+                                                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1 flex items-center">
+                                                        <ImageIcon size={10} className="mr-1" /> Foto Anexada pelo Cliente
+                                                    </p>
+                                                    <div className="w-full h-48 bg-gray-100 rounded-2xl overflow-hidden border border-blue-100 shadow-sm group">
+                                                        <img 
+                                                            src={editingItem.planejamento[0].imagem_pedido} 
+                                                            className="w-full h-full object-contain cursor-zoom-in hover:scale-105 transition-transform" 
+                                                            onClick={() => window.open(editingItem.planejamento![0].imagem_pedido!, '_blank')}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {!isProfessional && (
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Notas Internas / Técnicas</label>
+                                            <textarea 
+                                                disabled={editingItem.status === 'concluido' || !isGestor}
+                                                className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed outline-none focus:ring-2 focus:ring-yellow-200 disabled:opacity-70 shadow-inner"
+                                                value={isInternal ? extractOriginalDesc(formData.planejamentoDesc) : formData.planejamentoDesc}
+                                                onChange={(e) => {
+                                                    if (isInternal) {
+                                                        const flex = extractFlexibility(formData.planejamentoDesc);
+                                                        setFormData({...formData, planejamentoDesc: flex ? `${e.target.value}\n\n[FLEXIBILIDADE DE AGENDA]:\n${flex}` : e.target.value});
+                                                    } else {
+                                                        setFormData({...formData, planejamentoDesc: e.target.value});
+                                                    }
+                                                }}
+                                                placeholder="Suas anotações sobre a execução deste serviço..."
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

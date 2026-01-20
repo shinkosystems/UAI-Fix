@@ -5,7 +5,7 @@ import { Agenda, Geral } from '../types';
 import { 
     Loader2, ChevronLeft, ChevronRight, X, Clock, User, Save, 
     Calendar as CalendarIcon, Grid, Columns, List, 
-    Camera, Package, Trash2, Check, Ban, Eye, AlertCircle, Banknote, MapPin
+    Camera, Package, Trash2, Check, Ban, Eye, AlertCircle, Banknote, MapPin, Image as ImageIcon
 } from 'lucide-react';
 
 interface AgendaExtended extends Agenda {
@@ -31,9 +31,11 @@ interface AgendaExtended extends Agenda {
         id: number;
         descricao: string;
         recursos: string[];
+        imagem_pedido?: string | null;
     };
     orcamentoData?: {
         preco: number;
+        hh: number;
     };
 }
 
@@ -95,7 +97,7 @@ const Execution: React.FC = () => {
             dreamChaveIds.length > 0 ? supabase.from('planejamento').select('*').in('chave', dreamChaveIds) : { data: [] },
             userIds.size > 0 ? supabase.from('users').select('uuid, nome, fotoperfil, rua, numero, bairro, complemento').in('uuid', Array.from(userIds)) : { data: [] },
             supabase.from('geral').select('*'),
-            dreamChaveIds.length > 0 ? supabase.from('orcamentos').select('chave, preco').in('chave', dreamChaveIds) : { data: [] }
+            dreamChaveIds.length > 0 ? supabase.from('orcamentos').select('chave, preco, hh').in('chave', dreamChaveIds) : { data: [] }
         ]);
 
         const chavesMap = Object.fromEntries(chavesRes.data?.map(c => [c.id, c]) || []);
@@ -117,8 +119,6 @@ const Execution: React.FC = () => {
             };
         });
 
-        // REGRA DE OURO: Profissional só tem contato com o card no aceite ou execução.
-        // ADICIONADO: 'aguardando_aprovacao' agora também oculta o pedido para o profissional.
         const visibleForPro = enriched.filter(ev => {
             if (!isProfessional) return true;
             const status = ev.chaveData?.status?.toLowerCase();
@@ -339,7 +339,7 @@ const Execution: React.FC = () => {
                                     <div className="flex items-center text-gray-700">
                                         <Banknote size={14} className="mr-2 text-cyan-600" />
                                         <span className="text-[10px] font-black uppercase mr-1 text-gray-400">Ganhos:</span>
-                                        <span className="text-xs font-black text-gray-900">R$ {item.orcamentoData?.preco.toFixed(2) || '0.00'}</span>
+                                        <span className="text-xs font-black text-gray-900">R$ {item.orcamentoData?.hh.toFixed(2) || '0.00'}</span>
                                     </div>
                                     <div className="flex items-start text-gray-700">
                                         <MapPin size={14} className="mr-2 mt-0.5 text-cyan-600 flex-shrink-0" />
@@ -414,8 +414,7 @@ const Execution: React.FC = () => {
                                     disabled={!isProfessional || selectedEvent.chaveData?.status?.toLowerCase() === 'concluido'} 
                                     onChange={(e) => setFormData({...formData, status: e.target.value})}
                                 >
-                                    <option value="pendente">Pendente</option>
-                                    <option value="aprovado">Aprovado</option>
+                                    <option value="aprovado">Aprovado pelo Consumidor</option>
                                     <option value="executando">Executando</option>
                                     <option value="concluido">Concluído</option>
                                     <option value="cancelado">Cancelado</option>
@@ -423,7 +422,7 @@ const Execution: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Data e Hora</label>
-                                <div className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 flex items-center gap-2">
+                                <div className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black text-gray-900 flex items-center gap-2">
                                     <CalendarIcon size={16} className="text-ios-blue"/>
                                     {new Date(selectedEvent.execucao).toLocaleString('pt-BR')}
                                 </div>
@@ -453,7 +452,7 @@ const Execution: React.FC = () => {
                                                 if (!e.target.files?.length) return;
                                                 setUploading(true);
                                                 const file = e.target.files[0];
-                                                const path = `execucao/${selectedEvent.chaveData?.chaveunica}_depois_${Date.now()}.${file.name.split('.').pop()}`;
+                                                const path = `execucao/${selectedEvent.chaveData?.chaveunica}_antes_${Date.now()}.${file.name.split('.').pop()}`;
                                                 await supabase.storage.from('imagens').upload(path, file);
                                                 const { data } = supabase.storage.from('imagens').getPublicUrl(path);
                                                 setFormData(prev => ({...prev, fotoantes: [...prev.fotoantes, data.publicUrl]}));
@@ -494,16 +493,37 @@ const Execution: React.FC = () => {
 
                     {activeTab === 'obs' && (
                         <div className="space-y-4">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Observações Internas</label>
                             {isProfessional ? (
-                                <textarea 
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed outline-none focus:ring-2 focus:ring-ios-blue/30"
-                                    value={formData.observacoes}
-                                    onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
-                                    placeholder="Suas anotações sobre a execução deste serviço..."
-                                />
+                                <div className="space-y-6">
+                                    <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-4 shadow-sm">
+                                        <div className="flex items-center gap-2 text-blue-800">
+                                            <User size={18} />
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Relato do Consumidor</h4>
+                                        </div>
+                                        <div className="bg-white/80 p-4 rounded-2xl border border-blue-100/50 text-sm font-bold text-blue-900 leading-relaxed italic shadow-inner">
+                                            "{selectedEvent.planejamentoData?.descricao || "Consumidor não deixou descrição."}"
+                                        </div>
+                                        {selectedEvent.planejamentoData?.imagem_pedido && (
+                                            <div className="space-y-2">
+                                                <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1 flex items-center">
+                                                    <ImageIcon size={10} className="mr-1" /> Foto Anexada pelo Cliente
+                                                </p>
+                                                <div className="w-full h-48 bg-gray-100 rounded-2xl overflow-hidden border border-blue-100 shadow-sm">
+                                                    <img 
+                                                        src={selectedEvent.planejamentoData.imagem_pedido} 
+                                                        className="w-full h-full object-contain cursor-zoom-in" 
+                                                        onClick={() => window.open(selectedEvent.planejamentoData!.imagem_pedido!, '_blank')}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             ) : (
-                                <div className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed">{formData.observacoes || "Nenhuma anotação registrada."}</div>
+                                <>
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Observações Internas</label>
+                                    <div className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed">{formData.observacoes || "Nenhuma anotação registrada."}</div>
+                                </>
                             )}
                         </div>
                     )}

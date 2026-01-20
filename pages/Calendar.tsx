@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Agenda, Geral } from '../types';
-import { Loader2, ChevronLeft, ChevronRight, X, Clock, User, Wrench, Save, FileText, Calendar as CalendarIcon, MapPin, Grid, Columns, List, Camera, Package, Trash2, AlertCircle, Eye, Check, Ban, Banknote } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, X, Clock, User, Wrench, Save, FileText, Calendar as CalendarIcon, MapPin, Grid, Columns, List, Camera, Package, Trash2, AlertCircle, Eye, Check, Ban, Banknote, Image as ImageIcon } from 'lucide-react';
 
 interface AgendaExtended extends Agenda {
     geral?: Geral;
@@ -32,9 +32,11 @@ interface AgendaExtended extends Agenda {
         id: number;
         descricao: string;
         recursos: string[];
+        imagem_pedido?: string | null;
     };
     orcamentoData?: {
         preco: number;
+        hh: number;
     };
 }
 
@@ -103,7 +105,7 @@ const CalendarPage: React.FC = () => {
             chaveIds.length > 0 ? supabase.from('planejamento').select('*').in('chave', chaveIds) : { data: [] },
             userIds.size > 0 ? supabase.from('users').select('uuid, nome, fotoperfil, rua, numero, bairro, complemento').in('uuid', Array.from(userIds)) : { data: [] },
             supabase.from('geral').select('*'),
-            chaveIds.length > 0 ? supabase.from('orcamentos').select('chave, preco').in('chave', chaveIds) : { data: [] }
+            chaveIds.length > 0 ? supabase.from('orcamentos').select('chave, preco, hh').in('chave', chaveIds) : { data: [] }
         ]);
 
         const chavesMap = Object.fromEntries(chavesRes.data?.map(c => [c.id, c]) || []);
@@ -125,7 +127,6 @@ const CalendarPage: React.FC = () => {
             };
         });
 
-        // REGRA: Profissional não vê eventos cuja chave esteja em triagem (pendente), orçamento (analise) ou aguardando aprovação (aguardando_aprovacao)
         const visibleForPro = enriched.filter(ev => {
             if (!isProfessional) return true;
             const status = ev.chaveData?.status?.toLowerCase();
@@ -346,7 +347,7 @@ const CalendarPage: React.FC = () => {
                                     <div className="flex items-center text-gray-700">
                                         <Banknote size={14} className="mr-2 text-cyan-600" />
                                         <span className="text-[10px] font-black uppercase mr-1 text-gray-400">Ganhos:</span>
-                                        <span className="text-xs font-black text-gray-900">R$ {item.orcamentoData?.preco.toFixed(2) || '0.00'}</span>
+                                        <span className="text-xs font-black text-gray-900">R$ {item.orcamentoData?.hh.toFixed(2) || '0.00'}</span>
                                     </div>
                                     <div className="flex items-start text-gray-700">
                                         <MapPin size={14} className="mr-2 mt-0.5 text-cyan-600 flex-shrink-0" />
@@ -421,8 +422,7 @@ const CalendarPage: React.FC = () => {
                                     disabled={!isProfessional || selectedEvent.chaveData?.status?.toLowerCase() === 'concluido'} 
                                     onChange={(e) => setFormData({...formData, status: e.target.value})}
                                 >
-                                    <option value="pendente">Pendente</option>
-                                    <option value="aprovado">Aprovado</option>
+                                    <option value="aprovado">Aprovado pelo Consumidor</option>
                                     <option value="executando">Executando</option>
                                     <option value="concluido">Concluído</option>
                                     <option value="cancelado">Cancelado</option>
@@ -430,7 +430,7 @@ const CalendarPage: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Data e Hora</label>
-                                <div className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 flex items-center gap-2">
+                                <div className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-black text-gray-900 flex items-center gap-2">
                                     <CalendarIcon size={16} className="text-ios-blue"/>
                                     {new Date(selectedEvent.execucao).toLocaleString('pt-BR')}
                                 </div>
@@ -501,16 +501,37 @@ const CalendarPage: React.FC = () => {
 
                     {activeTab === 'obs' && (
                         <div className="space-y-4">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Observações Internas</label>
                             {isProfessional ? (
-                                <textarea 
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed outline-none focus:ring-2 focus:ring-ios-blue/30"
-                                    value={formData.observacoes}
-                                    onChange={(e) => setFormData({...formData, observacoes: e.target.value})}
-                                    placeholder="Suas anotações sobre a execução deste serviço..."
-                                />
+                                <div className="space-y-6">
+                                    <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-4 shadow-sm">
+                                        <div className="flex items-center gap-2 text-blue-800">
+                                            <User size={18} />
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Relato do Consumidor</h4>
+                                        </div>
+                                        <div className="bg-white/80 p-4 rounded-2xl border border-blue-100/50 text-sm font-bold text-blue-900 leading-relaxed italic shadow-inner">
+                                            "{selectedEvent.planejamentoData?.descricao || "Consumidor não deixou descrição."}"
+                                        </div>
+                                        {selectedEvent.planejamentoData?.imagem_pedido && (
+                                            <div className="space-y-2">
+                                                <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1 flex items-center">
+                                                    <ImageIcon size={10} className="mr-1" /> Foto Anexada pelo Cliente
+                                                </p>
+                                                <div className="w-full h-48 bg-gray-100 rounded-2xl overflow-hidden border border-blue-100 shadow-sm">
+                                                    <img 
+                                                        src={selectedEvent.planejamentoData.imagem_pedido} 
+                                                        className="w-full h-full object-contain cursor-zoom-in" 
+                                                        onClick={() => window.open(selectedEvent.planejamentoData!.imagem_pedido!, '_blank')}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             ) : (
-                                <div className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed">{formData.observacoes || "Nenhuma anotação registrada."}</div>
+                                <>
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Observações Internas</label>
+                                    <div className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed">{formData.observacoes || "Nenhuma anotação registrada."}</div>
+                                </>
                             )}
                         </div>
                     )}

@@ -2,7 +2,11 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao, Agenda, OrdemServico } from '../types';
-import { Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban, AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown, Lock, Banknote, MapPin, UserCheck, Play } from 'lucide-react';
+import { 
+    Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban, 
+    AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown, Lock, Banknote, 
+    MapPin, UserCheck, Play, CreditCard, Smartphone, MessageSquare 
+} from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface OrderExtended extends Chave {
@@ -237,8 +241,6 @@ const ClientOrders: React.FC = () => {
       }
   }
 
-  const isConcluded = selectedOrder?.status?.toLowerCase() === 'concluido';
-
   return (
     <div className="min-h-screen bg-ios-bg pb-20">
       <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-20 border-b border-gray-200 flex items-center justify-between">
@@ -299,6 +301,39 @@ const ClientOrders: React.FC = () => {
                                     <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Data Sugerida</p><p className="text-sm font-bold text-gray-900">{selectedOrder.planejamento?.[0]?.execucao ? new Date(selectedOrder.planejamento[0].execucao).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Não definida'}</p></div>
                                     <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Valor Total</p><p className="text-sm font-black text-gray-900">{selectedOrder.orcamentos?.[0]?.preco ? `R$ ${selectedOrder.orcamentos[0].preco.toFixed(2)}` : 'Calculando...'}</p></div>
                                 </div>
+
+                                {selectedOrder.orcamentos?.[0] && (
+                                    <div className="mt-6 pt-6 border-t border-gray-200 animate-in fade-in duration-500">
+                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1"><Banknote size={12}/> Forma de Pagamento Proposta</p>
+                                        <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-gray-100 shadow-sm mb-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-blue-50 rounded-lg text-ios-blue">
+                                                    {selectedOrder.orcamentos[0].tipopagmto === 'PIX' || selectedOrder.orcamentos[0].tipopagmto === 'Dinheiro' ? <Smartphone size={18}/> : <CreditCard size={18}/>}
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-black text-gray-900">{selectedOrder.orcamentos[0].tipopagmto}</p>
+                                                    {selectedOrder.orcamentos[0].tipopagmto === 'Cartão de Crédito' && (
+                                                        <p className="text-[10px] font-bold text-gray-500">Parcelamento em até {selectedOrder.orcamentos[0].parcelas}x</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {selectedOrder.orcamentos[0].observacaocliente && (
+                                            <div className="mt-4 p-5 bg-blue-600 rounded-3xl text-white shadow-xl relative animate-in slide-in-from-left-4">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <MessageSquare size={14} className="text-blue-100" />
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-blue-100">Mensagem do Orçamentista</p>
+                                                </div>
+                                                <p className="text-sm font-medium leading-relaxed italic">
+                                                    "{selectedOrder.orcamentos[0].observacaocliente}"
+                                                </p>
+                                                {/* Detalhe estético de "seta" de balão */}
+                                                <div className="absolute -top-2 left-8 w-4 h-4 bg-blue-600 rotate-45"></div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
 
                                 {selectedOrder.status === 'aguardando_aprovacao' && (
                                     <div className="mt-8 p-6 bg-white rounded-3xl border border-orange-100 space-y-5 shadow-sm animate-in slide-in-from-bottom-4">
