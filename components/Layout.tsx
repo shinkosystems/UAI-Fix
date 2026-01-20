@@ -76,8 +76,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Agora Profissional também pode ver a tela de chamados para histórico
   const isInternalOrPro = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista' || normType === 'profissional');
   
-  // Profissional NÃO vê "Meus Pedidos"
-  const showMyOrders = !loadingUserType && normType !== 'profissional';
+  // ALTERAÇÃO: "Meus Pedidos" visível apenas para Consumidor e Gestor
+  const showMyOrders = !loadingUserType && (normType === 'consumidor' || normType === 'gestor');
   
   const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor' && normType !== 'profissional';
   const showExecution = !loadingUserType && (normType === 'consumidor' || normType === 'profissional');
