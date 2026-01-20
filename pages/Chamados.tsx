@@ -1,12 +1,14 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { Chave, Geral, User, Orcamento, Planejamento } from '../types';
+import { Chave, Geral, User, Orcamento, Planejamento, Avaliacao } from '../types';
+// Added AlertCircle to imports
 import { 
     Loader2, Search, Filter, Plus, X, Save, Send, FileText, 
     User as UserIcon, Calendar, DollarSign, CheckCircle, 
     AlertTriangle, ChevronRight, Ban, Clock, Briefcase, MapPin,
-    Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator, Lock, ArrowRightCircle, Bell, Smartphone, Banknote
+    Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator, Lock, ArrowRightCircle, Bell, Smartphone, Banknote, Camera, ThumbsUp, Star, UserCheck, ShieldCheck,
+    AlertCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -16,6 +18,7 @@ interface ChamadoExtended extends Chave {
     profissionalData?: User;
     orcamentos?: Orcamento[];
     planejamento?: Planejamento[];
+    avaliacao?: Avaliacao;
 }
 
 interface NotificationItem {
@@ -27,8 +30,11 @@ interface NotificationItem {
   read: boolean;
 }
 
+type ModalTab = 'geral' | 'fotos' | 'obs' | 'avaliacao';
+
 const Chamados: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'novos' | 'orcamentos' | 'execucao' | 'historico'>('novos');
+    const [modalSubTab, setModalSubTab] = useState<ModalTab>('geral');
     const [tickets, setTickets] = useState<ChamadoExtended[]>([]);
     const [loading, setLoading] = useState(true);
     
@@ -43,8 +49,9 @@ const Chamados: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<ChamadoExtended | null>(null);
     const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [processingAction, setProcessingAction] = useState(false);
     const [showBudgetForm, setShowBudgetForm] = useState(false);
-    const [newResource, setNewResource] = useState('');
 
     const [formData, setFormData] = useState({
         profissionalUuid: '',
@@ -63,7 +70,9 @@ const Chamados: React.FC = () => {
         planejamentoData: '',
         planejamentoRecursos: [] as string[],
         planejamentoPagamento: '',
-        planejamentoVisita: ''
+        planejamentoVisita: '',
+        fotoantes: [] as string[],
+        fotodepois: [] as string[]
     });
 
     const [professionals, setProfessionals] = useState<User[]>([]);
@@ -75,11 +84,15 @@ const Chamados: React.FC = () => {
         { id: 'historico', label: 'Histórico', icon: FileText }
     ];
 
+    const isProfessional = currentUserRole === 'profissional';
+    const isGestor = currentUserRole === 'gestor';
+    const isPlanejista = currentUserRole === 'planejista';
+    const isOrcamentista = currentUserRole === 'orcamentista';
+
     const visibleTabs = allTabs.filter(tab => {
-        const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (r === 'planejista') return tab.id === 'novos' || tab.id === 'historico';
-        if (r === 'orcamentista') return tab.id === 'novos' || tab.id === 'orcamentos' || tab.id === 'execucao' || tab.id === 'historico';
-        if (r === 'profissional') return tab.id === 'execucao' || tab.id === 'historico';
+        if (isPlanejista) return tab.id === 'novos' || tab.id === 'historico';
+        if (isOrcamentista) return tab.id === 'novos' || tab.id === 'orcamentos' || tab.id === 'execucao' || tab.id === 'historico';
+        if (isProfessional) return tab.id === 'novos' || tab.id === 'execucao' || tab.id === 'historico';
         return true;
     });
 
@@ -95,8 +108,8 @@ const Chamados: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        if (currentUserRole === 'planejista' || currentUserRole === 'orcamentista') setActiveTab('novos');
-        else if (currentUserRole === 'profissional') setActiveTab('execucao');
+        if (isPlanejista || isOrcamentista) setActiveTab('novos');
+        else if (isProfessional) setActiveTab('novos'); // Profissional vê novos jobs em "Novos"
     }, [currentUserRole]);
 
     useEffect(() => {
@@ -110,12 +123,6 @@ const Chamados: React.FC = () => {
             if (total !== formData.orcamentoPreco) setFormData(prev => ({ ...prev, orcamentoPreco: total }));
         }
     }, [formData.orcamentoCusto, formData.orcamentoCustoVariavel, formData.orcamentoHH, formData.orcamentoImposto, formData.orcamentoLucro]);
-
-    useEffect(() => {
-        if (formData.orcamentoTipoPgto !== 'Cartão de Crédito' && formData.orcamentoParcelas !== 1) {
-            setFormData(prev => ({ ...prev, orcamentoParcelas: 1 }));
-        }
-    }, [formData.orcamentoTipoPgto]);
 
     const fetchUserRole = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -168,11 +175,12 @@ const Chamados: React.FC = () => {
             const userIds = new Set<string>();
             const serviceIds = new Set<number>();
             chavesData.forEach(c => { if(c.cliente) userIds.add(c.cliente); if(c.profissional) userIds.add(c.profissional); if(c.atividade) serviceIds.add(c.atividade); });
-            const [usersRes, servicesRes, orcRes, planRes] = await Promise.all([
+            const [usersRes, servicesRes, orcRes, planRes, avalRes] = await Promise.all([
                 userIds.size > 0 ? supabase.from('users').select('*').in('uuid', Array.from(userIds)) : { data: [] },
                 serviceIds.size > 0 ? supabase.from('geral').select('*').in('id', Array.from(serviceIds)) : { data: [] },
                 chaveIds.length > 0 ? supabase.from('orcamentos').select('*').in('chave', chaveIds) : { data: [] },
-                chaveIds.length > 0 ? supabase.from('planejamento').select('*').in('chave', chaveIds) : { data: [] }
+                chaveIds.length > 0 ? supabase.from('planejamento').select('*').in('chave', chaveIds) : { data: [] },
+                chaveIds.length > 0 ? supabase.from('avaliacoes').select('*').in('chave', chaveIds) : { data: [] }
             ]);
             const usersMap: Record<string, User> = {};
             usersRes.data?.forEach((u: any) => usersMap[u.uuid] = u);
@@ -182,7 +190,18 @@ const Chamados: React.FC = () => {
             orcRes.data?.forEach((o: any) => { if(!orcMap[o.chave]) orcMap[o.chave] = []; orcMap[o.chave].push(o); });
             const planMap: Record<number, Planejamento[]> = {};
             planRes.data?.forEach((p: any) => { if(!planMap[p.chave]) planMap[p.chave] = []; planMap[p.chave].push(p); });
-            setTickets(chavesData.map(c => ({ ...c, clienteData: usersMap[c.cliente], profissionalData: usersMap[c.profissional], geral: servicesMap[c.atividade], orcamentos: orcMap[c.id] || [], planejamento: planMap[c.id] || [] })));
+            const avalMap: Record<number, Avaliacao> = {};
+            avalRes.data?.forEach((a: any) => avalMap[a.chave] = a);
+
+            setTickets(chavesData.map(c => ({ 
+                ...c, 
+                clienteData: usersMap[c.cliente], 
+                profissionalData: usersMap[c.profissional], 
+                geral: servicesMap[c.atividade], 
+                orcamentos: orcMap[c.id] || [], 
+                planejamento: planMap[c.id] || [],
+                avaliacao: avalMap[c.id]
+            })));
         } catch (error) { console.error(error); } finally { setLoading(false); }
     };
 
@@ -194,7 +213,8 @@ const Chamados: React.FC = () => {
     const getFilteredTickets = () => {
         let filtered = tickets;
         
-        if (currentUserRole === 'profissional') {
+        if (isProfessional) {
+            // Profissional só vê o que é dele e já passou da triagem/orcamento do cliente
             filtered = filtered.filter(t => 
                 t.profissional === currentUserId && 
                 !['pendente', 'analise', 'aguardando_aprovacao'].includes(t.status.toLowerCase())
@@ -202,9 +222,10 @@ const Chamados: React.FC = () => {
         }
 
         if (activeTab === 'novos') {
-            if (currentUserRole === 'planejista') filtered = filtered.filter(t => t.status === 'pendente');
-            else if (currentUserRole === 'orcamentista') filtered = filtered.filter(t => t.status === 'analise');
-            else filtered = filtered.filter(t => t.status === 'pendente' || t.status === 'analise');
+            if (isPlanejista) filtered = filtered.filter(t => t.status === 'pendente');
+            else if (isOrcamentista) filtered = filtered.filter(t => t.status === 'analise');
+            else if (isProfessional) filtered = filtered.filter(t => t.status === 'aguardando_profissional');
+            else filtered = filtered.filter(t => t.status === 'pendente' || t.status === 'analise' || t.status === 'aguardando_profissional');
         } else if (activeTab === 'orcamentos') {
             filtered = filtered.filter(t => t.status === 'aguardando_aprovacao' || t.status === 'reprovado' || t.status === 'aguardando_profissional');
         } else if (activeTab === 'execucao') {
@@ -220,49 +241,19 @@ const Chamados: React.FC = () => {
         return filtered;
     };
 
-    const canEditPlanning = () => {
-        const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (r === 'gestor') return !['concluido', 'cancelado'].includes(formData.status);
-        if (r === 'planejista') return !['concluido', 'cancelado'].includes(formData.status);
-        return false;
-    };
-
-    const canEditBudget = () => {
-        const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (r === 'gestor') return formData.status === 'analise' || formData.status === 'aguardando_aprovacao';
-        if (r === 'orcamentista') return !['executando', 'concluido', 'cancelado'].includes(formData.status);
-        return false; 
-    };
-
-    const canEditStatus = () => {
-        const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        if (r === 'gestor') return true;
-        if (r === 'profissional') return !['concluido', 'cancelado'].includes(editingItem?.status || '');
-        return false;
-    };
-
     const handleEdit = (ticket: ChamadoExtended) => {
         setEditingItem(ticket);
-        setNewResource('');
-        const hasBudget = ticket.orcamentos && ticket.orcamentos.length > 0;
-        const budget = hasBudget ? ticket.orcamentos[0] : null;
-        const plan = ticket.planejamento && ticket.planejamento.length > 0 ? ticket.planejamento[0] : null;
+        setModalSubTab('geral');
+        const budget = ticket.orcamentos?.[0];
+        const plan = ticket.planejamento?.[0];
         const status = (ticket.status || 'pendente').toLowerCase();
         
-        const r = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        
-        // Lógica de visualização do Orçamento para o Gestor
-        // Se for gestor e o status for pendente, NÃO mostramos o formulário financeiro (força planejamento)
-        // Se já estiver em análise ou etapas posteriores, mostramos.
-        const shouldShowBudget = r !== 'planejista' && r !== 'profissional' && 
-                               (hasBudget || (r === 'orcamentista' || (r === 'gestor' && status !== 'pendente')));
+        // FIX: Ensured shouldShowBudget is evaluated as a boolean to satisfy the type constraints of setShowBudgetForm.
+        const shouldShowBudget = !isPlanejista && !isProfessional && 
+                               (!!(ticket.orcamentos?.length) || isOrcamentista || (isGestor && status !== 'pendente'));
         
         setShowBudgetForm(shouldShowBudget);
         
-        let formattedDate = '', formattedVisita = '';
-        if (plan?.execucao) formattedDate = toLocalISOString(plan.execucao);
-        if (plan?.visita) formattedVisita = toLocalISOString(plan.visita);
-
         setFormData({
             profissionalUuid: (ticket.profissional as string) || '',
             status: status, 
@@ -277,10 +268,12 @@ const Chamados: React.FC = () => {
             orcamentoObs: budget?.observacaocliente || '',
             orcamentoNotaFiscal: budget?.notafiscal || false,
             planejamentoDesc: plan?.descricao || '',
-            planejamentoData: formattedDate,
+            planejamentoData: plan?.execucao ? toLocalISOString(plan.execucao) : '',
             planejamentoRecursos: plan?.recursos || [],
             planejamentoPagamento: plan?.pagamento || 'Dinheiro',
-            planejamentoVisita: formattedVisita
+            planejamentoVisita: plan?.visita ? toLocalISOString(plan.visita) : '',
+            fotoantes: ticket.fotoantes || [],
+            fotodepois: ticket.fotodepois || []
         });
         setIsModalOpen(true);
     };
@@ -295,16 +288,23 @@ const Chamados: React.FC = () => {
         if (!editingItem) return;
         setSaving(true);
         try {
-            if (canEditStatus()) {
-                await supabase.from('chaves').update({ profissional: formData.profissionalUuid || null, status: formData.status }).eq('id', editingItem.id);
+            const updatesChave: any = { status: formData.status };
+            if (isProfessional) {
+                updatesChave.fotoantes = formData.fotoantes;
+                updatesChave.fotodepois = formData.fotodepois;
+            } else if (isGestor || isPlanejista) {
+                updatesChave.profissional = formData.profissionalUuid || null;
             }
-            if (showBudgetForm && canEditBudget()) {
+            
+            await supabase.from('chaves').update(updatesChave).eq('id', editingItem.id);
+
+            if (showBudgetForm && !isProfessional && !isPlanejista) {
                 const b = { chave: editingItem.id, preco: formData.orcamentoPreco, custofixo: formData.orcamentoCusto, custovariavel: formData.orcamentoCustoVariavel, hh: formData.orcamentoHH, imposto: formData.orcamentoImposto, lucro: formData.orcamentoLucro, tipopagmto: formData.orcamentoTipoPgto, parcelas: formData.orcamentoParcelas, observacaocliente: formData.orcamentoObs, notafiscal: formData.orcamentoNotaFiscal, ativo: true };
                 if (editingItem.orcamentos?.length) await supabase.from('orcamentos').update(b).eq('id', editingItem.orcamentos[0].id);
                 else await supabase.from('orcamentos').insert(b);
             }
             
-            if (canEditPlanning()) {
+            if (isGestor || isPlanejista) {
                 const p: any = { 
                     chave: editingItem.id,
                     descricao: formData.planejamentoDesc, 
@@ -315,101 +315,73 @@ const Chamados: React.FC = () => {
                 if (formData.planejamentoData) p.execucao = new Date(formData.planejamentoData).toISOString();
                 if (formData.planejamentoVisita) p.visita = new Date(formData.planejamentoVisita).toISOString(); else p.visita = null;
                 
-                if (editingItem.planejamento?.length) {
-                    await supabase.from('planejamento').update(p).eq('id', editingItem.planejamento[0].id);
-                } else {
-                    await supabase.from('planejamento').insert(p);
-                }
+                if (editingItem.planejamento?.length) await supabase.from('planejamento').update(p).eq('id', editingItem.planejamento[0].id);
+                else await supabase.from('planejamento').insert(p);
             }
+            
             await fetchData(); setIsModalOpen(false); alert('Salvo!');
         } catch (error: any) { alert(error.message); } finally { setSaving(false); }
+    };
+
+    const handleProfessionalDecision = async (accept: boolean) => {
+        if (!editingItem || processingAction) return;
+        setProcessingAction(true);
+        try {
+            if (accept) {
+                await supabase.from('chaves').update({ status: 'aprovado' }).eq('id', editingItem.id);
+            } else {
+                await supabase.from('chaves').update({ status: 'pendente', profissional: null }).eq('id', editingItem.id);
+                // Remove da agenda se houver
+                await supabase.from('agenda').delete().eq('chave', editingItem.id);
+            }
+            await fetchData(); setIsModalOpen(false);
+            alert(accept ? "Serviço aceito!" : "Serviço recusado.");
+        } catch (e: any) { alert(e.message); } finally { setProcessingAction(false); }
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'antes' | 'depois') => {
+        if (!isProfessional || !e.target.files?.length) return;
+        setUploading(true);
+        try {
+            const file = e.target.files[0];
+            const path = `pedidos/${editingItem?.chaveunica || 'order'}_${target}_${Date.now()}.${file.name.split('.').pop()}`;
+            const { error } = await supabase.storage.from('imagens').upload(path, file);
+            if (error) throw error;
+            const { data } = supabase.storage.from('imagens').getPublicUrl(path);
+            setFormData(prev => ({
+                ...prev,
+                [target === 'antes' ? 'fotoantes' : 'fotodepois']: [...prev[target === 'antes' ? 'fotoantes' : 'fotodepois'], data.publicUrl]
+            }));
+        } catch (error: any) { alert(error.message); } finally { setUploading(false); }
     };
 
     const handleSendToBudget = async () => {
         if (!editingItem) return;
         if (!formData.profissionalUuid) return alert("Selecione um profissional antes de enviar.");
         if (!formData.planejamentoData) return alert("Defina a data de execução prevista.");
-
         setSaving(true);
         try {
-            const { error: chaveError } = await supabase
-                .from('chaves')
-                .update({ 
-                    profissional: formData.profissionalUuid, 
-                    status: 'analise',
-                    planejista: currentUserId
-                })
-                .eq('id', editingItem.id);
-            
-            if (chaveError) throw chaveError;
-
-            const p: any = { 
-                chave: editingItem.id,
-                descricao: formData.planejamentoDesc, 
-                recursos: formData.planejamentoRecursos, 
-                pagamento: formData.planejamentoPagamento,
-                execucao: new Date(formData.planejamentoData).toISOString(),
-                visita: formData.planejamentoVisita ? new Date(formData.planejamentoVisita).toISOString() : null,
-                ativo: true
-            };
-
-            if (editingItem.planejamento?.length) {
-                await supabase.from('planejamento').update(p).eq('id', editingItem.planejamento[0].id);
-            } else {
-                await supabase.from('planejamento').insert(p);
-            }
-
-            alert("Chamado enviado para o orçamentista com sucesso!");
-            await fetchData();
-            setIsModalOpen(false);
+            await supabase.from('chaves').update({ profissional: formData.profissionalUuid, status: 'analise', planejista: currentUserId }).eq('id', editingItem.id);
+            const p: any = { chave: editingItem.id, descricao: formData.planejamentoDesc, recursos: formData.planejamentoRecursos, pagamento: formData.planejamentoPagamento, execucao: new Date(formData.planejamentoData).toISOString(), visita: formData.planejamentoVisita ? new Date(formData.planejamentoVisita).toISOString() : null, ativo: true };
+            if (editingItem.planejamento?.length) await supabase.from('planejamento').update(p).eq('id', editingItem.planejamento[0].id);
+            else await supabase.from('planejamento').insert(p);
+            alert("Chamado enviado para o orçamentista!");
+            await fetchData(); setIsModalOpen(false);
         } catch (error: any) { alert(error.message); } finally { setSaving(false); }
     };
 
     const handleSendToConsumer = async () => {
         if (!editingItem) return;
         if (formData.orcamentoPreco <= 0) return alert("O valor do orçamento deve ser maior que zero.");
-
         setSaving(true);
         try {
-            const { error: chaveError } = await supabase
-                .from('chaves')
-                .update({ 
-                    status: 'aguardando_aprovacao',
-                    orcamentista: currentUserId
-                })
-                .eq('id', editingItem.id);
-            
-            if (chaveError) throw chaveError;
-
-            const b = { 
-                chave: editingItem.id, 
-                preco: formData.orcamentoPreco, 
-                custofixo: formData.orcamentoCusto, 
-                custovariavel: formData.orcamentoCustoVariavel, 
-                hh: formData.orcamentoHH, 
-                imposto: formData.orcamentoImposto, 
-                lucro: formData.orcamentoLucro, 
-                tipopagmto: formData.orcamentoTipoPgto, 
-                parcelas: formData.orcamentoParcelas, 
-                observacaocliente: formData.orcamentoObs, 
-                notafiscal: formData.orcamentoNotaFiscal, 
-                ativo: true 
-            };
-
-            if (editingItem.orcamentos?.length) {
-                await supabase.from('orcamentos').update(b).eq('id', editingItem.orcamentos[0].id);
-            } else {
-                await supabase.from('orcamentos').insert(b);
-            }
-
+            await supabase.from('chaves').update({ status: 'aguardando_aprovacao', orcamentista: currentUserId }).eq('id', editingItem.id);
+            const b = { chave: editingItem.id, preco: formData.orcamentoPreco, custofixo: formData.orcamentoCusto, custovariavel: formData.orcamentoCustoVariavel, hh: formData.orcamentoHH, imposto: formData.orcamentoImposto, lucro: formData.orcamentoLucro, tipopagmto: formData.orcamentoTipoPgto, parcelas: formData.orcamentoParcelas, observacaocliente: formData.orcamentoObs, notafiscal: formData.orcamentoNotaFiscal, ativo: true };
+            if (editingItem.orcamentos?.length) await supabase.from('orcamentos').update(b).eq('id', editingItem.orcamentos[0].id);
+            else await supabase.from('orcamentos').insert(b);
             alert("Orçamento enviado para o consumidor!");
-            await fetchData();
-            setIsModalOpen(false);
-        } catch (error: any) {
-            alert("Erro ao enviar orçamento: " + error.message);
-        } finally {
-            setSaving(false);
-        }
+            await fetchData(); setIsModalOpen(false);
+        } catch (error: any) { alert(error.message); } finally { setSaving(false); }
     };
 
     const getStatusColor = (s: string) => {
@@ -426,20 +398,13 @@ const Chamados: React.FC = () => {
         }
     };
 
-    const normRole = currentUserRole.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const isPlanejista = normRole === 'planejista';
-    const isOrcamentista = normRole === 'orcamentista';
-    const isProfissional = normRole === 'profissional';
-    const isGestor = normRole === 'gestor';
-
-    // Determina se o usuário está agindo como planejista (Gestor em chamado pendente ou Planejista nato)
     const actingAsPlanning = isPlanejista || (isGestor && formData.status === 'pendente');
-    // Determina se o usuário está agindo como orçamentista (Gestor em chamado analise ou Orçamentista nato)
     const actingAsBudget = isOrcamentista || (isGestor && formData.status === 'analise');
 
     return (
         <div className="min-h-screen bg-ios-bg pb-20">
-            <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-20 border-b border-gray-200">
+            {/* STICKY HEADER: Aumentado o z-index para z-40 */}
+            <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-40 border-b border-gray-200">
                 <div className="flex justify-between items-start">
                     <div><h1 className="text-3xl font-bold text-gray-900 tracking-tight">Chamados</h1><p className="text-gray-500 text-sm mt-1">Gestão inteligente.</p></div>
                     <div className="flex items-center space-x-2">
@@ -447,7 +412,8 @@ const Chamados: React.FC = () => {
                         <div className="relative" ref={notificationRef}>
                             <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-full bg-gray-100 hover:bg-gray-200"><Bell size={20} className="text-gray-700" />{notifications.length > 0 && <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}</button>
                             {showNotifications && (
-                                <div className="absolute right-0 top-12 w-80 bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-50">
+                                /* DROPDOWN: Aumentado o z-index para z-[100] */
+                                <div className="absolute right-0 top-12 w-80 bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2">
                                     <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50"><h3 className="font-bold text-gray-900 text-sm">Notificações</h3><button onClick={() => setShowNotifications(false)}><X size={16} className="text-gray-400"/></button></div>
                                     <div className="max-h-64 overflow-y-auto">
                                         {notifications.length > 0 ? notifications.map((n) => (<div key={n.id} onClick={() => handleNotificationClick(n)} className="p-4 border-b border-gray-50 hover:bg-blue-50 cursor-pointer"><div><span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 rounded font-bold uppercase">{n.type}</span></div><h4 className="text-sm font-bold text-gray-900">{n.title}</h4><p className="text-xs text-gray-500 truncate">{n.description}</p></div>)) : <div className="p-6 text-center text-xs text-gray-400">Vazio.</div>}
@@ -468,7 +434,7 @@ const Chamados: React.FC = () => {
 
                 <div className="relative">
                     <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input type="text" placeholder="Buscar por ID, Cliente ou Serviço..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-gray-200 rounded-2xl py-3 pl-10 pr-4 text-sm outline-none" />
+                    <input type="text" placeholder="Buscar por ID, Cliente ou Serviço..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-gray-200 rounded-2xl py-3 pl-10 pr-4 text-sm outline-none shadow-sm focus:ring-2 focus:ring-ios-blue/10" />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -484,62 +450,109 @@ const Chamados: React.FC = () => {
                                         <div className="flex items-center font-bold text-ios-blue"><Clock size={12} className="mr-1"/> Execução: {new Date(t.planejamento[0].execucao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}</div>
                                     )}
                                 </div>
-                                {!isProfissional && t.orcamentos?.length ? (
+                                {/* Fixed typo: changed isProfissional to isProfessional */}
+                                {!isProfessional && t.orcamentos?.length ? (
                                     <div className="flex flex-col items-end">
                                         <div className="flex items-center font-bold text-green-700 text-sm"><DollarSign size={14} className="mr-0.5"/>R$ {t.orcamentos[0].preco.toFixed(2)}</div>
-                                        {t.orcamentos[0].tipopagmto === 'Cartão de Crédito' && t.orcamentos[0].parcelas > 1 && (
-                                            <div className="text-[9px] font-bold text-gray-400 uppercase">{t.orcamentos[0].parcelas}x Parcelas</div>
-                                        )}
                                     </div>
-                                ) : !isProfissional && <div className="text-orange-600 font-bold flex items-center text-[10px] uppercase"><AlertTriangle size={12} className="mr-1"/> Sem Orçamento</div>}
+                                ) : isProfessional && t.status === 'aguardando_profissional' ? <div className="text-cyan-600 font-black flex items-center text-[10px] uppercase animate-pulse"><AlertCircle size={12} className="mr-1"/> Pendente Aceite</div> : null}
                             </div>
                         </div>
-                    )) : (<div className="col-span-full text-center py-12 text-gray-400">Nenhum chamado encontrado.</div>)}
+                    )) : (<div className="col-span-full text-center py-12 text-gray-400 font-bold border-2 border-dashed border-gray-100 rounded-[2.5rem]">Nenhum chamado encontrado.</div>)}
                 </div>
             </div>
 
             {isModalOpen && editingItem && (
-                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
                     <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
-                            <div><h3 className="font-bold text-gray-900 text-lg">{editingItem.geral?.nome}</h3><div className="flex items-center mt-1"><span className="bg-gray-100 text-gray-900 px-2 py-1 rounded-md text-xs font-black font-mono tracking-wider flex items-center border border-gray-200"><Hash size={10} className="mr-1 opacity-50"/> {editingItem.chaveunica}</span></div></div>
+                            <div><h3 className="font-bold text-gray-900 text-lg leading-tight">{editingItem.geral?.nome}</h3><div className="flex items-center mt-1"><span className="bg-gray-100 text-gray-900 px-2 py-1 rounded-md text-[10px] font-black font-mono tracking-wider flex items-center border border-gray-200"><Hash size={10} className="mr-1 opacity-50"/> {editingItem.chaveunica}</span></div></div>
                             <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
                         </div>
-                        
-                        <div className="p-6 overflow-y-auto space-y-6 flex-1 no-scrollbar">
-                            
-                            {actingAsPlanning ? (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional</label>
-                                        <select 
-                                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-black/10" 
-                                            value={formData.profissionalUuid} 
-                                            onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
-                                        >
-                                            <option value="">Selecione o melhor profissional...</option>
-                                            {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
-                                        </select>
-                                    </div>
 
-                                    <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
-                                        <div className="flex items-center gap-2 mb-2 text-gray-600"><FileText size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Detalhes do Planejamento</h4></div>
-                                        <div className="grid grid-cols-1 gap-4">
-                                            <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1">Execução Prevista</label><input type="datetime-local" className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.planejamentoData} onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})} /></div>
-                                            <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1">Visita Técnica (Opcional)</label><input type="datetime-local" className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.planejamentoVisita} onChange={(e) => setFormData({...formData, planejamentoVisita: e.target.value})} /></div>
+                        {isProfessional && (
+                            <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar">
+                                <button onClick={() => setModalSubTab('geral')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Geral{modalSubTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
+                                <button onClick={() => setModalSubTab('fotos')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Fotos{modalSubTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
+                                <button onClick={() => setModalSubTab('obs')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Anotações{modalSubTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
+                                {editingItem.status === 'concluido' && editingItem.avaliacao && <button onClick={() => setModalSubTab('avaliacao')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{modalSubTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>}
+                            </div>
+                        )}
+                        
+                        <div className="p-6 overflow-y-auto space-y-6 flex-1 no-scrollbar bg-white">
+                            
+                            {modalSubTab === 'geral' && (
+                                actingAsPlanning ? (
+                                    <div className="space-y-6 animate-in fade-in duration-300">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional</label>
+                                            <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none" value={formData.profissionalUuid} onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}>
+                                                <option value="">Escolha um profissional...</option>
+                                                {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
+                                            </select>
+                                        </div>
+                                        <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
+                                            <div className="flex items-center gap-2 mb-2 text-gray-600"><FileText size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Planejamento</h4></div>
+                                            <div className="grid grid-cols-1 gap-4">
+                                                <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1">Execução Prevista</label><input type="datetime-local" className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.planejamentoData} onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})} /></div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="bg-yellow-50 p-5 rounded-3xl border border-yellow-100"><label className="text-[10px] font-black text-yellow-700 uppercase tracking-wider mb-2 block">Informações Técnicas</label><textarea className="w-full bg-white/50 border border-yellow-200 rounded-2xl p-4 text-sm font-medium text-gray-800 min-h-[100px] outline-none" placeholder="Detalhes técnicos para o orçamentista..." value={formData.planejamentoDesc} onChange={(e) => setFormData({...formData, planejamentoDesc: e.target.value})} /></div>
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Pedido</label>
-                                            {isOrcamentista ? (
-                                                <div className={`w-full px-4 py-3 rounded-2xl text-xs font-black uppercase border text-center ${getStatusColor(formData.status)}`}>{formData.status.replace('_',' ')}</div>
-                                            ) : (
-                                                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none capitalize focus:ring-2 focus:ring-black/10" value={formData.status} disabled={!canEditStatus()} onChange={(e) => setFormData({...formData, status: e.target.value})}>
+                                ) : isProfessional ? (
+                                    <div className="space-y-6 animate-in fade-in duration-300">
+                                        <div className="bg-gray-50 p-5 rounded-3xl border border-gray-100 shadow-inner">
+                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 block">Status do Serviço</label>
+                                            <select 
+                                                disabled={editingItem.status === 'concluido' || processingAction}
+                                                className="w-full bg-white border border-gray-200 rounded-xl p-4 text-sm font-black text-gray-900 outline-none shadow-sm appearance-none"
+                                                value={formData.status}
+                                                onChange={(e) => setFormData({...formData, status: e.target.value})}
+                                            >
+                                                <option value="aprovado">Aprovado (Na Agenda)</option>
+                                                <option value="executando">Executando</option>
+                                                <option value="concluido">Concluído</option>
+                                                <option value="cancelado">Cancelado</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                                <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Data Agendada</p>
+                                                <p className="text-xs font-bold text-gray-900">{editingItem.planejamento?.[0]?.execucao ? new Date(editingItem.planejamento[0].execucao).toLocaleString('pt-BR') : 'A definir'}</p>
+                                            </div>
+                                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                                <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Ganhos</p>
+                                                <p className="text-xs font-black text-green-700">R$ {editingItem.orcamentos?.[0]?.preco.toFixed(2) || '0.00'}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-blue-50/50 p-5 rounded-3xl border border-blue-100 flex items-center space-x-4">
+                                            <div className="w-12 h-12 rounded-full bg-white border border-blue-100 overflow-hidden flex-shrink-0"><img src={editingItem.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${editingItem.clienteData?.nome || 'U'}`} className="w-full h-full object-cover"/></div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[9px] font-black text-blue-600 uppercase mb-0.5">Cliente</p>
+                                                <p className="text-sm font-bold text-gray-900 truncate">{editingItem.clienteData?.nome}</p>
+                                                <p className="text-[10px] text-gray-500 font-medium flex items-center gap-1 mt-1"><MapPin size={10}/> {editingItem.clienteData?.rua}, {editingItem.clienteData?.numero}</p>
+                                            </div>
+                                        </div>
+
+                                        {editingItem.status === 'aguardando_profissional' && (
+                                            <div className="p-6 bg-cyan-50 rounded-[2.5rem] border border-cyan-100 space-y-4 shadow-sm">
+                                                {/* Fixed missing AlertCircle import */}
+                                                <div className="flex items-center gap-2 text-cyan-800"><AlertCircle size={20}/><p className="text-xs font-black uppercase">Decisão Pendente</p></div>
+                                                <p className="text-xs text-cyan-700 font-medium leading-relaxed">O cliente aprovou o orçamento. Você aceita realizar este serviço na data sugerida?</p>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => handleProfessionalDecision(true)} disabled={processingAction} className="flex-[2] bg-black text-white py-4 rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={16}/> : 'ACEITAR SERVIÇO'}</button>
+                                                    <button onClick={() => handleProfessionalDecision(false)} disabled={processingAction} className="flex-1 bg-white border border-red-100 text-red-500 py-4 rounded-2xl font-black text-xs active:scale-95 transition-all">RECUSAR</button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status</label>
+                                                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none capitalize" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
                                                     <option value="pendente">Pendente</option>
                                                     <option value="analise">Em Análise</option>
                                                     <option value="aguardando_aprovacao">Aguardando Aprovação</option>
@@ -548,51 +561,101 @@ const Chamados: React.FC = () => {
                                                     <option value="executando">Executando</option>
                                                     <option value="concluido">Concluído</option>
                                                     <option value="cancelado">Cancelado</option>
-                                                    <option value="reprovado">Reprovado</option>
                                                 </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional</label>
+                                                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none" value={formData.profissionalUuid} onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}>
+                                                    <option value="">Selecione...</option>
+                                                    {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3">
+                                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Planejamento</h4>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1"><label className="text-[9px] font-bold text-gray-400">Execução</label><input type="datetime-local" className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold" value={formData.planejamentoData} onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})}/></div>
+                                                <div className="space-y-1"><label className="text-[9px] font-bold text-gray-400">Visita</label><input type="datetime-local" className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold" value={formData.planejamentoVisita} onChange={(e) => setFormData({...formData, planejamentoVisita: e.target.value})}/></div>
+                                            </div>
+                                        </div>
+
+                                        {showBudgetForm && (
+                                            <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in slide-in-from-right-4">
+                                                <div className="flex justify-between items-center"><h4 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center"><DollarSign size={12} className="mr-1"/> Orçamento</h4><div className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-black">Total: R$ {formData.orcamentoPreco.toFixed(2)}</div></div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700">Custo Fixo</label><input type="number" step="0.01" className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold" value={formData.orcamentoCusto} onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value) || 0})}/></div>
+                                                    <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700">Mão de Obra</label><input type="number" step="0.01" className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold" value={formData.orcamentoHH} onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value) || 0})}/></div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )
+                            )}
+
+                            {modalSubTab === 'fotos' && (
+                                <div className="space-y-6 animate-in fade-in duration-300">
+                                    <div>
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos do 'Antes'</h4>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {formData.fotoantes.map((url, i) => (
+                                                <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
+                                                    <img src={url} className="w-full h-full object-cover"/>
+                                                    {isProfessional && editingItem.status !== 'concluido' && <button onClick={() => setFormData({...formData, fotoantes: formData.fotoantes.filter((_, idx) => idx !== i)})} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full"><Trash2 size={12}/></button>}
+                                                </div>
+                                            ))}
+                                            {isProfessional && editingItem.status !== 'concluido' && (
+                                                <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                                                    {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={20} className="text-gray-300"/>}
+                                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'antes')} />
+                                                </label>
                                             )}
                                         </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional</label>
-                                            <select 
-                                                className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none disabled:opacity-80" 
-                                                value={formData.profissionalUuid} 
-                                                disabled={!canEditPlanning()} 
-                                                onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
-                                            >
-                                                <option value="">Selecione...</option>
-                                                {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
-                                            </select>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos da Conclusão</h4>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {formData.fotodepois.map((url, i) => (
+                                                <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
+                                                    <img src={url} className="w-full h-full object-cover"/>
+                                                    {isProfessional && editingItem.status !== 'concluido' && <button onClick={() => setFormData({...formData, fotodepois: formData.fotodepois.filter((_, idx) => idx !== i)})} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full"><Trash2 size={12}/></button>}
+                                                </div>
+                                            ))}
+                                            {isProfessional && editingItem.status !== 'concluido' && (
+                                                <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                                                    {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={20} className="text-gray-300"/>}
+                                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'depois')} />
+                                                </label>
+                                            )}
                                         </div>
                                     </div>
-                                    
-                                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3 relative">
-                                        <div className="flex justify-between items-center"><h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center"><FileText size={12} className="mr-1"/> Detalhes do Planejamento</h4>{(!canEditPlanning() || isOrcamentista || isProfissional) && <Lock size={10} className="text-gray-300"/>}</div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 ml-1">Execução</label><input type="datetime-local" disabled={true} className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none opacity-80" value={formData.planejamentoData} /></div>
-                                            <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 ml-1">Visita Técnica</label><input type="datetime-local" disabled={true} className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none opacity-80" value={formData.planejamentoVisita} /></div>
-                                        </div>
-                                    </div>
+                                </div>
+                            )}
 
-                                    {showBudgetForm && !isProfissional && (
-                                        <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in slide-in-from-right-4">
-                                            <div className="flex justify-between items-center"><h4 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center"><DollarSign size={12} className="mr-1"/> Orçamento Financeiro</h4><div className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase shadow-sm">Total: R$ {formData.orcamentoPreco.toFixed(2)}</div></div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Custo Fixo (Peças)</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoCusto} onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value) || 0})}/></div>
-                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Mão de Obra (HH)</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoHH} onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value) || 0})}/></div>
-                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Lucro Estimado</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoLucro} onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value) || 0})}/></div>
-                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Impostos (%)</label><input type="number" step="0.01" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-500/20" value={formData.orcamentoImposto} onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value) || 0})}/></div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Tipo de Pagamento</label><select disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none" value={formData.orcamentoTipoPgto} onChange={(e) => setFormData({...formData, orcamentoTipoPgto: e.target.value})}><option value="Dinheiro">Dinheiro</option><option value="PIX">PIX</option><option value="Cartão de Crédito">Cartão de Crédito</option><option value="Cartão de Débito">Cartão de Débito</option></select></div>
-                                                {formData.orcamentoTipoPgto === 'Cartão de Crédito' && (
-                                                    <div className="space-y-1 animate-in zoom-in duration-200"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Parcelas</label><input type="number" min="1" max="12" disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none" value={formData.orcamentoParcelas} onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value) || 1})}/></div>
-                                                )}
-                                            </div>
-                                            <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700 uppercase ml-1">Observação para o Cliente</label><textarea disabled={!canEditBudget()} className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none resize-none min-h-[60px]" value={formData.orcamentoObs} onChange={(e) => setFormData({...formData, orcamentoObs: e.target.value})} placeholder="Instruções sobre o valor..."/></div>
-                                        </div>
-                                    )}
-                                </>
+                            {modalSubTab === 'obs' && (
+                                <div className="space-y-4 animate-in fade-in duration-300">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Notas e Observações</label>
+                                    <textarea 
+                                        disabled={editingItem.status === 'concluido' || (!isProfessional && !isGestor)}
+                                        className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed outline-none focus:ring-2 focus:ring-yellow-200 disabled:opacity-70 shadow-inner"
+                                        value={formData.planejamentoDesc}
+                                        onChange={(e) => setFormData({...formData, planejamentoDesc: e.target.value})}
+                                        placeholder="Instruções técnicas ou anotações de serviço..."
+                                    />
+                                </div>
+                            )}
+
+                            {modalSubTab === 'avaliacao' && editingItem.avaliacao && (
+                                <div className="bg-green-50 p-8 rounded-[2.5rem] border border-green-100 text-center space-y-4 animate-in zoom-in duration-300">
+                                    <div className="flex justify-center items-center gap-2 mb-2">
+                                        <div className="bg-white p-2 rounded-full shadow-sm"><UserCheck size={20} className="text-green-600"/></div>
+                                        <h5 className="font-black text-green-900 text-sm uppercase tracking-wider">Avaliação do Cliente</h5>
+                                    </div>
+                                    <div className="flex justify-center space-x-1">
+                                        {[1, 2, 3, 4, 5].map((star) => (<Star key={star} size={28} className={star <= (editingItem.avaliacao?.nota || 0) ? 'fill-green-500 text-green-500' : 'text-green-200'} />))}
+                                    </div>
+                                    <p className="text-base font-bold text-green-800 leading-relaxed italic mt-4">"{editingItem.avaliacao?.comentario}"</p>
+                                </div>
                             )}
                         </div>
                         
@@ -602,7 +665,7 @@ const Chamados: React.FC = () => {
                             ) : actingAsBudget ? (
                                 <button onClick={handleSendToConsumer} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar Orçamento</span></>}</button>
                             ) : (
-                                <button onClick={handleSave} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}</button>
+                                <button onClick={handleSave} disabled={saving || editingItem.status === 'concluido'} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}</button>
                             )}
                         </div>
                     </div>

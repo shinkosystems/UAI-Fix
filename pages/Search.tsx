@@ -260,7 +260,8 @@ const Search: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-ios-bg">
-      <div className="sticky top-0 bg-white/80 backdrop-blur-md z-20 px-5 pt-12 md:pt-6 pb-4 border-b border-gray-200">
+      {/* HEADER: Aumentado z-index para z-40 */}
+      <div className="sticky top-0 bg-white/80 backdrop-blur-md z-40 px-5 pt-12 md:pt-6 pb-4 border-b border-gray-200">
         <div className="flex justify-between items-center mb-4">
              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Buscar</h1>
              <div className="relative" ref={notificationRef}>
@@ -269,7 +270,8 @@ const Search: React.FC = () => {
                     {notifications.length > 0 && <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
                 </button>
                 {showNotifications && (
-                    <div className="absolute right-0 top-12 w-80 bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                    /* DROPDOWN: Aumentado z-index para z-[100] */
+                    <div className="absolute right-0 top-12 w-80 bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2">
                         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                             <h3 className="font-bold text-gray-900 text-sm">Notificações</h3>
                             <button onClick={() => setShowNotifications(false)}><X size={16} className="text-gray-400"/></button>

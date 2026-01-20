@@ -76,6 +76,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // Agora Profissional também pode ver a tela de chamados para histórico
   const isInternalOrPro = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista' || normType === 'profissional');
   
+  // Profissional NÃO vê "Meus Pedidos"
+  const showMyOrders = !loadingUserType && normType !== 'profissional';
+  
   const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor' && normType !== 'profissional';
   const showExecution = !loadingUserType && (normType === 'consumidor' || normType === 'profissional');
 
@@ -151,13 +154,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <span>Buscar Serviços</span>
           </button>
 
-          <button 
-            onClick={() => navigate('/orders')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/orders')}`}
-          >
-            <ShoppingBag size={20} />
-            <span>Meus Pedidos</span>
-          </button>
+          {showMyOrders && (
+            <button 
+              onClick={() => navigate('/orders')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/orders')}`}
+            >
+              <ShoppingBag size={20} />
+              <span>Meus Pedidos</span>
+            </button>
+          )}
 
           {showAgenda && (
             <button 
@@ -255,14 +260,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </div>
                 </button>
                 
-                <button 
-                onClick={() => navigate('/orders')} 
-                className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/orders')}`}
-                >
-                <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/orders' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                    <ShoppingBag size={22} strokeWidth={location.pathname === '/orders' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
-                </div>
-                </button>
+                {showMyOrders && (
+                    <button 
+                    onClick={() => navigate('/orders')} 
+                    className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/orders')}`}
+                    >
+                    <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/orders' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
+                        <ShoppingBag size={22} strokeWidth={location.pathname === '/orders' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
+                    </div>
+                    </button>
+                )}
                 
                 {showExecution ? (
                     <button 

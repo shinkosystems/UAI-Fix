@@ -264,22 +264,29 @@ const Home: React.FC = () => {
   
   const handleSmartNavigation = () => {
       const type = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      if (type === 'consumidor' || type === 'profissional') navigate('/execution');
+      if (type === 'profissional') navigate('/chamados');
+      else if (type === 'consumidor') navigate('/orders');
       else navigate('/calendar');
   };
   
-  const handleServiceClick = (agendaId: number) => { navigate('/calendar', { state: { openEventId: agendaId } }); };
+  const handleServiceClick = (agendaId: number) => { 
+      const type = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (type === 'profissional') navigate('/chamados');
+      else navigate('/calendar', { state: { openEventId: agendaId } }); 
+  };
+
   const handleNotificationClick = (notif: NotificationItem) => {
       setShowNotifications(false);
       const type = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      if (['planejista', 'orcamentista', 'gestor'].includes(type)) navigate('/chamados');
+      if (['planejista', 'orcamentista', 'gestor', 'profissional'].includes(type)) navigate('/chamados');
       else if (type === 'consumidor' || notif.type === 'approval') navigate('/orders');
       else navigate('/calendar');
   };
 
   return (
     <div className="min-h-screen bg-[#F2F4F8]">
-      <header className="px-5 pt-12 md:pt-8 pb-4 flex justify-between items-center md:bg-transparent vitrified sticky md:static top-0 z-30 rounded-b-[2rem] md:rounded-none shadow-sm mb-4">
+      {/* HEADER: Atualizado para bg-white/80 e borda inferior para ser idêntico às outras páginas */}
+      <header className="px-5 pt-12 md:pt-8 pb-4 flex justify-between items-center bg-white/80 backdrop-blur-md sticky top-0 z-40 border-b border-gray-200 shadow-sm mb-4">
         <div>
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-0.5">Bem-vindo, {userName}</h2>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
@@ -291,7 +298,8 @@ const Home: React.FC = () => {
             <div className="relative">
                 <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2.5 rounded-full bg-white shadow-sm border border-gray-100"><Bell size={20} className="text-gray-900" />{notifications.length > 0 && <span className="absolute top-2 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white animate-pulse"></span>}</button>
                 {showNotifications && (
-                    <div className="absolute right-0 top-14 w-80 bg-white/90 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                    /* DROPDOWN: Mantido o z-index para z-[100] para garantir que fique por cima de tudo */
+                    <div className="absolute right-0 top-14 w-80 bg-white/90 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2">
                         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white/50"><h3 className="font-bold text-gray-900 text-sm">Notificações</h3><button onClick={() => setShowNotifications(false)} className="text-gray-400"><X size={16} /></button></div>
                         <div className="max-h-80 overflow-y-auto">
                             {notifications.length > 0 ? notifications.map((notif) => (
@@ -368,18 +376,17 @@ const Home: React.FC = () => {
             </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[ {icon: CalendarCheck, label: 'Agendamentos', count: agendamentosCount, color: 'text-blue-600', bg: 'bg-blue-50'}, {icon: TrendingUp, label: 'Serviços Ativos', count: servicosAtivosCount, color: 'text-purple-600', bg: 'bg-purple-50'} ].map((stat, i) => (
             <div key={i} className="bg-white p-5 rounded-[2rem] shadow-vitrified flex flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform">
               <div className={`absolute -top-6 -right-6 w-24 h-24 ${stat.bg}/30 rounded-full`}></div>
               <div className="relative z-10"><div className={`w-10 h-10 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center mb-4`}><stat.icon size={20} /></div><span className="text-3xl font-bold text-gray-900 tracking-tight">{loading ? '...' : stat.count}</span><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">{stat.label}</p></div>
             </div>
           ))}
-          <div className="hidden md:flex bg-white p-5 rounded-[2rem] shadow-vitrified flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform">
+          <div className="bg-white p-5 rounded-[2rem] shadow-vitrified flex flex-col justify-between h-36 relative overflow-hidden group hover:scale-[1.02] transition-transform">
             <div className="absolute -top-6 -right-6 w-24 h-24 bg-green-50/30 rounded-full"></div>
             <div className="relative z-10"><div className="w-10 h-10 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center mb-4"><Star size={20} /></div><span className="text-3xl font-bold text-gray-900 tracking-tight">4.9</span><p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mt-1">Avaliação Média</p></div>
           </div>
-          <div className="hidden md:flex bg-white p-5 rounded-[2rem] shadow-vitrified flex-col justify-center items-center h-36 text-center text-gray-400 text-sm font-bold">Mais métricas em breve</div>
         </div>
 
         {topProfessionals.length > 0 && (
