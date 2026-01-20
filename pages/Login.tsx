@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, Loader2, ArrowRight, CheckCircle, User, FileText, MapPin, Home, Navigation, Search, X } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, CheckCircle, User, FileText, MapPin, Home, Navigation, Search, X, Phone } from 'lucide-react';
 import { City, Estado } from '../types';
 
 const Login: React.FC = () => {
@@ -16,6 +16,7 @@ const Login: React.FC = () => {
   
   // Personal Data Fields (For Sign Up)
   const [nome, setNome] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [cpf, setCpf] = useState('');
   const [cep, setCep] = useState('');
   const [rua, setRua] = useState('');
@@ -27,7 +28,7 @@ const Login: React.FC = () => {
   const [selectedCityId, setSelectedCityId] = useState<string>('');
   const [selectedCityName, setSelectedCityName] = useState<string>('');
   const [selectedStateId, setSelectedStateId] = useState<number | null>(null);
-  const [displayStateUf, setDisplayStateUf] = useState<string>(''); // New state for display only
+  const [displayStateUf, setDisplayStateUf] = useState<string>(''); 
   
   // Data States
   const [states, setStates] = useState<Estado[]>([]);
@@ -96,7 +97,6 @@ const Login: React.FC = () => {
       setSelectedCityName(city.cidade);
       setSelectedStateId(city.uf);
       
-      // Update display state UF based on selection
       const stateObj = states.find(s => s.id === city.uf);
       if (stateObj) setDisplayStateUf(stateObj.uf);
       
@@ -112,13 +112,11 @@ const Login: React.FC = () => {
           if (!data.erro) {
               setRua(data.logradouro);
               setBairro(data.bairro);
-              setDisplayStateUf(data.uf); // Fill UF display field
+              setDisplayStateUf(data.uf);
               
-              // Resolve State ID first for better matching
               const stateObj = states.find(s => s.uf === data.uf);
               
               if (data.localidade && stateObj) {
-                  // 1. Try Exact Match in correct State
                   let { data: cityDB } = await supabase
                     .from('cidades')
                     .select('*')
@@ -126,7 +124,6 @@ const Login: React.FC = () => {
                     .ilike('cidade', data.localidade.trim())
                     .maybeSingle();
                   
-                  // 2. If failed, try fuzzy match (contains) in correct State
                   if (!cityDB) {
                       const { data: fuzzyData } = await supabase
                         .from('cidades')
@@ -144,7 +141,6 @@ const Login: React.FC = () => {
                       setSelectedStateId(cityDB.uf);
                   }
               }
-              // Focus on number field
               document.getElementById('numeroInput')?.focus();
           }
       } catch (error) {
@@ -166,6 +162,19 @@ const Login: React.FC = () => {
     return v.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2').slice(0, 9);
   };
 
+  const formatPhone = (v: string) => {
+    const r = v.replace(/\D/g, "");
+    if (r.length > 10) {
+        return r.replace(/^(\d\d)(\d{5})(\d{4}).*/, "($1) $2-$3");
+    } else if (r.length > 5) {
+        return r.replace(/^(\d\d)(\d{4})(\d{0,4}).*/, "($1) $2-$3");
+    } else if (r.length > 2) {
+        return r.replace(/^(\d\d)(\d{0,5}).*/, "($1) $2");
+    } else {
+        return v.replace(/\D/g, "");
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -177,6 +186,7 @@ const Login: React.FC = () => {
         if (password !== confirmPassword) throw new Error("As senhas não coincidem.");
         if (password.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
         if (!nome.trim()) throw new Error("Preencha seu nome completo.");
+        if (!whatsapp.trim() || whatsapp.replace(/\D/g, '').length < 10) throw new Error("WhatsApp/Telefone inválido.");
         if (cpf.length < 14) throw new Error("CPF inválido.");
         if (!cep || !rua || !numero || !bairro || !selectedCityId) throw new Error("Preencha todo o endereço.");
 
@@ -189,10 +199,9 @@ const Login: React.FC = () => {
         if (authError) throw authError;
 
         if (authData.user) {
-            // Determine State ID (now stored in state)
-            const stateId = selectedStateId || 1; // Fallback to 1 if not found
+            const stateId = selectedStateId || 1;
 
-            // 2. Insert into 'users' table with REAL DATA
+            // 2. Insert into 'users' table
             const { error: profileError } = await supabase
                 .from('users')
                 .insert({
@@ -200,8 +209,9 @@ const Login: React.FC = () => {
                     email: email,
                     nome: nome,
                     cpf: cpf,
+                    whatsapp: whatsapp.replace(/\D/g, ''),
                     tipo: 'consumidor',
-                    sexo: 'Outro', // Default
+                    sexo: 'Outro',
                     ativo: true,
                     fotoperfil: '',
                     
@@ -213,8 +223,6 @@ const Login: React.FC = () => {
                     complemento: complemento,
                     cidade: parseInt(selectedCityId),
                     estado: stateId,
-                    
-                    whatsapp: '', // User can add later
                     atividade: []
                 });
 
@@ -224,16 +232,11 @@ const Login: React.FC = () => {
         }
 
         alert('Cadastro realizado com sucesso! Você já pode entrar.');
-        // Switch to login tab to force user to login or auto-login if supabase handles it
         const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-        if (!signInError) {
-             // App.tsx handles redirect
-        } else {
+        if (signInError) {
              setIsSignUp(false);
         }
-
       } else {
-        // Login Logic
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -306,19 +309,37 @@ const Login: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold text-gray-400 uppercase ml-1">CPF</label>
-                        <div className="relative">
-                            <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                            <input
-                                type="text"
-                                required={isSignUp}
-                                value={cpf}
-                                onChange={(e) => setCpf(formatCpf(e.target.value))}
-                                maxLength={14}
-                                className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
-                                placeholder="000.000.000-00"
-                            />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-400 uppercase ml-1">WhatsApp / Telefone</label>
+                            <div className="relative">
+                                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                <input
+                                    type="text"
+                                    required={isSignUp}
+                                    value={whatsapp}
+                                    onChange={(e) => setWhatsapp(formatPhone(e.target.value))}
+                                    maxLength={15}
+                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
+                                    placeholder="(00) 00000-0000"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-gray-400 uppercase ml-1">CPF</label>
+                            <div className="relative">
+                                <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                <input
+                                    type="text"
+                                    required={isSignUp}
+                                    value={cpf}
+                                    onChange={(e) => setCpf(formatCpf(e.target.value))}
+                                    maxLength={14}
+                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm"
+                                    placeholder="000.000.000-00"
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -361,7 +382,6 @@ const Login: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* NEW: DISPLAY ONLY STATE FIELD */}
                     <div className="space-y-2">
                         <label className="text-xs font-bold text-gray-400 uppercase ml-1">Estado (UF)</label>
                         <div className="relative">
