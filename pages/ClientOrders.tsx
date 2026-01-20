@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, Geral, Chave, Orcamento, Planejamento, Avaliacao, Agenda, OrdemServico } from '../types';
-import { Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban, AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown, Lock, Banknote, MapPin, UserCheck } from 'lucide-react';
+import { Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban, AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown, Lock, Banknote, MapPin, UserCheck, Play } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface OrderExtended extends Chave {
@@ -44,6 +44,12 @@ const ClientOrders: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const isMediaVideo = (url: string) => {
+    if (!url) return false;
+    const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime'];
+    return videoExtensions.some(ext => url.toLowerCase().includes(ext)) || url.toLowerCase().includes('video');
+  };
+
   useEffect(() => { fetchOrders(); }, []);
 
   useEffect(() => {
@@ -66,8 +72,6 @@ const ClientOrders: React.FC = () => {
          setUserType(role);
          
          const normRole = role.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-         // REGRA: Apenas Consumidores e Gestores podem acessar esta tela.
-         // Planejistas, Orçamentistas e Profissionais usam a tela de Chamados.
          if (normRole !== 'consumidor' && normRole !== 'gestor') {
              navigate('/home');
              return;
@@ -79,7 +83,6 @@ const ClientOrders: React.FC = () => {
   };
 
   const loadData = async (uuid: string) => {
-    // REGRA DE OURO: Nesta tela, sempre vemos os pedidos onde somos o CLIENTE.
     let query = supabase.from('chaves').select('*').eq('cliente', uuid).order('id', { ascending: false });
     
     const { data: chavesData } = await query;
@@ -131,7 +134,6 @@ const ClientOrders: React.FC = () => {
     setRatingScore(order.avaliacao?.nota || 0);
     setRatingComment(order.avaliacao?.comentario || '');
     
-    // REGRA: Somente o cliente é direcionado automaticamente para a aba de avaliação ao abrir um pedido concluído não avaliado
     if (order.status === 'concluido' && !order.avaliacao) {
         setActiveTab('avaliacao');
     } else {
@@ -281,7 +283,7 @@ const ClientOrders: React.FC = () => {
 
                 <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar">
                     <button onClick={() => setActiveTab('geral')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Informações{activeTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
-                    <button onClick={() => setActiveTab('fotos')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Fotos{activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
+                    <button onClick={() => setActiveTab('fotos')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Mídia{activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
                     <button onClick={() => setActiveTab('obs')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Notas{activeTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
                     {selectedOrder.status === 'concluido' && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
                 </div>
@@ -314,23 +316,31 @@ const ClientOrders: React.FC = () => {
                     {activeTab === 'fotos' && (
                         <div className="space-y-6 animate-in fade-in duration-300">
                             <div>
-                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos do 'Antes'</h4>
-                                <div className="grid grid-cols-3 gap-2">
+                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Antes (Fotos/Vídeos)</h4>
+                                <div className="grid grid-cols-2 gap-3">
                                     {executionData.fotoantes.length > 0 ? executionData.fotoantes.map((url, i) => (
-                                        <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
-                                            <img src={url} className="w-full h-full object-cover"/>
+                                        <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200">
+                                            {isMediaVideo(url) ? (
+                                                <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                            ) : (
+                                                <img src={url} className="w-full h-full object-cover"/>
+                                            )}
                                         </div>
-                                    )) : <div className="col-span-3 py-6 text-center text-gray-300 text-xs font-bold">Nenhuma foto registrada pelo profissional.</div>}
+                                    )) : <div className="col-span-2 py-6 text-center text-gray-300 text-[10px] font-black uppercase tracking-widest">Nenhuma mídia registrada.</div>}
                                 </div>
                             </div>
                             <div>
-                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos da Conclusão</h4>
-                                <div className="grid grid-cols-3 gap-2">
+                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Conclusão (Fotos/Vídeos)</h4>
+                                <div className="grid grid-cols-2 gap-3">
                                     {executionData.fotodepois.length > 0 ? executionData.fotodepois.map((url, i) => (
-                                        <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
-                                            <img src={url} className="w-full h-full object-cover"/>
+                                        <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200">
+                                            {isMediaVideo(url) ? (
+                                                <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                            ) : (
+                                                <img src={url} className="w-full h-full object-cover"/>
+                                            )}
                                         </div>
-                                    )) : <div className="col-span-3 py-6 text-center text-gray-300 text-xs font-bold">Nenhuma foto registrada pelo profissional.</div>}
+                                    )) : <div className="col-span-2 py-6 text-center text-gray-300 text-[10px] font-black uppercase tracking-widest">Nenhuma mídia registrada.</div>}
                                 </div>
                             </div>
                         </div>

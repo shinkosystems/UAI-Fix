@@ -2,13 +2,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { Chave, Geral, User, Orcamento, Planejamento, Avaliacao } from '../types';
-// Added AlertCircle to imports
 import { 
     Loader2, Search, Filter, Plus, X, Save, Send, FileText, 
     User as UserIcon, Calendar, DollarSign, CheckCircle, 
     AlertTriangle, ChevronRight, Ban, Clock, Briefcase, MapPin,
     Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator, Lock, ArrowRightCircle, Bell, Smartphone, Banknote, Camera, ThumbsUp, Star, UserCheck, ShieldCheck,
-    AlertCircle
+    AlertCircle, Play, Image as ImageIcon
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -89,6 +88,12 @@ const Chamados: React.FC = () => {
     const isPlanejista = currentUserRole === 'planejista';
     const isOrcamentista = currentUserRole === 'orcamentista';
 
+    const isMediaVideo = (url: string) => {
+        if (!url) return false;
+        const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime'];
+        return videoExtensions.some(ext => url.toLowerCase().includes(ext)) || url.toLowerCase().includes('video');
+    };
+
     const visibleTabs = allTabs.filter(tab => {
         if (isPlanejista) return tab.id === 'novos' || tab.id === 'historico';
         if (isOrcamentista) return tab.id === 'novos' || tab.id === 'orcamentos' || tab.id === 'execucao' || tab.id === 'historico';
@@ -109,7 +114,7 @@ const Chamados: React.FC = () => {
 
     useEffect(() => {
         if (isPlanejista || isOrcamentista) setActiveTab('novos');
-        else if (isProfessional) setActiveTab('novos'); // Profissional vê novos jobs em "Novos"
+        else if (isProfessional) setActiveTab('novos'); 
     }, [currentUserRole]);
 
     useEffect(() => {
@@ -214,7 +219,6 @@ const Chamados: React.FC = () => {
         let filtered = tickets;
         
         if (isProfessional) {
-            // Profissional só vê o que é dele e já passou da triagem/orcamento do cliente
             filtered = filtered.filter(t => 
                 t.profissional === currentUserId && 
                 !['pendente', 'analise', 'aguardando_aprovacao'].includes(t.status.toLowerCase())
@@ -248,7 +252,6 @@ const Chamados: React.FC = () => {
         const plan = ticket.planejamento?.[0];
         const status = (ticket.status || 'pendente').toLowerCase();
         
-        // FIX: Ensured shouldShowBudget is evaluated as a boolean to satisfy the type constraints of setShowBudgetForm.
         const shouldShowBudget = !isPlanejista && !isProfessional && 
                                (!!(ticket.orcamentos?.length) || isOrcamentista || (isGestor && status !== 'pendente'));
         
@@ -331,7 +334,6 @@ const Chamados: React.FC = () => {
                 await supabase.from('chaves').update({ status: 'aprovado' }).eq('id', editingItem.id);
             } else {
                 await supabase.from('chaves').update({ status: 'pendente', profissional: null }).eq('id', editingItem.id);
-                // Remove da agenda se houver
                 await supabase.from('agenda').delete().eq('chave', editingItem.id);
             }
             await fetchData(); setIsModalOpen(false);
@@ -339,11 +341,12 @@ const Chamados: React.FC = () => {
         } catch (e: any) { alert(e.message); } finally { setProcessingAction(false); }
     };
 
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'antes' | 'depois') => {
+    const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'antes' | 'depois') => {
         if (!isProfessional || !e.target.files?.length) return;
         setUploading(true);
         try {
             const file = e.target.files[0];
+            const isVideo = file.type.startsWith('video/');
             const path = `pedidos/${editingItem?.chaveunica || 'order'}_${target}_${Date.now()}.${file.name.split('.').pop()}`;
             const { error } = await supabase.storage.from('imagens').upload(path, file);
             if (error) throw error;
@@ -403,7 +406,6 @@ const Chamados: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-ios-bg pb-20">
-            {/* STICKY HEADER: Aumentado o z-index para z-40 */}
             <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-40 border-b border-gray-200">
                 <div className="flex justify-between items-start">
                     <div><h1 className="text-3xl font-bold text-gray-900 tracking-tight">Chamados</h1><p className="text-gray-500 text-sm mt-1">Gestão inteligente.</p></div>
@@ -412,7 +414,6 @@ const Chamados: React.FC = () => {
                         <div className="relative" ref={notificationRef}>
                             <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-full bg-gray-100 hover:bg-gray-200"><Bell size={20} className="text-gray-700" />{notifications.length > 0 && <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}</button>
                             {showNotifications && (
-                                /* DROPDOWN: Aumentado o z-index para z-[100] */
                                 <div className="absolute right-0 top-12 w-80 bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2">
                                     <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50"><h3 className="font-bold text-gray-900 text-sm">Notificações</h3><button onClick={() => setShowNotifications(false)}><X size={16} className="text-gray-400"/></button></div>
                                     <div className="max-h-64 overflow-y-auto">
@@ -441,7 +442,22 @@ const Chamados: React.FC = () => {
                     {loading ? (<div className="col-span-full flex justify-center py-10"><Loader2 className="animate-spin text-ios-blue"/></div>) : getFilteredTickets().length > 0 ? getFilteredTickets().map(t => (
                         <div key={t.id} onClick={() => handleEdit(t)} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer relative overflow-hidden group">
                             <div className={`absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl text-[10px] font-bold uppercase border-b border-l ${getStatusColor(t.status)}`}>{t.status.replace('_',' ')}</div>
-                            <div className="flex items-center space-x-3 mb-4"><div className="w-12 h-12 bg-gray-50 rounded-2xl flex-shrink-0 overflow-hidden">{t.geral?.imagem ? <img src={t.geral.imagem} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-300"><FileText size={20}/></div>}</div><div><h3 className="font-bold text-gray-900 leading-tight group-hover:text-ios-blue transition-colors">{t.geral?.nome}</h3><div className="inline-flex items-center mt-1 bg-gray-100 px-2 py-0.5 rounded border border-gray-200"><Hash size={10} className="text-gray-400 mr-1" /><span className="text-[10px] font-black text-gray-700 font-mono tracking-wider">{t.chaveunica}</span></div></div></div>
+                            <div className="flex items-center space-x-3 mb-4">
+                                <div className="relative">
+                                    <div className="w-12 h-12 bg-gray-50 rounded-2xl flex-shrink-0 overflow-hidden">
+                                        {t.geral?.imagem ? <img src={t.geral.imagem} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-300"><FileText size={20}/></div>}
+                                    </div>
+                                    {(isPlanejista || isGestor) && t.planejamento?.[0]?.imagem_pedido && (
+                                        <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-ios-blue text-white rounded-lg flex items-center justify-center border-2 border-white shadow-sm">
+                                            <ImageIcon size={10} />
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-gray-900 leading-tight group-hover:text-ios-blue transition-colors">{t.geral?.nome}</h3>
+                                    <div className="inline-flex items-center mt-1 bg-gray-100 px-2 py-0.5 rounded border border-gray-200"><Hash size={10} className="text-gray-400 mr-1" /><span className="text-[10px] font-black text-gray-700 font-mono tracking-wider">{t.chaveunica}</span></div>
+                                </div>
+                            </div>
                             <div className="bg-gray-50 p-3 rounded-xl flex items-center space-x-2 mb-3"><div className="w-8 h-8 rounded-full bg-white overflow-hidden border border-gray-100"><img src={t.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${t.clienteData?.nome || 'U'}`} className="w-full h-full object-cover"/></div><div className="overflow-hidden"><p className="text-[10px] font-bold text-gray-400 uppercase">Cliente</p><p className="text-xs font-bold text-gray-900 truncate">{t.clienteData?.nome}</p></div></div>
                             <div className="flex justify-between items-center text-xs text-gray-500">
                                 <div className="flex flex-col gap-1">
@@ -450,7 +466,6 @@ const Chamados: React.FC = () => {
                                         <div className="flex items-center font-bold text-ios-blue"><Clock size={12} className="mr-1"/> Execução: {new Date(t.planejamento[0].execucao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}</div>
                                     )}
                                 </div>
-                                {/* Fixed typo: changed isProfissional to isProfessional */}
                                 {!isProfessional && t.orcamentos?.length ? (
                                     <div className="flex flex-col items-end">
                                         <div className="flex items-center font-bold text-green-700 text-sm"><DollarSign size={14} className="mr-0.5"/>R$ {t.orcamentos[0].preco.toFixed(2)}</div>
@@ -473,7 +488,7 @@ const Chamados: React.FC = () => {
                         {isProfessional && (
                             <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar">
                                 <button onClick={() => setModalSubTab('geral')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Geral{modalSubTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
-                                <button onClick={() => setModalSubTab('fotos')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Fotos{modalSubTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
+                                <button onClick={() => setModalSubTab('fotos')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Mídia{modalSubTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
                                 <button onClick={() => setModalSubTab('obs')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Anotações{modalSubTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
                                 {editingItem.status === 'concluido' && editingItem.avaliacao && <button onClick={() => setModalSubTab('avaliacao')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{modalSubTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>}
                             </div>
@@ -484,6 +499,15 @@ const Chamados: React.FC = () => {
                             {modalSubTab === 'geral' && (
                                 actingAsPlanning ? (
                                     <div className="space-y-6 animate-in fade-in duration-300">
+                                        {(isPlanejista || isGestor) && editingItem.planejamento?.[0]?.imagem_pedido && (
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente (Original)</label>
+                                                <div className="w-full h-48 bg-gray-50 rounded-[2rem] overflow-hidden border border-gray-100 shadow-inner">
+                                                    <img src={editingItem.planejamento[0].imagem_pedido} className="w-full h-full object-contain bg-gray-100" />
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional</label>
                                             <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none" value={formData.profissionalUuid} onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}>
@@ -537,7 +561,6 @@ const Chamados: React.FC = () => {
 
                                         {editingItem.status === 'aguardando_profissional' && (
                                             <div className="p-6 bg-cyan-50 rounded-[2.5rem] border border-cyan-100 space-y-4 shadow-sm">
-                                                {/* Fixed missing AlertCircle import */}
                                                 <div className="flex items-center gap-2 text-cyan-800"><AlertCircle size={20}/><p className="text-xs font-black uppercase">Decisão Pendente</p></div>
                                                 <p className="text-xs text-cyan-700 font-medium leading-relaxed">O cliente aprovou o orçamento. Você aceita realizar este serviço na data sugerida?</p>
                                                 <div className="flex gap-2">
@@ -549,6 +572,15 @@ const Chamados: React.FC = () => {
                                     </div>
                                 ) : (
                                     <>
+                                        {(isOrcamentista || isGestor) && editingItem.planejamento?.[0]?.imagem_pedido && (
+                                            <div className="space-y-2 mb-4">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente (Análise)</label>
+                                                <div className="w-full h-48 bg-gray-50 rounded-[2rem] overflow-hidden border border-gray-100 shadow-inner">
+                                                    <img src={editingItem.planejamento[0].imagem_pedido} className="w-full h-full object-contain bg-gray-100" />
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status</label>
@@ -596,35 +628,67 @@ const Chamados: React.FC = () => {
                             {modalSubTab === 'fotos' && (
                                 <div className="space-y-6 animate-in fade-in duration-300">
                                     <div>
-                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos do 'Antes'</h4>
-                                        <div className="grid grid-cols-3 gap-2">
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Antes (Fotos/Vídeos)</h4>
+                                        <div className="grid grid-cols-2 gap-3">
                                             {formData.fotoantes.map((url, i) => (
-                                                <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
-                                                    <img src={url} className="w-full h-full object-cover"/>
-                                                    {isProfessional && editingItem.status !== 'concluido' && <button onClick={() => setFormData({...formData, fotoantes: formData.fotoantes.filter((_, idx) => idx !== i)})} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full"><Trash2 size={12}/></button>}
+                                                <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
+                                                    {isMediaVideo(url) ? (
+                                                        <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                                    ) : (
+                                                        <img src={url} className="w-full h-full object-cover"/>
+                                                    )}
+                                                    {isProfessional && editingItem.status !== 'concluido' && (
+                                                        <button onClick={() => setFormData({...formData, fotoantes: formData.fotoantes.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors z-10">
+                                                            <Trash2 size={14}/>
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ))}
                                             {isProfessional && editingItem.status !== 'concluido' && (
-                                                <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
-                                                    {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={20} className="text-gray-300"/>}
-                                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'antes')} />
+                                                <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-ios-blue/50 transition-all group">
+                                                    {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : (
+                                                        <>
+                                                            <div className="flex gap-2 mb-2">
+                                                                <Camera size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
+                                                                <Play size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
+                                                            </div>
+                                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Adicionar Mídia</span>
+                                                        </>
+                                                    )}
+                                                    <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'antes')} />
                                                 </label>
                                             )}
                                         </div>
                                     </div>
                                     <div>
-                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos da Conclusão</h4>
-                                        <div className="grid grid-cols-3 gap-2">
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Depois (Fotos/Vídeos)</h4>
+                                        <div className="grid grid-cols-2 gap-3">
                                             {formData.fotodepois.map((url, i) => (
-                                                <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
-                                                    <img src={url} className="w-full h-full object-cover"/>
-                                                    {isProfessional && editingItem.status !== 'concluido' && <button onClick={() => setFormData({...formData, fotodepois: formData.fotodepois.filter((_, idx) => idx !== i)})} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full"><Trash2 size={12}/></button>}
+                                                <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
+                                                    {isMediaVideo(url) ? (
+                                                        <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                                    ) : (
+                                                        <img src={url} className="w-full h-full object-cover"/>
+                                                    )}
+                                                    {isProfessional && editingItem.status !== 'concluido' && (
+                                                        <button onClick={() => setFormData({...formData, fotodepois: formData.fotodepois.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors z-10">
+                                                            <Trash2 size={14}/>
+                                                        </button>
+                                                    )}
                                                 </div>
                                             ))}
                                             {isProfessional && editingItem.status !== 'concluido' && (
-                                                <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
-                                                    {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={20} className="text-gray-300"/>}
-                                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'depois')} />
+                                                <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-ios-blue/50 transition-all group">
+                                                    {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : (
+                                                        <>
+                                                            <div className="flex gap-2 mb-2">
+                                                                <Camera size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
+                                                                <Play size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
+                                                            </div>
+                                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Adicionar Mídia</span>
+                                                        </>
+                                                    )}
+                                                    <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'depois')} />
                                                 </label>
                                             )}
                                         </div>
