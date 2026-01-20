@@ -63,8 +63,8 @@ const Chamados: React.FC = () => {
         orcamentoLucro: 0,
         orcamentoTipoPgto: 'Dinheiro',
         orcamentoParcelas: 1,
-        orcamentoObs: '',
         orcamentoNotaFiscal: false,
+        orcamentoObs: '',
         planejamentoDesc: '',
         planejamentoData: '',
         planejamentoRecursos: [] as string[],
@@ -87,11 +87,32 @@ const Chamados: React.FC = () => {
     const isGestor = currentUserRole === 'gestor';
     const isPlanejista = currentUserRole === 'planejista';
     const isOrcamentista = currentUserRole === 'orcamentista';
+    const isInternal = isGestor || isPlanejista || isOrcamentista;
 
     const isMediaVideo = (url: string) => {
         if (!url) return false;
         const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime'];
         return videoExtensions.some(ext => url.toLowerCase().includes(ext)) || url.toLowerCase().includes('video');
+    };
+
+    // Helper para extrair flexibilidade de agenda da descrição
+    const extractFlexibility = (desc: string | undefined | null) => {
+        if (!desc) return null;
+        const marker = "[FLEXIBILIDADE DE AGENDA]:";
+        if (desc.includes(marker)) {
+            return desc.split(marker)[1].trim();
+        }
+        return null;
+    };
+
+    // Helper para extrair apenas a descrição original (sem a flexibilidade)
+    const extractOriginalDesc = (desc: string | undefined | null) => {
+        if (!desc) return "";
+        const marker = "[FLEXIBILIDADE DE AGENDA]:";
+        if (desc.includes(marker)) {
+            return desc.split(marker)[0].trim();
+        }
+        return desc;
     };
 
     const visibleTabs = allTabs.filter(tab => {
@@ -439,41 +460,54 @@ const Chamados: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {loading ? (<div className="col-span-full flex justify-center py-10"><Loader2 className="animate-spin text-ios-blue"/></div>) : getFilteredTickets().length > 0 ? getFilteredTickets().map(t => (
-                        <div key={t.id} onClick={() => handleEdit(t)} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer relative overflow-hidden group">
-                            <div className={`absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl text-[10px] font-bold uppercase border-b border-l ${getStatusColor(t.status)}`}>{t.status.replace('_',' ')}</div>
-                            <div className="flex items-center space-x-3 mb-4">
-                                <div className="relative">
-                                    <div className="w-12 h-12 bg-gray-50 rounded-2xl flex-shrink-0 overflow-hidden">
-                                        {t.geral?.imagem ? <img src={t.geral.imagem} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-300"><FileText size={20}/></div>}
-                                    </div>
-                                    {(isPlanejista || isGestor || isOrcamentista) && t.planejamento?.[0]?.imagem_pedido && (
-                                        <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-ios-blue text-white rounded-lg flex items-center justify-center border-2 border-white shadow-sm">
-                                            <ImageIcon size={10} />
+                    {loading ? (<div className="col-span-full flex justify-center py-10"><Loader2 className="animate-spin text-ios-blue"/></div>) : getFilteredTickets().length > 0 ? getFilteredTickets().map(t => {
+                        const flexibility = extractFlexibility(t.planejamento?.[0]?.descricao);
+                        return (
+                            <div key={t.id} onClick={() => handleEdit(t)} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer relative overflow-hidden group">
+                                <div className={`absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl text-[10px] font-bold uppercase border-b border-l ${getStatusColor(t.status)}`}>{t.status.replace('_',' ')}</div>
+                                <div className="flex items-center space-x-3 mb-4">
+                                    <div className="relative">
+                                        <div className="w-12 h-12 bg-gray-50 rounded-2xl flex-shrink-0 overflow-hidden">
+                                            {t.geral?.imagem ? <img src={t.geral.imagem} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-300"><FileText size={20}/></div>}
                                         </div>
-                                    )}
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-gray-900 leading-tight group-hover:text-ios-blue transition-colors">{t.geral?.nome}</h3>
-                                    <div className="inline-flex items-center mt-1 bg-gray-100 px-2 py-0.5 rounded border border-gray-200"><Hash size={10} className="text-gray-400 mr-1" /><span className="text-[10px] font-black text-gray-700 font-mono tracking-wider">{t.chaveunica}</span></div>
-                                </div>
-                            </div>
-                            <div className="bg-gray-50 p-3 rounded-xl flex items-center space-x-2 mb-3"><div className="w-8 h-8 rounded-full bg-white overflow-hidden border border-gray-100"><img src={t.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${t.clienteData?.nome || 'U'}`} className="w-full h-full object-cover"/></div><div className="overflow-hidden"><p className="text-[10px] font-bold text-gray-400 uppercase">Cliente</p><p className="text-xs font-bold text-gray-900 truncate">{t.clienteData?.nome}</p></div></div>
-                            <div className="flex justify-between items-center text-xs text-gray-500">
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center text-gray-400 text-[10px]"><Calendar size={10} className="mr-1"/> Criado em {new Date(t.created_at).toLocaleDateString('pt-BR')}</div>
-                                    {t.planejamento?.[0]?.execucao && (
-                                        <div className="flex items-center font-bold text-ios-blue"><Clock size={12} className="mr-1"/> Execução: {new Date(t.planejamento[0].execucao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}</div>
-                                    )}
-                                </div>
-                                {!isProfessional && t.orcamentos?.length ? (
-                                    <div className="flex flex-col items-end">
-                                        <div className="flex items-center font-bold text-green-700 text-sm"><DollarSign size={14} className="mr-0.5"/>R$ {t.orcamentos[0].preco.toFixed(2)}</div>
+                                        {isInternal && t.planejamento?.[0]?.imagem_pedido && (
+                                            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-ios-blue text-white rounded-lg flex items-center justify-center border-2 border-white shadow-sm">
+                                                <ImageIcon size={10} />
+                                            </div>
+                                        )}
                                     </div>
-                                ) : isProfessional && t.status === 'aguardando_profissional' ? <div className="text-cyan-600 font-black flex items-center text-[10px] uppercase animate-pulse"><AlertCircle size={12} className="mr-1"/> Pendente Aceite</div> : null}
+                                    <div>
+                                        <h3 className="font-bold text-gray-900 leading-tight group-hover:text-ios-blue transition-colors">{t.geral?.nome}</h3>
+                                        <div className="inline-flex items-center mt-1 bg-gray-100 px-2 py-0.5 rounded border border-gray-200"><Hash size={10} className="text-gray-400 mr-1" /><span className="text-[10px] font-black text-gray-700 font-mono tracking-wider">{t.chaveunica}</span></div>
+                                    </div>
+                                </div>
+                                <div className="bg-gray-50 p-3 rounded-xl flex items-center space-x-2 mb-3"><div className="w-8 h-8 rounded-full bg-white overflow-hidden border border-gray-100"><img src={t.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${t.clienteData?.nome || 'U'}`} className="w-full h-full object-cover"/></div><div className="overflow-hidden"><p className="text-[10px] font-bold text-gray-400 uppercase">Cliente</p><p className="text-xs font-bold text-gray-900 truncate">{t.clienteData?.nome}</p></div></div>
+                                
+                                {isInternal && flexibility && (
+                                    <div className="mb-3 px-3 py-2 bg-blue-50/50 border border-blue-100 rounded-xl">
+                                        <p className="text-[9px] font-black text-blue-600 uppercase tracking-wider flex items-center gap-1 mb-1">
+                                            <Clock size={10} /> Flexibilidade Informada
+                                        </p>
+                                        <p className="text-[10px] text-gray-600 font-medium line-clamp-2 italic">"{flexibility}"</p>
+                                    </div>
+                                )}
+
+                                <div className="flex justify-between items-center text-xs text-gray-500">
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex items-center text-gray-400 text-[10px]"><Calendar size={10} className="mr-1"/> Criado em {new Date(t.created_at).toLocaleDateString('pt-BR')}</div>
+                                        {t.planejamento?.[0]?.execucao && (
+                                            <div className="flex items-center font-bold text-ios-blue"><Clock size={12} className="mr-1"/> Execução: {new Date(t.planejamento[0].execucao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}</div>
+                                        )}
+                                    </div>
+                                    {!isProfessional && t.orcamentos?.length ? (
+                                        <div className="flex flex-col items-end">
+                                            <div className="flex items-center font-bold text-green-700 text-sm"><DollarSign size={14} className="mr-0.5"/>R$ {t.orcamentos[0].preco.toFixed(2)}</div>
+                                        </div>
+                                    ) : isProfessional && t.status === 'aguardando_profissional' ? <div className="text-cyan-600 font-black flex items-center text-[10px] uppercase animate-pulse"><AlertCircle size={12} className="mr-1"/> Pendente Aceite</div> : null}
+                                </div>
                             </div>
-                        </div>
-                    )) : (<div className="col-span-full text-center py-12 text-gray-400 font-bold border-2 border-dashed border-gray-100 rounded-[2.5rem]">Nenhum chamado encontrado.</div>)}
+                        );
+                    }) : (<div className="col-span-full text-center py-12 text-gray-400 font-bold border-2 border-dashed border-gray-100 rounded-[2.5rem]">Nenhum chamado encontrado.</div>)}
                 </div>
             </div>
 
@@ -499,7 +533,7 @@ const Chamados: React.FC = () => {
                             {modalSubTab === 'geral' && (
                                 actingAsPlanning ? (
                                     <div className="space-y-6 animate-in fade-in duration-300">
-                                        {(isPlanejista || isGestor || isOrcamentista) && editingItem.planejamento?.[0]?.imagem_pedido && (
+                                        {isInternal && editingItem.planejamento?.[0]?.imagem_pedido && (
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente (Original)</label>
                                                 <div className="w-full h-48 bg-gray-50 rounded-[2rem] overflow-hidden border border-gray-100 shadow-inner">
@@ -515,6 +549,16 @@ const Chamados: React.FC = () => {
                                                 {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
                                             </select>
                                         </div>
+                                        
+                                        {isInternal && extractFlexibility(editingItem.planejamento?.[0]?.descricao) && (
+                                            <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-2 shadow-sm">
+                                                <div className="flex items-center gap-2 text-blue-800"><Clock size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Flexibilidade de Horário</h4></div>
+                                                <p className="text-xs font-bold text-blue-900 leading-relaxed bg-white/50 p-3 rounded-xl border border-blue-100/50">
+                                                    {extractFlexibility(editingItem.planejamento?.[0]?.descricao)}
+                                                </p>
+                                            </div>
+                                        )}
+
                                         <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
                                             <div className="flex items-center gap-2 mb-2 text-gray-600"><FileText size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Planejamento</h4></div>
                                             <div className="grid grid-cols-1 gap-4">
@@ -572,12 +616,21 @@ const Chamados: React.FC = () => {
                                     </div>
                                 ) : (
                                     <>
-                                        {(isOrcamentista || isGestor || isPlanejista) && editingItem.planejamento?.[0]?.imagem_pedido && (
+                                        {isInternal && editingItem.planejamento?.[0]?.imagem_pedido && (
                                             <div className="space-y-2 mb-4">
                                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente (Análise)</label>
                                                 <div className="w-full h-48 bg-gray-50 rounded-[2rem] overflow-hidden border border-gray-100 shadow-inner">
                                                     <img src={editingItem.planejamento[0].imagem_pedido} className="w-full h-full object-contain bg-gray-100" />
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {isInternal && extractFlexibility(editingItem.planejamento?.[0]?.descricao) && (
+                                            <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-2 shadow-sm mb-4">
+                                                <div className="flex items-center gap-2 text-blue-800"><Clock size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Flexibilidade de Horário</h4></div>
+                                                <p className="text-xs font-bold text-blue-900 leading-relaxed bg-white/50 p-3 rounded-xl border border-blue-100/50">
+                                                    {extractFlexibility(editingItem.planejamento?.[0]?.descricao)}
+                                                </p>
                                             </div>
                                         )}
 
@@ -702,8 +755,15 @@ const Chamados: React.FC = () => {
                                     <textarea 
                                         disabled={editingItem.status === 'concluido' || (!isProfessional && !isGestor)}
                                         className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed outline-none focus:ring-2 focus:ring-yellow-200 disabled:opacity-70 shadow-inner"
-                                        value={formData.planejamentoDesc}
-                                        onChange={(e) => setFormData({...formData, planejamentoDesc: e.target.value})}
+                                        value={isInternal ? extractOriginalDesc(formData.planejamentoDesc) : formData.planejamentoDesc}
+                                        onChange={(e) => {
+                                            if (isInternal) {
+                                                const flex = extractFlexibility(formData.planejamentoDesc);
+                                                setFormData({...formData, planejamentoDesc: flex ? `${e.target.value}\n\n[FLEXIBILIDADE DE AGENDA]:\n${flex}` : e.target.value});
+                                            } else {
+                                                setFormData({...formData, planejamentoDesc: e.target.value});
+                                            }
+                                        }}
                                         placeholder="Instruções técnicas ou anotações de serviço..."
                                     />
                                 </div>
