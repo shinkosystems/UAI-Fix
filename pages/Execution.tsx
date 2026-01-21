@@ -64,6 +64,13 @@ const Execution: React.FC = () => {
       fotodepois: [] as string[]
   });
 
+  const isMediaVideo = (url: string) => {
+    if (!url) return false;
+    const cleanPath = url.split('?')[0].toLowerCase();
+    const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime', '.m4v'];
+    return videoExtensions.some(ext => cleanPath.endsWith(ext)) || url.toLowerCase().includes('video');
+  };
+
   useEffect(() => {
     fetchAgenda();
   }, []);
@@ -393,9 +400,12 @@ const Execution: React.FC = () => {
                     <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
                 </div>
 
-                <div className="flex border-b border-gray-100 bg-white">
+                <div className="flex border-b border-gray-100 bg-white h-14 shrink-0">
                     {(['geral', 'fotos', 'obs'] as ModalTab[]).map((tab) => (
-                        <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${activeTab === tab ? 'text-ios-blue' : 'text-gray-400'}`}>{tab === 'geral' ? 'Informações' : tab === 'fotos' ? 'Execução' : 'Notas'}{activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
+                        <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 h-full flex flex-col items-center justify-center transition-all relative group`}>
+                          <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${activeTab === tab ? 'text-ios-blue' : 'text-gray-400'}`}>{tab === 'geral' ? 'Informações' : tab === 'fotos' ? 'Execução' : 'Notas'}</span>
+                          {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                        </button>
                     ))}
                 </div>
 
@@ -414,6 +424,7 @@ const Execution: React.FC = () => {
                                     disabled={!isProfessional || selectedEvent.chaveData?.status?.toLowerCase() === 'concluido'} 
                                     onChange={(e) => setFormData({...formData, status: e.target.value})}
                                 >
+                                    <option value="pendente">Pendente</option>
                                     <option value="aprovado">Aprovado pelo Consumidor</option>
                                     <option value="executando">Executando</option>
                                     <option value="concluido">Concluído</option>
@@ -436,58 +447,82 @@ const Execution: React.FC = () => {
 
                     {activeTab === 'fotos' && (
                         <div className="space-y-6">
-                            <div>
-                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos do 'Antes'</h4>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {formData.fotoantes.map((url, i) => (
-                                        <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
-                                            <img src={url} className="w-full h-full object-cover"/>
-                                            {isProfessional && <button onClick={() => setFormData({...formData, fotoantes: formData.fotoantes.filter((_, idx) => idx !== i)})} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-lg"><Trash2 size={12} /></button>}
-                                        </div>
-                                    ))}
-                                    {isProfessional && (
-                                        <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
-                                            <Camera size={20} className="text-gray-300"/>
-                                            <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
-                                                if (!e.target.files?.length) return;
-                                                setUploading(true);
-                                                const file = e.target.files[0];
-                                                const path = `execucao/${selectedEvent.chaveData?.chaveunica}_antes_${Date.now()}.${file.name.split('.').pop()}`;
-                                                await supabase.storage.from('imagens').upload(path, file);
-                                                const { data } = supabase.storage.from('imagens').getPublicUrl(path);
-                                                setFormData(prev => ({...prev, fotoantes: [...prev.fotoantes, data.publicUrl]}));
-                                                setUploading(false);
-                                            }} />
-                                        </label>
-                                    )}
+                            {isProfessional && formData.status === 'aguardando_profissional' ? (
+                                <div className="bg-cyan-50 p-6 rounded-[2rem] border border-cyan-100 text-center space-y-3">
+                                    <AlertCircle size={32} className="text-cyan-600 mx-auto" />
+                                    <h4 className="text-sm font-bold text-cyan-900">Aceite o serviço primeiro</h4>
+                                    <p className="text-xs text-cyan-700 leading-relaxed">Você precisa aceitar o serviço no menu de Chamados ou Dashboard antes de poder registrar fotos de execução.</p>
                                 </div>
-                            </div>
-                            <div>
-                                <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos da Conclusão</h4>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {formData.fotodepois.map((url, i) => (
-                                        <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
-                                            <img src={url} className="w-full h-full object-cover"/>
-                                            {isProfessional && <button onClick={() => setFormData({...formData, fotodepois: formData.fotodepois.filter((_, idx) => idx !== i)})} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-lg"><Trash2 size={12} /></button>}
+                            ) : (
+                                <>
+                                    <div>
+                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos/Vídeos do 'Antes'</h4>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {formData.fotoantes.map((url, i) => (
+                                                <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
+                                                    {isMediaVideo(url) ? (
+                                                        <video src={url} className="w-full h-full object-cover" playsInline controls />
+                                                    ) : (
+                                                        <img src={url} className="w-full h-full object-cover"/>
+                                                    )}
+                                                    {isProfessional && formData.status !== 'concluido' && formData.status !== 'aguardando_profissional' && (
+                                                        <button onClick={() => setFormData({...formData, fotoantes: formData.fotoantes.filter((_, idx) => idx !== i)})} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-lg"><Trash2 size={12} /></button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {isProfessional && formData.status !== 'concluido' && formData.status !== 'aguardando_profissional' && (
+                                                <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                                                    <Camera size={20} className="text-gray-300"/>
+                                                    <input type="file" className="hidden" accept="image/*,video/*" onChange={async (e) => {
+                                                        if (!e.target.files?.length) return;
+                                                        setUploading(true);
+                                                        const file = e.target.files[0];
+                                                        const fileExt = file.name.split('.').pop();
+                                                        const path = `execucao/${selectedEvent.chaveData?.chaveunica}_antes_${Date.now()}.${fileExt}`;
+                                                        await supabase.storage.from('imagens').upload(path, file);
+                                                        const { data } = supabase.storage.from('imagens').getPublicUrl(path);
+                                                        setFormData(prev => ({...prev, fotoantes: [...prev.fotoantes, data.publicUrl]}));
+                                                        setUploading(false);
+                                                    }} />
+                                                </label>
+                                            )}
                                         </div>
-                                    ))}
-                                    {isProfessional && (
-                                        <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
-                                            <Camera size={20} className="text-gray-300"/>
-                                            <input type="file" className="hidden" accept="image/*" onChange={async (e) => {
-                                                if (!e.target.files?.length) return;
-                                                setUploading(true);
-                                                const file = e.target.files[0];
-                                                const path = `execucao/${selectedEvent.chaveData?.chaveunica}_depois_${Date.now()}.${file.name.split('.').pop()}`;
-                                                await supabase.storage.from('imagens').upload(path, file);
-                                                const { data } = supabase.storage.from('imagens').getPublicUrl(path);
-                                                setFormData(prev => ({...prev, fotodepois: [...prev.fotodepois, data.publicUrl]}));
-                                                setUploading(false);
-                                            }} />
-                                        </label>
-                                    )}
-                                </div>
-                            </div>
+                                    </div>
+                                    <div>
+                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos/Vídeos da Conclusão</h4>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {formData.fotodepois.map((url, i) => (
+                                                <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
+                                                    {isMediaVideo(url) ? (
+                                                        <video src={url} className="w-full h-full object-cover" playsInline controls />
+                                                    ) : (
+                                                        <img src={url} className="w-full h-full object-cover"/>
+                                                    )}
+                                                    {isProfessional && formData.status !== 'concluido' && formData.status !== 'aguardando_profissional' && (
+                                                        <button onClick={() => setFormData({...formData, fotodepois: formData.fotodepois.filter((_, idx) => idx !== i)})} className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full shadow-lg"><Trash2 size={12} /></button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {isProfessional && formData.status !== 'concluido' && formData.status !== 'aguardando_profissional' && (
+                                                <label className="aspect-square bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                                                    <Camera size={20} className="text-gray-300"/>
+                                                    <input type="file" className="hidden" accept="image/*,video/*" onChange={async (e) => {
+                                                        if (!e.target.files?.length) return;
+                                                        setUploading(true);
+                                                        const file = e.target.files[0];
+                                                        const fileExt = file.name.split('.').pop();
+                                                        const path = `execucao/${selectedEvent.chaveData?.chaveunica}_depois_${Date.now()}.${fileExt}`;
+                                                        await supabase.storage.from('imagens').upload(path, file);
+                                                        const { data } = supabase.storage.from('imagens').getPublicUrl(path);
+                                                        setFormData(prev => ({...prev, fotodepois: [...prev.fotodepois, data.publicUrl]}));
+                                                        setUploading(false);
+                                                    }} />
+                                                </label>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
 

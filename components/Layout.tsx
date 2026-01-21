@@ -69,19 +69,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const shouldHideNav = location.pathname.includes('/professional/') || location.pathname.includes('/planning/');
   
-  // Normalize user type to handle accents (e.g. Orçamentista -> orcamentista)
   const normType = userType?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || '';
   
   const isManager = !loadingUserType && normType === 'gestor';
-  // Agora Profissional também pode ver a tela de chamados para histórico
   const isInternalOrPro = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista' || normType === 'profissional');
   
-  // ALTERAÇÃO: "Meus Pedidos" visível apenas para Consumidor e Gestor
   const showMyOrders = !loadingUserType && (normType === 'consumidor' || normType === 'gestor');
   
   const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor' && normType !== 'profissional';
   const showExecution = !loadingUserType && (normType === 'consumidor' || normType === 'profissional');
 
+  // REGRA: Buscar Serviços apenas para Consumidor e Gestor
+  const showSearch = !loadingUserType && (normType === 'consumidor' || normType === 'gestor');
 
   return (
     <div className="flex h-screen w-full bg-[#F2F4F8] overflow-hidden">
@@ -146,13 +145,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <span>Início</span>
           </button>
 
-          <button 
-            onClick={() => navigate('/search')}
-            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/search')}`}
-          >
-            <Search size={20} />
-            <span>Buscar Serviços</span>
-          </button>
+          {showSearch && (
+            <button 
+              onClick={() => navigate('/search')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/search')}`}
+            >
+              <Search size={20} />
+              <span>Buscar Serviços</span>
+            </button>
+          )}
 
           {showMyOrders && (
             <button 
@@ -251,14 +252,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </div>
                 </button>
                 
-                <button 
-                onClick={() => navigate('/search')} 
-                className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/search')}`}
-                >
-                <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/search' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                    <Search size={22} strokeWidth={location.pathname === '/search' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
-                </div>
-                </button>
+                {showSearch && (
+                  <button 
+                  onClick={() => navigate('/search')} 
+                  className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/search')}`}
+                  >
+                  <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/search' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
+                      <Search size={22} strokeWidth={location.pathname === '/search' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
+                  </div>
+                  </button>
+                )}
                 
                 {showMyOrders && (
                     <button 

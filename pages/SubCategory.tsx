@@ -100,7 +100,8 @@ const SubCategory: React.FC = () => {
   };
 
   const handleSelectService = (service: Geral) => {
-    navigate(`/professionals/${service.id}`, { state: { serviceName: service.nome } });
+    // Navigate directly to Request flow
+    navigate(`/request/${service.id}`, { state: { serviceName: service.nome } });
   };
 
   return (

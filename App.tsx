@@ -76,7 +76,7 @@ const App: React.FC = () => {
                   <Route path="/category/:id" element={<SubCategory />} />
                   <Route path="/professionals/:serviceId" element={<ProfessionalList />} />
                   <Route path="/professional/:uuid" element={<ProfessionalProfile />} />
-                  <Route path="/planning/:uuid" element={<Planning />} />
+                  <Route path="/request/:serviceId" element={<Planning />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/execution" element={<Execution />} />
                   <Route path="/profile" element={<Profile />} />

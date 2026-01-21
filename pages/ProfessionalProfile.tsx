@@ -133,16 +133,6 @@ const ProfessionalProfile: React.FC = () => {
     return (sum / reviews.length).toFixed(1);
   };
 
-  const handleSchedule = () => {
-    if (!uuid) return;
-    navigate(`/planning/${uuid}`, {
-        state: {
-            serviceId,
-            serviceName
-        }
-    });
-  };
-
   const handleSaveAbout = async () => {
       if (!professional) return;
       setSavingAbout(true);
@@ -183,10 +173,6 @@ const ProfessionalProfile: React.FC = () => {
       </div>
     );
   }
-
-  // Permissão de Agendamento
-  const normType = currentUserType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const canSchedule = normType === 'gestor' || normType === 'consumidor';
 
   return (
     <div className="min-h-screen bg-[#F2F4F8] relative">
@@ -379,29 +365,6 @@ const ProfessionalProfile: React.FC = () => {
             )}
         </div>
       </div>
-
-      {/* Floating Action Island - Glassmorphism */}
-      {/* Show scheduling button only if NOT owner AND is allowed type (Consumer/Manager) */}
-      {!isOwner && canSchedule && (
-          <div className="fixed bottom-6 left-5 right-5 z-50">
-            <div className="max-w-md mx-auto w-full">
-                <div className="vitrified rounded-[2rem] p-2 shadow-floating flex items-center justify-between pl-6 pr-2">
-                    <div className="flex flex-col">
-                        <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wide">Serviço</span>
-                        <span className="text-sm font-bold text-gray-900 truncate max-w-[120px]">{serviceName}</span>
-                    </div>
-                    
-                    <button 
-                        className="bg-black text-white px-8 py-3.5 rounded-[1.5rem] font-semibold text-sm shadow-lg active:scale-95 transition-transform flex items-center"
-                        onClick={handleSchedule}
-                    >
-                        <Calendar size={18} className="mr-2" />
-                        Agendar
-                    </button>
-                </div>
-            </div>
-          </div>
-      )}
     </div>
   );
 };

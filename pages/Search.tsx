@@ -249,10 +249,10 @@ const Search: React.FC = () => {
       if (count && count > 0) {
         navigate(`/category/${item.id}`, { state: { name: item.nome } });
       } else {
-        navigate(`/professionals/${item.id}`, { state: { serviceName: item.nome } });
+        navigate(`/request/${item.id}`, { state: { serviceName: item.nome } });
       }
     } else {
-      navigate(`/professionals/${item.id}`, { state: { serviceName: item.nome } });
+      navigate(`/request/${item.id}`, { state: { serviceName: item.nome } });
     }
   };
 

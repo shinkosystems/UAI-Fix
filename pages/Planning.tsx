@@ -2,21 +2,21 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { User } from '../types';
+import { User, Geral } from '../types';
 import { 
     ChevronLeft, Calendar, FileText, CheckCircle, Loader2, AlertTriangle, 
     MapPin, Package, Plus, X, Clock, Banknote, Wallet, Camera, 
-    Image as ImageIcon, Ban, CreditCard, Smartphone, CalendarDays
+    Image as ImageIcon, Ban, CreditCard, Smartphone, CalendarDays, Briefcase
 } from 'lucide-react';
 
 const Planning: React.FC = () => {
-  const { uuid } = useParams<{ uuid: string }>(); // Professional UUID
+  const { serviceId: paramServiceId } = useParams<{ serviceId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const serviceId = location.state?.serviceId;
-  const serviceName = location.state?.serviceName || 'Serviço';
+  const serviceNameFromState = location.state?.serviceName || 'Serviço';
 
   const [professional, setProfessional] = useState<User | null>(null);
+  const [serviceInfo, setServiceInfo] = useState<Geral | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -28,6 +28,7 @@ const Planning: React.FC = () => {
   const [flexibility, setFlexibility] = useState('');
   const [description, setDescription] = useState('');
   const [paymentType, setPaymentType] = useState<string>('');
+  const [installments, setInstallments] = useState(1);
   
   // Image Upload State
   const [imagePedido, setImagePedido] = useState<string | null>(null);
@@ -39,11 +40,9 @@ const Planning: React.FC = () => {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Retorna o exato momento atual formatado para o atributo 'min' do input datetime-local
   const getTodayMin = () => {
     const now = new Date();
     const offset = now.getTimezoneOffset() * 60000;
-    // Formato: YYYY-MM-DDTHH:mm
     return new Date(now.getTime() - offset).toISOString().slice(0, 16);
   };
 
@@ -69,13 +68,14 @@ const Planning: React.FC = () => {
             setCurrentUser(userData);
             setUserType(userData.tipo || '');
 
-            if (uuid) {
-                const { data: proData } = await supabase
-                    .from('users')
+            // Fetch Service Data
+            if (paramServiceId) {
+                const { data: serviceData } = await supabase
+                    .from('geral')
                     .select('*')
-                    .eq('uuid', uuid)
+                    .eq('id', paramServiceId)
                     .single();
-                setProfessional(proData);
+                if (serviceData) setServiceInfo(serviceData);
             }
 
         } catch (error) {
@@ -87,7 +87,7 @@ const Planning: React.FC = () => {
     };
 
     fetchData();
-  }, [uuid]);
+  }, [paramServiceId]);
 
   const handleAddResource = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -146,12 +146,7 @@ const Planning: React.FC = () => {
 
     const selectedDate = new Date(date);
     const now = new Date();
-    
-    // Zera segundos e milissegundos para uma comparação justa de minutos
     now.setSeconds(0, 0);
-    
-    // Permite uma pequena tolerância de 1 minuto para não barrar o usuário 
-    // se ele escolher o horário atual e demorar alguns segundos para clicar.
     const nowWithTolerance = new Date(now.getTime() - 60000); 
 
     if (selectedDate.getTime() < nowWithTolerance.getTime()) {
@@ -159,7 +154,7 @@ const Planning: React.FC = () => {
         return;
     }
 
-    if (!currentUser || !professional || !serviceId) {
+    if (!currentUser || !paramServiceId) {
         setErrorMsg("Dados incompletos para o agendamento.");
         return;
     }
@@ -174,10 +169,10 @@ const Planning: React.FC = () => {
             .from('chaves')
             .insert({
                 cliente: currentUser.uuid,
-                profissional: professional.uuid,
+                profissional: null, 
                 chaveunica: uniqueKey,
                 status: 'pendente',
-                atividade: parseInt(serviceId),
+                atividade: parseInt(paramServiceId),
                 cidade: currentUser.cidade,
                 fotoantes: [],
                 fotodepois: []
@@ -189,10 +184,10 @@ const Planning: React.FC = () => {
 
         const executionDate = new Date(date).toISOString();
         
-        // Combina descrição com a flexibilidade informada
-        const fullDescription = flexibility 
-            ? `${description}\n\n[FLEXIBILIDADE DE AGENDA]:\n${flexibility}`
-            : description;
+        // Inclusão das preferências de parcelamento na descrição para os usuários internos
+        let fullDescription = description;
+        if (flexibility) fullDescription += `\n\n[FLEXIBILIDADE DE AGENDA]:\n${flexibility}`;
+        if (paymentType === 'Cartão de Crédito') fullDescription += `\n\n[PARCELAMENTO DESEJADO]: ${installments}x`;
 
         const { error: planError } = await supabase
             .from('planejamento')
@@ -255,7 +250,7 @@ const Planning: React.FC = () => {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">Solicitação Enviada!</h1>
             <p className="text-gray-500 mb-8 max-w-xs">
-                Seu planejamento foi criado. Aguarde a confirmação do profissional <strong>{professional?.nome}</strong>.
+                Sua solicitação foi criada. O **Planejista** irá escalonamento o melhor profissional para você em breve.
             </p>
             <div className="bg-white p-4 rounded-2xl shadow-sm w-full max-w-xs border border-green-100">
                 <p className="text-sm font-semibold text-gray-800">Redirecionando para agenda...</p>
@@ -280,16 +275,23 @@ const Planning: React.FC = () => {
         <button onClick={() => navigate(-1)} className="mr-3 p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
           <ChevronLeft size={24} className="text-ios-blue" />
         </button>
-        <h1 className="text-xl font-bold text-gray-900">Novo Agendamento</h1>
+        <h1 className="text-xl font-bold text-gray-900">Nova Solicitação</h1>
       </div>
 
       <div className="p-5 space-y-6">
-        <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center space-x-4">
-             <img src={professional?.fotoperfil || `https://ui-avatars.com/api/?name=${professional?.nome}`} alt="Pro" className="w-14 h-14 rounded-full object-cover bg-gray-100" />
+        <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center space-x-4">
+             <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center text-ios-blue overflow-hidden flex-shrink-0">
+                {serviceInfo?.imagem ? (
+                    <img src={serviceInfo.imagem} className="w-full h-full object-cover" alt={serviceInfo.nome} />
+                ) : (
+                    <Briefcase size={32} />
+                )}
+             </div>
              <div>
-                 <h2 className="font-bold text-gray-900">{professional?.nome}</h2>
+                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Serviço Selecionado</p>
+                 <h2 className="text-lg font-black text-gray-900 leading-tight">{serviceInfo?.nome || serviceNameFromState}</h2>
                  <div className="flex items-center text-xs text-gray-500 mt-1">
-                     <span className="font-semibold text-ios-blue bg-blue-50 px-2 py-0.5 rounded-md mr-2">{serviceName}</span>
+                     <span className="font-semibold text-ios-blue">O Planejista escolherá o profissional.</span>
                  </div>
              </div>
         </div>
@@ -320,11 +322,10 @@ const Planning: React.FC = () => {
                         placeholder="Ex: Disponível também aos sábados de manhã ou qualquer dia útil após as 18h."
                         className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-ios-blue/30 shadow-inner resize-none"
                     />
-                    <p className="text-[10px] text-gray-400 font-medium ml-1">Informe outros períodos em que você pode receber o profissional.</p>
                 </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-4">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 flex items-center">
                     <Banknote size={12} className="mr-1" /> Forma de Pagamento Preferencial
                 </label>
@@ -344,6 +345,26 @@ const Planning: React.FC = () => {
                         </button>
                     ))}
                 </div>
+
+                {paymentType === 'Cartão de Crédito' && (
+                    <div className="bg-white p-5 rounded-3xl border border-blue-100 shadow-sm space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <label className="text-[10px] font-black text-ios-blue uppercase tracking-widest ml-1 flex items-center">
+                            <CreditCard size={12} className="mr-1" /> Número de Parcelas Desejado
+                        </label>
+                        <select 
+                            value={installments}
+                            onChange={(e) => setInstallments(parseInt(e.target.value))}
+                            className="w-full bg-gray-50 border border-blue-50 rounded-xl p-4 text-sm font-bold text-gray-900 outline-none appearance-none shadow-inner"
+                        >
+                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+                                <option key={n} value={n}>{n}x {n === 1 ? 'sem juros' : ''}</option>
+                            ))}
+                        </select>
+                        <p className="text-[10px] text-gray-400 font-medium italic ml-1">
+                            * O parcelamento final será confirmado no orçamento.
+                        </p>
+                    </div>
+                )}
             </div>
 
             <div className="space-y-2">
@@ -421,7 +442,7 @@ const Planning: React.FC = () => {
                 disabled={submitting || uploadingImage}
                 className="w-full bg-black text-white py-4 rounded-[1.5rem] font-bold text-base shadow-floating active:scale-95 transition-all flex items-center justify-center disabled:opacity-70 disabled:scale-100"
             >
-                {submitting ? <Loader2 className="animate-spin" size={20} /> : "Solicitar Agendamento"}
+                {submitting ? <Loader2 className="animate-spin" size={20} /> : "Solicitar Serviço"}
             </button>
         </div>
       </div>

@@ -283,11 +283,25 @@ const ClientOrders: React.FC = () => {
                     <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
                 </div>
 
-                <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar">
-                    <button onClick={() => setActiveTab('geral')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Informações{activeTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
-                    <button onClick={() => setActiveTab('fotos')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Mídia{activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
-                    <button onClick={() => setActiveTab('obs')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Notas{activeTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
-                    {selectedOrder.status === 'concluido' && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] py-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
+                <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar h-14 shrink-0">
+                    <button onClick={() => setActiveTab('geral')} className={`flex-1 min-w-[100px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                      <span className={`text-xs font-black uppercase tracking-widest leading-none ${activeTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Informações</span>
+                      {activeTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                    </button>
+                    <button onClick={() => setActiveTab('fotos')} className={`flex-1 min-w-[100px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                      <span className={`text-xs font-black uppercase tracking-widest leading-none ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Mídia</span>
+                      {activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                    </button>
+                    <button onClick={() => setActiveTab('obs')} className={`flex-1 min-w-[100px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                      <span className={`text-xs font-black uppercase tracking-widest leading-none ${activeTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Notas</span>
+                      {activeTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                    </button>
+                    {selectedOrder.status === 'concluido' && (
+                      <button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                        <span className={`text-xs font-black uppercase tracking-widest leading-none ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação</span>
+                        {activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                      </button>
+                    )}
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-white no-scrollbar">
@@ -297,9 +311,46 @@ const ClientOrders: React.FC = () => {
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-4 block">Status do Pedido</label>
                                 <div className={`inline-flex px-5 py-2 rounded-xl text-xs font-black border uppercase mb-6 ${getStatusColor(selectedOrder.status)}`}>{getStatusLabel(selectedOrder.status)}</div>
                                 
-                                <div className="grid grid-cols-2 gap-6 mt-6">
-                                    <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Data Sugerida</p><p className="text-sm font-bold text-gray-900">{selectedOrder.planejamento?.[0]?.execucao ? new Date(selectedOrder.planejamento[0].execucao).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) : 'Não definida'}</p></div>
-                                    <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5">Valor Total</p><p className="text-sm font-black text-gray-900">{selectedOrder.orcamentos?.[0]?.preco ? `R$ ${selectedOrder.orcamentos[0].preco.toFixed(2)}` : 'Calculando...'}</p></div>
+                                <div className="grid grid-cols-1 gap-6 mt-6">
+                                    <div className="flex items-start gap-4">
+                                        <div className="p-3 bg-blue-50 rounded-2xl text-ios-blue shadow-sm border border-blue-100">
+                                            <Calendar size={20} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Visita Técnica</p>
+                                            <p className="text-sm font-bold text-gray-900">
+                                                {selectedOrder.planejamento?.[0]?.visita 
+                                                    ? new Date(selectedOrder.planejamento[0].visita).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) 
+                                                    : 'Não agendada'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-start gap-4">
+                                        <div className="p-3 bg-purple-50 rounded-2xl text-purple-600 shadow-sm border border-purple-100">
+                                            <Clock size={20} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Execução Prevista</p>
+                                            <p className="text-sm font-bold text-gray-900">
+                                                {selectedOrder.planejamento?.[0]?.execucao 
+                                                    ? new Date(selectedOrder.planejamento[0].execucao).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'}) 
+                                                    : 'A definir'}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-start gap-4 pt-4 border-t border-gray-100">
+                                        <div className="p-3 bg-green-50 rounded-2xl text-green-600 shadow-sm border border-green-100">
+                                            <Banknote size={20} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Valor Total</p>
+                                            <p className="text-base font-black text-gray-900">
+                                                {selectedOrder.orcamentos?.[0]?.preco ? `R$ ${selectedOrder.orcamentos[0].preco.toFixed(2)}` : 'Calculando...'}
+                                            </p>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {selectedOrder.orcamentos?.[0] && (
@@ -328,7 +379,6 @@ const ClientOrders: React.FC = () => {
                                                 <p className="text-sm font-medium leading-relaxed italic">
                                                     "{selectedOrder.orcamentos[0].observacaocliente}"
                                                 </p>
-                                                {/* Detalhe estético de "seta" de balão */}
                                                 <div className="absolute -top-2 left-8 w-4 h-4 bg-blue-600 rotate-45"></div>
                                             </div>
                                         )}

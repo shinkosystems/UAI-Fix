@@ -22,8 +22,8 @@ const StoryCircle: React.FC<StoryCircleProps> = ({ item }) => {
     if (count && count > 0) {
         navigate(`/category/${item.id}`, { state: { name: item.nome } });
     } else {
-        // Go straight to professionals if no subcategories
-        navigate(`/professionals/${item.id}`, { state: { serviceName: item.nome } });
+        // Go straight to Request flow (skipping pro list)
+        navigate(`/request/${item.id}`, { state: { serviceName: item.nome } });
     }
   };
 

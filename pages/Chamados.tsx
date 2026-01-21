@@ -7,7 +7,7 @@ import {
     User as UserIcon, Calendar, DollarSign, CheckCircle, 
     AlertTriangle, ChevronRight, Ban, Clock, Briefcase, MapPin,
     Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator, Lock, ArrowRightCircle, Bell, Smartphone, Banknote, Camera, ThumbsUp, Star, UserCheck, ShieldCheck,
-    AlertCircle, Play, Image as ImageIcon
+    AlertCircle, Play, Image as ImageIcon, Phone
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -74,7 +74,7 @@ const Chamados: React.FC = () => {
         fotodepois: [] as string[]
     });
 
-    const [professionals, setProfessionals] = useState<User[]>([]);
+    const [professionals, setProfessionals] = useState<any[]>([]);
 
     const allTabs = [
         { id: 'novos', label: 'Novos / Pendentes', icon: AlertTriangle },
@@ -91,26 +91,42 @@ const Chamados: React.FC = () => {
 
     const isMediaVideo = (url: string) => {
         if (!url) return false;
-        const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime'];
-        return videoExtensions.some(ext => url.toLowerCase().includes(ext)) || url.toLowerCase().includes('video');
+        // Extrair apenas o path antes dos parâmetros de consulta (?token, etc)
+        const cleanPath = url.split('?')[0].toLowerCase();
+        const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime', '.m4v'];
+        return videoExtensions.some(ext => cleanPath.endsWith(ext)) || url.toLowerCase().includes('video');
     };
 
-    const extractFlexibility = (desc: string | undefined | null) => {
+    const formatPhone = (v: string) => {
+        if (!v) return "";
+        const r = v.replace(/\D/g, "");
+        if (r.length > 10) return r.replace(/^(\d\d)(\d{5})(\d{4}).*/, "($1) $2-$3");
+        else if (r.length > 5) return r.replace(/^(\d\d)(\d{4})(\d{0,4}).*/, "($1) $2-$3");
+        else if (r.length > 2) return r.replace(/^(\d\d)(\d{0,5}).*/, "($1) $2");
+        return v;
+    };
+
+    const extractMetadata = (desc: string | undefined | null, marker: string) => {
         if (!desc) return null;
-        const marker = "[FLEXIBILIDADE DE AGENDA]:";
         if (desc.includes(marker)) {
-            return desc.split(marker)[1].trim();
+            const parts = desc.split(marker);
+            if (parts.length > 1) {
+                return parts[1].split('\n\n[').shift()?.trim();
+            }
         }
         return null;
     };
 
+    const extractFlexibility = (desc: string | undefined | null) => extractMetadata(desc, "[FLEXIBILIDADE DE AGENDA]:");
+    const extractInstallments = (desc: string | undefined | null) => extractMetadata(desc, "[PARCELAMENTO DESEJADO]:");
+
     const extractOriginalDesc = (desc: string | undefined | null) => {
         if (!desc) return "";
-        const marker = "[FLEXIBILIDADE DE AGENDA]:";
-        if (desc.includes(marker)) {
-            return desc.split(marker)[0].trim();
+        const firstMarkerIndex = desc.indexOf('\n\n[');
+        if (firstMarkerIndex !== -1) {
+            return desc.substring(0, firstMarkerIndex).trim();
         }
-        return desc;
+        return desc.trim();
     };
 
     const visibleTabs = allTabs.filter(tab => {
@@ -235,7 +251,7 @@ const Chamados: React.FC = () => {
     };
 
     const fetchProfessionals = async () => {
-        const { data } = await supabase.from('users').select('*').ilike('tipo', 'profissional').eq('ativo', true);
+        const { data } = await supabase.from('users').select('*, cidades(cidade)').ilike('tipo', 'profissional').eq('ativo', true);
         if(data) setProfessionals(data);
     };
 
@@ -281,6 +297,10 @@ const Chamados: React.FC = () => {
         
         setShowBudgetForm(shouldShowBudget);
         
+        // REGRA: Se a visita for nula, pré-preenche com a data solicitada pelo consumidor (execucao)
+        const consumerRequestedDate = plan?.execucao ? toLocalISOString(plan.execucao) : '';
+        const initialVisita = plan?.visita ? toLocalISOString(plan.visita) : consumerRequestedDate;
+
         setFormData({
             profissionalUuid: (ticket.profissional as string) || '',
             status: status, 
@@ -295,10 +315,10 @@ const Chamados: React.FC = () => {
             orcamentoObs: budget?.observacaocliente || '',
             orcamentoNotaFiscal: budget?.notafiscal || false,
             planejamentoDesc: plan?.descricao || '',
-            planejamentoData: plan?.execucao ? toLocalISOString(plan.execucao) : '',
+            planejamentoData: consumerRequestedDate,
             planejamentoRecursos: plan?.recursos || [],
             planejamentoPagamento: plan?.pagamento || 'Dinheiro',
-            planejamentoVisita: plan?.visita ? toLocalISOString(plan.visita) : '',
+            planejamentoVisita: initialVisita,
             fotoantes: ticket.fotoantes || [],
             fotodepois: ticket.fotodepois || []
         });
@@ -371,7 +391,7 @@ const Chamados: React.FC = () => {
                 await supabase.from('chaves').update({ status: 'aprovado' }).eq('id', editingItem.id);
             } else {
                 await supabase.from('chaves').update({ status: 'pendente', profissional: null }).eq('id', editingItem.id);
-                await supabase.from('agenda').delete().eq('chave', editingItem.id);
+                await supabase.from('agenda').delete().eq('id', editingItem.id); // Ajuste no delete para ID da agenda
             }
             await fetchData(); setIsModalOpen(false);
             alert(accept ? "Serviço aceito!" : "Serviço recusado.");
@@ -383,8 +403,8 @@ const Chamados: React.FC = () => {
         setUploading(true);
         try {
             const file = e.target.files[0];
-            const isVideo = file.type.startsWith('video/');
-            const path = `pedidos/${editingItem?.chaveunica || 'order'}_${target}_${Date.now()}.${file.name.split('.').pop()}`;
+            const fileExt = file.name.split('.').pop();
+            const path = `pedidos/${editingItem?.chaveunica || 'order'}_${target}_${Date.now()}.${fileExt}`;
             const { error } = await supabase.storage.from('imagens').upload(path, file);
             if (error) throw error;
             const { data } = supabase.storage.from('imagens').getPublicUrl(path);
@@ -454,6 +474,8 @@ const Chamados: React.FC = () => {
     const actingAsPlanning = isPlanejista || (isGestor && formData.status === 'pendente');
     const actingAsBudget = isOrcamentista || (isGestor && formData.status === 'analise');
 
+    const selectedProfessional = professionals.find(p => p.uuid === formData.profissionalUuid);
+
     return (
         <div className="min-h-screen bg-ios-bg pb-20">
             <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-40 border-b border-gray-200">
@@ -491,6 +513,9 @@ const Chamados: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {loading ? (<div className="col-span-full flex justify-center py-10"><Loader2 className="animate-spin text-ios-blue"/></div>) : getFilteredTickets().length > 0 ? getFilteredTickets().map(t => {
                         const flexibility = extractFlexibility(t.planejamento?.[0]?.descricao);
+                        const installmentsRequested = extractInstallments(t.planejamento?.[0]?.descricao);
+                        const paymentMethod = t.planejamento?.[0]?.pagamento;
+                        
                         return (
                             <div key={t.id} onClick={() => handleEdit(t)} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer relative overflow-hidden group">
                                 <div className={`absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl text-[10px] font-bold uppercase border-b border-l ${getStatusColor(t.status)}`}>{t.status.replace('_',' ')}</div>
@@ -512,12 +537,29 @@ const Chamados: React.FC = () => {
                                 </div>
                                 <div className="bg-gray-50 p-3 rounded-xl flex items-center space-x-2 mb-3"><div className="w-8 h-8 rounded-full bg-white overflow-hidden border border-gray-100"><img src={t.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${t.clienteData?.nome || 'U'}`} className="w-full h-full object-cover"/></div><div className="overflow-hidden"><p className="text-[10px] font-bold text-gray-400 uppercase">Cliente</p><p className="text-xs font-bold text-gray-900 truncate">{t.clienteData?.nome}</p></div></div>
                                 
-                                {isInternal && flexibility && (
-                                    <div className="mb-3 px-3 py-2 bg-blue-50/50 border border-blue-100 rounded-xl">
-                                        <p className="text-[9px] font-black text-blue-600 uppercase tracking-wider flex items-center gap-1 mb-1">
-                                            <Clock size={10} /> Flexibilidade Informada
-                                        </p>
-                                        <p className="text-[10px] text-gray-600 font-medium line-clamp-2 italic">"{flexibility}"</p>
+                                {isInternal && (flexibility || installmentsRequested || paymentMethod) && (
+                                    <div className="mb-3 space-y-1.5">
+                                        {flexibility && (
+                                            <div className="px-3 py-2 bg-blue-50/50 border border-blue-100 rounded-xl">
+                                                <p className="text-[9px] font-black text-blue-600 uppercase tracking-wider flex items-center gap-1 mb-1">
+                                                    <Clock size={10} /> Flexibilidade: <span className="text-blue-900 italic">"{flexibility}"</span>
+                                                </p>
+                                            </div>
+                                        )}
+                                        {paymentMethod && (
+                                            <div className="px-3 py-2 bg-green-50/50 border border-green-100 rounded-xl">
+                                                <p className="text-[9px] font-black text-green-600 uppercase tracking-wider flex items-center gap-1">
+                                                    <Wallet size={10} /> Pagamento: {paymentMethod}
+                                                </p>
+                                            </div>
+                                        )}
+                                        {installmentsRequested && (
+                                            <div className="px-3 py-2 bg-purple-50/50 border border-purple-100 rounded-xl">
+                                                <p className="text-[9px] font-black text-purple-600 uppercase tracking-wider flex items-center gap-1">
+                                                    <CreditCard size={10} /> Parcelas: {installmentsRequested}
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -549,11 +591,25 @@ const Chamados: React.FC = () => {
                         </div>
 
                         {isProfessional && (
-                            <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar">
-                                <button onClick={() => setModalSubTab('geral')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Geral{modalSubTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
-                                <button onClick={() => setModalSubTab('fotos')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Mídia{modalSubTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
-                                <button onClick={() => setModalSubTab('obs')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Anotações{modalSubTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
-                                {editingItem.status === 'concluido' && editingItem.avaliacao && <button onClick={() => setModalSubTab('avaliacao')} className={`flex-1 min-w-[80px] py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${modalSubTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação{modalSubTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>}
+                            <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar h-14 shrink-0">
+                                <button onClick={() => setModalSubTab('geral')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                                  <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Geral</span>
+                                  {modalSubTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                                </button>
+                                <button onClick={() => setModalSubTab('fotos')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                                  <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Mídia</span>
+                                  {modalSubTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                                </button>
+                                <button onClick={() => setModalSubTab('obs')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                                  <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Anotações</span>
+                                  {modalSubTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                                </button>
+                                {editingItem.status === 'concluido' && editingItem.avaliacao && (
+                                  <button onClick={() => setModalSubTab('avaliacao')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                                    <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação</span>
+                                    {modalSubTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                                  </button>
+                                )}
                             </div>
                         )}
                         
@@ -571,27 +627,110 @@ const Chamados: React.FC = () => {
                                             </div>
                                         )}
 
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional</label>
-                                            <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none" value={formData.profissionalUuid} onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}>
-                                                <option value="">Escolha um profissional...</option>
-                                                {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
-                                            </select>
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional</label>
+                                                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none" value={formData.profissionalUuid} onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}>
+                                                    <option value="">Escolha um profissional...</option>
+                                                    {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
+                                                </select>
+                                            </div>
+
+                                            {selectedProfessional && (
+                                                <div className="bg-blue-50/50 p-4 rounded-3xl border border-blue-100 flex items-center gap-4 animate-in slide-in-from-top-2 duration-300 shadow-sm">
+                                                    <div className="w-16 h-16 rounded-full border-4 border-white shadow-sm overflow-hidden flex-shrink-0 bg-white">
+                                                        <img 
+                                                            src={selectedProfessional.fotoperfil || `https://ui-avatars.com/api/?name=${selectedProfessional.nome}`} 
+                                                            className="w-full h-full object-cover" 
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1 leading-none">Profissional Escalado</p>
+                                                        <h4 className="font-black text-gray-900 text-sm truncate">{selectedProfessional.nome}</h4>
+                                                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
+                                                            <div className="flex items-center text-[10px] text-gray-600 font-bold">
+                                                                <MapPin size={12} className="mr-1 text-blue-400" />
+                                                                {selectedProfessional.cidades?.cidade || 'Local não informado'}
+                                                            </div>
+                                                            <div className="flex items-center text-[10px] text-gray-600 font-bold">
+                                                                <Phone size={12} className="mr-1 text-ios-blue" />
+                                                                {formatPhone(selectedProfessional.whatsapp)}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                         
-                                        {isInternal && extractFlexibility(editingItem.planejamento?.[0]?.descricao) && (
-                                            <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-2 shadow-sm">
-                                                <div className="flex items-center gap-2 text-blue-800"><Clock size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Flexibilidade de Horário</h4></div>
-                                                <p className="text-xs font-bold text-blue-900 leading-relaxed bg-white/50 p-3 rounded-xl border border-blue-100/50">
-                                                    {extractFlexibility(editingItem.planejamento?.[0]?.descricao)}
-                                                </p>
+                                        {isInternal && (extractFlexibility(editingItem.planejamento?.[0]?.descricao) || extractInstallments(editingItem.planejamento?.[0]?.descricao) || editingItem.planejamento?.[0]?.pagamento) && (
+                                            <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 shadow-sm divide-y divide-blue-100/50 space-y-5">
+                                                {extractFlexibility(editingItem.planejamento?.[0]?.descricao) && (
+                                                    <div className="space-y-2.5">
+                                                        <div className="flex items-center gap-2 text-blue-800">
+                                                            <Clock size={16} />
+                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Flexibilidade de Horário</h4>
+                                                        </div>
+                                                        <div className="bg-white/80 p-3 rounded-2xl border border-blue-100/50">
+                                                            <p className="text-xs font-bold text-blue-900 leading-relaxed italic">
+                                                                {extractFlexibility(editingItem.planejamento?.[0]?.descricao)}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {editingItem.planejamento?.[0]?.pagamento && (
+                                                    <div className="pt-5 space-y-2">
+                                                        <div className="flex items-center gap-2 text-green-700">
+                                                            <Wallet size={16} />
+                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Tipo de Pagamento</h4>
+                                                        </div>
+                                                        <p className="text-sm font-black text-green-900 ml-1">
+                                                            {editingItem.planejamento[0].pagamento}
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {extractInstallments(editingItem.planejamento?.[0]?.descricao) && (
+                                                    <div className="pt-5 space-y-2">
+                                                        <div className="flex items-center gap-2 text-purple-800">
+                                                            <CreditCard size={16} />
+                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Parcelamento Desejado</h4>
+                                                        </div>
+                                                        <p className="text-sm font-black text-purple-900 ml-1">
+                                                            {extractInstallments(editingItem.planejamento?.[0]?.descricao)}
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
                                         <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
                                             <div className="flex items-center gap-2 mb-2 text-gray-600"><FileText size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Planejamento</h4></div>
-                                            <div className="grid grid-cols-1 gap-4">
-                                                <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 ml-1">Execução Prevista</label><input type="datetime-local" className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.planejamentoData} onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})} /></div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-bold text-gray-400 ml-1">Visita Técnica</label>
+                                                    <input 
+                                                        type="datetime-local" 
+                                                        className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" 
+                                                        value={formData.planejamentoVisita} 
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setFormData(prev => ({
+                                                                ...prev,
+                                                                planejamentoVisita: val
+                                                            }));
+                                                        }} 
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-bold text-gray-400 ml-1">Execução Prevista</label>
+                                                    <input 
+                                                        type="datetime-local" 
+                                                        className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" 
+                                                        value={formData.planejamentoData} 
+                                                        onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})} 
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -678,6 +817,11 @@ const Chamados: React.FC = () => {
                                                 <CheckCircle size={16} className="text-blue-600" />
                                                 {editingItem.planejamento?.[0]?.pagamento || 'Não informado'}
                                             </div>
+                                            {extractInstallments(editingItem.planejamento?.[0]?.descricao) && (
+                                                <div className="mt-1 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg border border-purple-100 text-xs font-bold">
+                                                    Parcelamento desejado pelo cliente: {extractInstallments(editingItem.planejamento?.[0]?.descricao)}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="space-y-2">
@@ -728,7 +872,7 @@ const Chamados: React.FC = () => {
                                                 {formData.orcamentoTipoPgto === 'Cartão de Crédito' && (
                                                     <div className="space-y-1.5 animate-in slide-in-from-top-2">
                                                         <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Número de Parcelas</label>
-                                                        <select className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.orcamentoParcelas} onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value)})}>
+                                                        <select className="w-full bg-white border border-ios-blue rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.orcamentoParcelas} onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value)})}>
                                                             {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n}x</option>)}
                                                         </select>
                                                     </div>
@@ -736,7 +880,7 @@ const Chamados: React.FC = () => {
 
                                                 <div className="space-y-1.5">
                                                     <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Observação para o Cliente</label>
-                                                    <textarea className="w-full bg-white border border-blue-200 rounded-xl p-4 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-blue-300 min-h-[100px] resize-none" value={formData.orcamentoObs} onChange={(e) => setFormData({...formData, orcamentoObs: e.target.value})} placeholder="Mensagem que o cliente verá ao analisar o orçamento..."/>
+                                                    <textarea className="w-full bg-white border border-blue-200 rounded-xl p-4 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[100px] resize-none" value={formData.orcamentoObs} onChange={(e) => setFormData({...formData, orcamentoObs: e.target.value})} placeholder="Mensagem que o cliente verá ao analisar o orçamento..."/>
                                                 </div>
                                             </div>
                                         </div>
@@ -752,12 +896,45 @@ const Chamados: React.FC = () => {
                                             </div>
                                         )}
 
-                                        {isInternal && extractFlexibility(editingItem.planejamento?.[0]?.descricao) && (
-                                            <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-2 shadow-sm mb-4">
-                                                <div className="flex items-center gap-2 text-blue-800"><Clock size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Flexibilidade de Horário</h4></div>
-                                                <p className="text-xs font-bold text-blue-900 leading-relaxed bg-white/50 p-3 rounded-xl border border-blue-100/50">
-                                                    {extractFlexibility(editingItem.planejamento?.[0]?.descricao)}
-                                                </p>
+                                        {isInternal && (extractFlexibility(editingItem.planejamento?.[0]?.descricao) || extractInstallments(editingItem.planejamento?.[0]?.descricao) || editingItem.planejamento?.[0]?.pagamento) && (
+                                            <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 shadow-sm divide-y divide-blue-100/50 space-y-5 mb-4">
+                                                {extractFlexibility(editingItem.planejamento?.[0]?.descricao) && (
+                                                    <div className="space-y-2.5">
+                                                        <div className="flex items-center gap-2 text-blue-800">
+                                                            <Clock size={16} />
+                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Flexibilidade de Horário</h4>
+                                                        </div>
+                                                        <div className="bg-white/80 p-3 rounded-2xl border border-blue-100/50">
+                                                            <p className="text-xs font-bold text-blue-900 leading-relaxed italic">
+                                                                {extractFlexibility(editingItem.planejamento?.[0]?.descricao)}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {editingItem.planejamento?.[0]?.pagamento && (
+                                                    <div className="pt-5 space-y-2">
+                                                        <div className="flex items-center gap-2 text-green-700">
+                                                            <Wallet size={16} />
+                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Tipo de Pagamento</h4>
+                                                        </div>
+                                                        <p className="text-sm font-black text-green-900 ml-1">
+                                                            {editingItem.planejamento[0].pagamento}
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {extractInstallments(editingItem.planejamento?.[0]?.descricao) && (
+                                                    <div className="pt-5 space-y-2">
+                                                        <div className="flex items-center gap-2 text-purple-800">
+                                                            <CreditCard size={16} />
+                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Parcelamento Desejado</h4>
+                                                        </div>
+                                                        <p className="text-sm font-black text-purple-900 ml-1">
+                                                            {extractInstallments(editingItem.planejamento?.[0]?.descricao)}
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -769,7 +946,7 @@ const Chamados: React.FC = () => {
                                                     <option value="analise">Em Análise</option>
                                                     <option value="aguardando_aprovacao">Aguardando Aprovação</option>
                                                     <option value="aguardando_profissional">Aguardando Profissional</option>
-                                                    <option value="aprovado">Aprovado</option>
+                                                    <option value="aprovado">Aprovado pelo Consumidor</option>
                                                     <option value="executando">Executando</option>
                                                     <option value="concluido">Concluído</option>
                                                     <option value="cancelado">Cancelado</option>
@@ -807,72 +984,82 @@ const Chamados: React.FC = () => {
 
                             {modalSubTab === 'fotos' && (
                                 <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div>
-                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Antes (Fotos/Vídeos)</h4>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {formData.fotoantes.map((url, i) => (
-                                                <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
-                                                    {isMediaVideo(url) ? (
-                                                        <video src={url} className="w-full h-full object-cover" controls playsInline />
-                                                    ) : (
-                                                        <img src={url} className="w-full h-full object-cover"/>
-                                                    )}
-                                                    {isProfessional && editingItem.status !== 'concluido' && (
-                                                        <button onClick={() => setFormData({...formData, fotoantes: formData.fotoantes.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors z-10">
-                                                            <Trash2 size={14}/>
-                                                        </button>
+                                    {isProfessional && editingItem.status === 'aguardando_profissional' ? (
+                                        <div className="bg-cyan-50 p-6 rounded-[2rem] border border-cyan-100 text-center space-y-3">
+                                            <AlertCircle size={32} className="text-cyan-600 mx-auto" />
+                                            <h4 className="text-sm font-bold text-cyan-900">Aceite o serviço primeiro</h4>
+                                            <p className="text-xs text-cyan-700 leading-relaxed">Você precisa aceitar este serviço na aba "Geral" antes de poder registrar fotos e vídeos de execução.</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div>
+                                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Antes (Fotos/Vídeos)</h4>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {formData.fotoantes.map((url, i) => (
+                                                        <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
+                                                            {isMediaVideo(url) ? (
+                                                                <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                                            ) : (
+                                                                <img src={url} className="w-full h-full object-cover"/>
+                                                            )}
+                                                            {isProfessional && editingItem.status !== 'concluido' && editingItem.status !== 'aguardando_profissional' && (
+                                                                <button onClick={() => setFormData({...formData, fotoantes: formData.fotoantes.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors z-10">
+                                                                    <Trash2 size={14}/>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    {isProfessional && editingItem.status !== 'concluido' && editingItem.status !== 'aguardando_profissional' && (
+                                                        <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-ios-blue/50 transition-all group">
+                                                            {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : (
+                                                                <>
+                                                                    <div className="flex gap-2 mb-2">
+                                                                        <Camera size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
+                                                                        <Play size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
+                                                                    </div>
+                                                                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Adicionar Mídia</span>
+                                                                </>
+                                                            )}
+                                                            <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'antes')} />
+                                                        </label>
                                                     )}
                                                 </div>
-                                            ))}
-                                            {isProfessional && editingItem.status !== 'concluido' && (
-                                                <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-ios-blue/50 transition-all group">
-                                                    {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : (
-                                                        <>
-                                                            <div className="flex gap-2 mb-2">
-                                                                <Camera size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
-                                                                <Play size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
-                                                            </div>
-                                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Adicionar Mídia</span>
-                                                        </>
-                                                    )}
-                                                    <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'antes')} />
-                                                </label>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Depois (Fotos/Vídeos)</h4>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            {formData.fotodepois.map((url, i) => (
-                                                <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
-                                                    {isMediaVideo(url) ? (
-                                                        <video src={url} className="w-full h-full object-cover" controls playsInline />
-                                                    ) : (
-                                                        <img src={url} className="w-full h-full object-cover"/>
-                                                    )}
-                                                    {isProfessional && editingItem.status !== 'concluido' && (
-                                                        <button onClick={() => setFormData({...formData, fotodepois: formData.fotodepois.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors z-10">
-                                                            <Trash2 size={14}/>
-                                                        </button>
+                                            </div>
+                                            <div>
+                                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Depois (Fotos/Vídeos)</h4>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {formData.fotodepois.map((url, i) => (
+                                                        <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
+                                                            {isMediaVideo(url) ? (
+                                                                <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                                            ) : (
+                                                                <img src={url} className="w-full h-full object-cover"/>
+                                                            )}
+                                                            {isProfessional && editingItem.status !== 'concluido' && editingItem.status !== 'aguardando_profissional' && (
+                                                                <button onClick={() => setFormData({...formData, fotodepois: formData.fotodepois.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors z-10">
+                                                                    <Trash2 size={14}/>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                    {isProfessional && editingItem.status !== 'concluido' && editingItem.status !== 'aguardando_profissional' && (
+                                                        <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-ios-blue/50 transition-all group">
+                                                            {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : (
+                                                                <>
+                                                                    <div className="flex gap-2 mb-2">
+                                                                        <Camera size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
+                                                                        <Play size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
+                                                                    </div>
+                                                                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Adicionar Mídia</span>
+                                                                </>
+                                                            )}
+                                                            <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'depois')} />
+                                                        </label>
                                                     )}
                                                 </div>
-                                            ))}
-                                            {isProfessional && editingItem.status !== 'concluido' && (
-                                                <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-ios-blue/50 transition-all group">
-                                                    {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : (
-                                                        <>
-                                                            <div className="flex gap-2 mb-2">
-                                                                <Camera size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
-                                                                <Play size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
-                                                            </div>
-                                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Adicionar Mídia</span>
-                                                        </>
-                                                    )}
-                                                    <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'depois')} />
-                                                </label>
-                                            )}
-                                        </div>
-                                    </div>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             )}
 
