@@ -178,7 +178,7 @@ const ClientOrders: React.FC = () => {
                   cliente: selectedOrder.cliente,
                   profissional: proUuid,
                   execucao: plan.execucao,
-                  observacoes: plan.descricao || 'Serviço aprovado pelo cliente.'
+                  observacoes: '' // FIX: Iniciando vazio para o profissional inserir suas próprias notas
               };
 
               if (existingAgenda) {

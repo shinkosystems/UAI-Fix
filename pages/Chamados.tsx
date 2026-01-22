@@ -1,13 +1,12 @@
-
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
-import { Chave, Geral, User, Orcamento, Planejamento, Avaliacao } from '../types';
+import { Chave, Geral, User, Orcamento, Planejamento, Avaliacao, Agenda } from '../types';
 import { 
     Loader2, Search, Filter, Plus, X, Save, Send, FileText, 
     User as UserIcon, Calendar, DollarSign, CheckCircle, 
     AlertTriangle, ChevronRight, Ban, Clock, Briefcase, MapPin,
     Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator, Lock, ArrowRightCircle, Bell, Smartphone, Banknote, Camera, ThumbsUp, Star, UserCheck, ShieldCheck,
-    AlertCircle, Play, Image as ImageIcon, Phone, AlignLeft
+    AlertCircle, Play, Image as ImageIcon, Phone, AlignLeft, Edit3, UserCircle, ClipboardList, ThumbsDown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -18,6 +17,7 @@ interface ChamadoExtended extends Chave {
     orcamentos?: Orcamento[];
     planejamento?: Planejamento[];
     avaliacao?: Avaliacao;
+    agenda?: Agenda[];
 }
 
 interface NotificationItem {
@@ -29,13 +29,13 @@ interface NotificationItem {
   read: boolean;
 }
 
-type ModalTab = 'geral' | 'fotos' | 'obs' | 'avaliacao';
+type ModalTab = 'status' | 'consumidor' | 'profissional';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 const Chamados: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'novos' | 'orcamentos' | 'execucao' | 'historico'>('novos');
-    const [modalSubTab, setModalSubTab] = useState<ModalTab>('geral');
+    const [modalSubTab, setModalSubTab] = useState<ModalTab>('status');
     const [tickets, setTickets] = useState<ChamadoExtended[]>([]);
     const [loading, setLoading] = useState(true);
     
@@ -74,7 +74,8 @@ const Chamados: React.FC = () => {
         planejamentoPagamento: '',
         planejamentoVisita: '',
         fotoantes: [] as string[],
-        fotodepois: [] as string[]
+        fotodepois: [] as string[],
+        agendaObs: '' 
     });
 
     const [professionals, setProfessionals] = useState<User[]>([]);
@@ -99,15 +100,6 @@ const Chamados: React.FC = () => {
         return videoExtensions.some(ext => cleanPath.endsWith(ext)) || url.toLowerCase().includes('video');
     };
 
-    const formatPhone = (v: string) => {
-        if (!v) return "";
-        const r = v.replace(/\D/g, "");
-        if (r.length > 10) return r.replace(/^(\d\d)(\d{5})(\d{4}).*/, "($1) $2-$3");
-        else if (r.length > 5) return r.replace(/^(\d\d)(\d{4})(\d{0,4}).*/, "($1) $2-$3");
-        else if (r.length > 2) return r.replace(/^(\d\d)(\d{0,5}).*/, "($1) $2");
-        return v;
-    };
-
     const extractMetadata = (desc: string | undefined | null, marker: string) => {
         if (!desc) return null;
         if (desc.includes(marker)) {
@@ -120,8 +112,6 @@ const Chamados: React.FC = () => {
     };
 
     const extractFlexibility = (desc: string | undefined | null) => extractMetadata(desc, "[FLEXIBILIDADE DE AGENDA]:");
-    const extractInstallments = (desc: string | undefined | null) => extractMetadata(desc, "[PARCELAMENTO DESEJADO]:");
-
     const extractOriginalDesc = (desc: string | undefined | null) => {
         if (!desc) return "";
         const firstMarkerIndex = desc.indexOf('\n\n[');
@@ -222,12 +212,13 @@ const Chamados: React.FC = () => {
             const userIds = new Set<string>();
             const serviceIds = new Set<number>();
             chavesData.forEach(c => { if(c.cliente) userIds.add(c.cliente); if(c.profissional) userIds.add(c.profissional); if(c.atividade) serviceIds.add(c.atividade); });
-            const [usersRes, servicesRes, orcRes, planRes, avalRes] = await Promise.all([
+            const [usersRes, servicesRes, orcRes, planRes, avalRes, agendaRes] = await Promise.all([
                 userIds.size > 0 ? supabase.from('users').select('*').in('uuid', Array.from(userIds)) : { data: [] },
                 serviceIds.size > 0 ? supabase.from('geral').select('*').in('id', Array.from(serviceIds)) : { data: [] },
                 chaveIds.length > 0 ? supabase.from('orcamentos').select('*').in('chave', chaveIds) : { data: [] },
                 chaveIds.length > 0 ? supabase.from('planejamento').select('*').in('chave', chaveIds) : { data: [] },
-                chaveIds.length > 0 ? supabase.from('avaliacoes').select('*').in('chave', chaveIds) : { data: [] }
+                chaveIds.length > 0 ? supabase.from('avaliacoes').select('*').in('chave', chaveIds) : { data: [] },
+                chaveIds.length > 0 ? supabase.from('agenda').select('*').in('chave', chaveIds) : { data: [] }
             ]);
             const usersMap: Record<string, User> = {};
             usersRes.data?.forEach((u: any) => usersMap[u.uuid] = u);
@@ -239,6 +230,8 @@ const Chamados: React.FC = () => {
             planRes.data?.forEach((p: any) => { if(!planMap[p.chave]) planMap[p.chave] = []; planMap[p.chave].push(p); });
             const avalMap: Record<number, Avaliacao> = {};
             avalRes.data?.forEach((a: any) => avalMap[a.chave] = a);
+            const agendaMap: Record<number, Agenda[]> = {};
+            agendaRes.data?.forEach((ag: any) => { if(!agendaMap[ag.chave]) agendaMap[ag.chave] = []; agendaMap[ag.chave].push(ag); });
 
             setTickets(chavesData.map(c => ({ 
                 ...c, 
@@ -247,7 +240,8 @@ const Chamados: React.FC = () => {
                 geral: servicesMap[c.atividade], 
                 orcamentos: orcMap[c.id] || [], 
                 planejamento: planMap[c.id] || [],
-                avaliacao: avalMap[c.id]
+                avaliacao: avalMap[c.id],
+                agenda: agendaMap[c.id] || []
             })));
         } catch (error) { console.error(error); } finally { setLoading(false); }
     };
@@ -293,11 +287,12 @@ const Chamados: React.FC = () => {
 
     const handleEdit = (ticket: ChamadoExtended) => {
         setEditingItem(ticket);
-        setModalSubTab('geral');
+        setModalSubTab('status');
         setUploadError(null);
         const budget = ticket.orcamentos?.[0];
         const plan = ticket.planejamento?.[0];
         const status = (ticket.status || 'pendente').toLowerCase();
+        const agenda = ticket.agenda?.[0];
         
         const shouldShowBudget = !isPlanejista && !isProfessional && 
                                (!!(ticket.orcamentos?.length) || isOrcamentista || (isGestor && status !== 'pendente'));
@@ -306,6 +301,11 @@ const Chamados: React.FC = () => {
         
         const consumerRequestedDate = plan?.execucao ? toLocalISOString(plan.execucao) : '';
         const initialVisita = plan?.visita ? toLocalISOString(plan.visita) : consumerRequestedDate;
+
+        const currentObs = agenda?.observacoes || '';
+        const planDesc = plan?.descricao || '';
+        const isDefaultObs = currentObs.includes('[FLEXIBILIDADE DE AGENDA]:') || currentObs === planDesc;
+        const initialAgendaObs = isDefaultObs ? '' : currentObs;
 
         setFormData({
             profissionalUuid: (typeof ticket.profissional === 'string' ? ticket.profissional : (ticket.profissional as any)?.uuid) || '',
@@ -320,13 +320,14 @@ const Chamados: React.FC = () => {
             orcamentoParcelas: budget?.parcelas || 1,
             orcamentoObs: budget?.observacaocliente || '',
             orcamentoNotaFiscal: budget?.notafiscal || false,
-            planejamentoDesc: plan?.descricao || '',
+            planejamentoDesc: planDesc,
             planejamentoData: consumerRequestedDate,
             planejamentoRecursos: plan?.recursos || [],
             planejamentoPagamento: plan?.pagamento || 'Dinheiro',
             planejamentoVisita: initialVisita,
             fotoantes: ticket.fotoantes || [],
-            fotodepois: ticket.fotodepois || []
+            fotodepois: ticket.fotodepois || [],
+            agendaObs: initialAgendaObs
         });
         setIsModalOpen(true);
     };
@@ -345,6 +346,10 @@ const Chamados: React.FC = () => {
             if (isProfessional) {
                 updatesChave.fotoantes = formData.fotoantes;
                 updatesChave.fotodepois = formData.fotodepois;
+                
+                if (editingItem.agenda?.length) {
+                    await supabase.from('agenda').update({ observacoes: formData.agendaObs }).eq('id', editingItem.agenda[0].id);
+                }
             } else if (isGestor || isPlanejista) {
                 updatesChave.profissional = formData.profissionalUuid || null;
             }
@@ -412,7 +417,7 @@ const Chamados: React.FC = () => {
         
         if (file.size > MAX_FILE_SIZE) {
             const sizeInMb = (file.size / 1024 / 1024).toFixed(1);
-            setUploadError(`O vídeo selecionado (${sizeInMb}MB) é maior que o tamanho máximo suportado de 50MB.`);
+            setUploadError(`O arquivo (${sizeInMb}MB) é maior que o tamanho máximo de 50MB.`);
             e.target.value = '';
             return;
         }
@@ -436,7 +441,7 @@ const Chamados: React.FC = () => {
             }));
         } catch (error: any) { 
             console.error("Upload error:", error);
-            setUploadError("Ocorreu um erro ao enviar o arquivo. Tente novamente.");
+            setUploadError("Erro no upload.");
         } finally { 
             setUploading(false); 
         }
@@ -452,7 +457,7 @@ const Chamados: React.FC = () => {
             const p: any = { chave: editingItem.id, descricao: formData.planejamentoDesc, recursos: formData.planejamentoRecursos, pagamento: formData.planejamentoPagamento, execucao: new Date(formData.planejamentoData).toISOString(), visita: formData.planejamentoVisita ? new Date(formData.planejamentoVisita).toISOString() : null, ativo: true };
             if (editingItem.planejamento?.length) await supabase.from('planejamento').update(p).eq('id', editingItem.planejamento[0].id);
             else await supabase.from('planejamento').insert(p);
-            alert("Chamado enviado para o orçamentista!");
+            alert("Enviado para orçamento!");
             await fetchData(); setIsModalOpen(false);
         } catch (error: any) { alert(error.message); } finally { setSaving(false); }
     };
@@ -479,7 +484,7 @@ const Chamados: React.FC = () => {
             };
             if (editingItem.orcamentos?.length) await supabase.from('orcamentos').update(b).eq('id', editingItem.orcamentos[0].id);
             else await supabase.from('orcamentos').insert(b);
-            alert("Orçamento enviado para o consumidor!");
+            alert("Orçamento enviado!");
             await fetchData(); setIsModalOpen(false);
         } catch (error: any) { alert(error.message); } finally { setSaving(false); }
     };
@@ -499,9 +504,9 @@ const Chamados: React.FC = () => {
     };
 
     const actingAsPlanning = isPlanejista || (isGestor && formData.status === 'pendente');
-    const actingAsBudget = isOrcamentista || (isGestor && formData.status === 'analise');
+    const actingAsBudget = isOrcamentista || (isGestor && (formData.status === 'analise' || formData.status === 'reprovado'));
+    const isBudgetLocked = ['aprovado', 'executando', 'concluido'].includes(formData.status.toLowerCase());
 
-    // FILTRO DOS PROFISSIONAIS: Cidade do Chamado (que é a do consumidor) + Especialidade da Tarefa
     const availableProfessionals = useMemo(() => {
         if (!editingItem) return [];
         return professionals.filter(p => {
@@ -517,6 +522,10 @@ const Chamados: React.FC = () => {
 
     const currentClientDescription = useMemo(() => {
         return extractOriginalDesc(editingItem?.planejamento?.[0]?.descricao);
+    }, [editingItem]);
+
+    const currentClientFlexibility = useMemo(() => {
+        return extractFlexibility(editingItem?.planejamento?.[0]?.descricao);
     }, [editingItem]);
 
     return (
@@ -555,89 +564,39 @@ const Chamados: React.FC = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {loading ? (<div className="col-span-full flex justify-center py-10"><Loader2 className="animate-spin text-ios-blue"/></div>) : getFilteredTickets().length > 0 ? getFilteredTickets().map(t => {
-                        const flexibility = extractFlexibility(t.planejamento?.[0]?.descricao);
-                        const installmentsRequested = extractInstallments(t.planejamento?.[0]?.descricao);
-                        const paymentMethod = t.planejamento?.[0]?.pagamento;
                         const clientDescription = extractOriginalDesc(t.planejamento?.[0]?.descricao);
-                        
                         return (
                             <div key={t.id} onClick={() => handleEdit(t)} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer relative overflow-hidden group">
                                 <div className={`absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl text-[10px] font-bold uppercase border-b border-l ${getStatusColor(t.status)}`}>{t.status.replace('_',' ')}</div>
                                 <div className="flex items-center space-x-3 mb-4">
-                                    <div className="relative">
-                                        <div className="w-12 h-12 bg-gray-50 rounded-2xl flex-shrink-0 overflow-hidden">
-                                            {t.geral?.imagem ? <img src={t.geral.imagem} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-300"><FileText size={20}/></div>}
-                                        </div>
-                                        {isInternal && t.planejamento?.[0]?.imagem_pedido && (
-                                            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-ios-blue text-white rounded-lg flex items-center justify-center border-2 border-white shadow-sm">
-                                                <ImageIcon size={10} />
-                                            </div>
-                                        )}
+                                    <div className="w-12 h-12 bg-gray-50 rounded-2xl overflow-hidden">
+                                        {t.geral?.imagem ? <img src={t.geral.imagem} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-300"><FileText size={20}/></div>}
                                     </div>
                                     <div>
-                                        <h3 className="font-bold text-gray-900 leading-tight group-hover:text-ios-blue transition-colors">{t.geral?.nome}</h3>
-                                        <div className="inline-flex items-center mt-1 bg-gray-100 px-2 py-0.5 rounded border border-gray-200"><Hash size={10} className="text-gray-400 mr-1" /><span className="text-[10px] font-black text-gray-700 font-mono tracking-wider">{t.chaveunica}</span></div>
+                                        <h3 className="font-bold text-gray-900 leading-tight truncate w-40">{t.geral?.nome}</h3>
+                                        <div className="inline-flex items-center mt-1 bg-gray-100 px-2 py-0.5 rounded border border-gray-200"><Hash size={10} className="text-gray-400 mr-1" /><span className="text-[10px] font-black text-gray-700 font-mono">{t.chaveunica}</span></div>
                                     </div>
                                 </div>
                                 <div className="bg-gray-50 p-3 rounded-xl flex items-center space-x-2 mb-3"><div className="w-8 h-8 rounded-full bg-white overflow-hidden border border-gray-100"><img src={t.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${t.clienteData?.nome || 'U'}`} className="w-full h-full object-cover"/></div><div className="overflow-hidden"><p className="text-[10px] font-bold text-gray-400 uppercase">Cliente</p><p className="text-xs font-bold text-gray-900 truncate">{t.clienteData?.nome}</p></div></div>
-                                
-                                {isInternal && (
-                                    <div className="mb-3 space-y-2">
-                                        {/* RELATO DO CONSUMIDOR NO CARD */}
-                                        {clientDescription && (
-                                            <div className="px-4 py-3 bg-yellow-50/50 border border-yellow-100 rounded-2xl shadow-sm">
-                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-1.5">
-                                                    <AlignLeft size={14} />
-                                                    <span className="text-[10px] font-black uppercase tracking-wider">Relato do Cliente:</span>
-                                                </div>
-                                                <p className="text-xs font-bold text-gray-800 line-clamp-3 leading-relaxed italic">
-                                                    "{clientDescription}"
-                                                </p>
-                                            </div>
-                                        )}
-
-                                        <div className="space-y-1.5">
-                                            {flexibility && (
-                                                <div className="px-3 py-2 bg-blue-50/50 border border-blue-100 rounded-xl">
-                                                    <p className="text-[9px] font-black text-blue-600 uppercase tracking-wider flex items-center gap-1 mb-1">
-                                                        <Clock size={10} /> Flexibilidade: <span className="text-blue-900 italic">"{flexibility}"</span>
-                                                    </p>
-                                                </div>
-                                            )}
-                                            {paymentMethod && (
-                                                <div className="px-3 py-2 bg-green-50/50 border border-green-100 rounded-xl">
-                                                    <p className="text-[9px] font-black text-green-600 uppercase tracking-wider flex items-center gap-1">
-                                                        <Wallet size={10} /> Pagamento: {paymentMethod}
-                                                    </p>
-                                                </div>
-                                            )}
-                                            {installmentsRequested && (
-                                                <div className="px-3 py-2 bg-purple-50/50 border border-purple-100 rounded-xl">
-                                                    <p className="text-[9px] font-black text-purple-600 uppercase tracking-wider flex items-center gap-1">
-                                                        <CreditCard size={10} /> Parcelas: {installmentsRequested}
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </div>
+                                {isInternal && clientDescription && (
+                                    <div className="mb-3 px-4 py-3 bg-yellow-50/50 border border-yellow-100 rounded-2xl">
+                                        <p className="text-xs font-bold text-gray-800 line-clamp-2 italic leading-relaxed">"{clientDescription}"</p>
                                     </div>
                                 )}
-
                                 <div className="flex justify-between items-center text-xs text-gray-500">
                                     <div className="flex flex-col gap-1">
-                                        <div className="flex items-center text-gray-400 text-[10px]"><Calendar size={10} className="mr-1"/> Criado em {new Date(t.created_at).toLocaleDateString('pt-BR')}</div>
+                                        <div className="flex items-center text-gray-400 text-[10px]"><Calendar size={10} className="mr-1"/> {new Date(t.created_at).toLocaleDateString('pt-BR')}</div>
                                         {t.planejamento?.[0]?.execucao && (
-                                            <div className="flex items-center font-bold text-ios-blue"><Clock size={12} className="mr-1"/> Execução: {new Date(t.planejamento[0].execucao).toLocaleString('pt-BR', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}</div>
+                                            <div className="flex items-center font-bold text-ios-blue"><Clock size={12} className="mr-1"/> {new Date(t.planejamento[0].execucao).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})} {new Date(t.planejamento[0].execucao).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
                                         )}
                                     </div>
                                     {!isProfessional && t.orcamentos?.length ? (
-                                        <div className="flex flex-col items-end">
-                                            <div className="flex items-center font-bold text-green-700 text-sm"><DollarSign size={14} className="mr-0.5"/>R$ {t.orcamentos[0].preco.toFixed(2)}</div>
-                                        </div>
-                                    ) : isProfessional && t.status === 'aguardando_profissional' ? <div className="text-cyan-600 font-black flex items-center text-[10px] uppercase animate-pulse"><AlertCircle size={12} className="mr-1"/> Pendente Aceite</div> : null}
+                                        <div className="flex items-center font-bold text-green-700 text-sm"><DollarSign size={14}/> {t.orcamentos[0].preco.toFixed(2)}</div>
+                                    ) : null}
                                 </div>
                             </div>
                         );
-                    }) : (<div className="col-span-full text-center py-12 text-gray-400 font-bold border-2 border-dashed border-gray-100 rounded-[2.5rem]">Nenhum chamado encontrado.</div>)}
+                    }) : (<div className="col-span-full text-center py-12 text-gray-400 font-bold border-2 border-dashed border-gray-100 rounded-[2.5rem]">Vazio.</div>)}
                 </div>
             </div>
 
@@ -645,624 +604,234 @@ const Chamados: React.FC = () => {
                  <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
                     <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
-                            <div><h3 className="font-bold text-gray-900 text-lg leading-tight">{editingItem.geral?.nome}</h3><div className="flex items-center mt-1"><span className="bg-gray-100 text-gray-900 px-2 py-1 rounded-md text-[10px] font-black font-mono tracking-wider flex items-center border border-gray-200"><Hash size={10} className="mr-1 opacity-50"/> {editingItem.chaveunica}</span></div></div>
+                            <div><h3 className="font-bold text-gray-900 text-lg leading-tight">{editingItem.geral?.nome}</h3><div className="flex items-center mt-1"><span className="bg-gray-100 text-gray-900 px-2 py-1 rounded-md text-[10px] font-black font-mono flex items-center border border-gray-200"><Hash size={10} className="mr-1 opacity-50"/> {editingItem.chaveunica}</span></div></div>
                             <button onClick={() => setIsModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
                         </div>
 
-                        {isProfessional && (
-                            <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar h-14 shrink-0">
-                                <button onClick={() => setModalSubTab('geral')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
-                                  <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Geral</span>
-                                  {modalSubTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
-                                </button>
-                                <button onClick={() => setModalSubTab('fotos')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
-                                  <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Mídia</span>
-                                  {modalSubTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
-                                </button>
-                                <button onClick={() => setModalSubTab('obs')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
-                                  <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'obs' ? 'text-ios-blue' : 'text-gray-400'}`}>Anotações</span>
-                                  {modalSubTab === 'obs' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
-                                </button>
-                                {editingItem.status === 'concluido' && editingItem.avaliacao && (
-                                  <button onClick={() => setModalSubTab('avaliacao')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
-                                    <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação</span>
-                                    {modalSubTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
-                                  </button>
-                                )}
-                            </div>
-                        )}
+                        <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar h-14 shrink-0">
+                            <button onClick={() => setModalSubTab('status')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                                <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'status' ? 'text-ios-blue' : 'text-gray-400'}`}>Geral</span>
+                                {modalSubTab === 'status' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                            </button>
+                            <button onClick={() => setModalSubTab('consumidor')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                                <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'consumidor' ? 'text-ios-blue' : 'text-gray-400'}`}>Consumidor</span>
+                                {modalSubTab === 'consumidor' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                            </button>
+                            <button onClick={() => setModalSubTab('profissional')} className={`flex-1 min-w-[80px] h-full flex flex-col items-center justify-center transition-all relative group`}>
+                                <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${modalSubTab === 'profissional' ? 'text-ios-blue' : 'text-gray-400'}`}>Profissional</span>
+                                {modalSubTab === 'profissional' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}
+                            </button>
+                        </div>
                         
                         <div className="p-6 overflow-y-auto space-y-6 flex-1 no-scrollbar bg-white">
-                            
-                            {modalSubTab === 'geral' && (
-                                actingAsPlanning ? (
-                                    <div className="space-y-6 animate-in fade-in duration-300">
-                                        {isInternal && editingItem.planejamento?.[0]?.imagem_pedido && (
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente (Original)</label>
-                                                <div className="w-full h-48 bg-gray-50 rounded-[2rem] overflow-hidden border border-gray-100 shadow-inner">
-                                                    <img src={editingItem.planejamento[0].imagem_pedido} className="w-full h-full object-contain bg-gray-100" />
+                            {modalSubTab === 'status' && (
+                                <div className="space-y-6 animate-in fade-in duration-300">
+                                    {/* CORE INFO CARD - ALWAYS VISIBLE ON GERAL TAB */}
+                                    <div className="bg-white p-5 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-gray-200 border border-gray-100 overflow-hidden shadow-sm flex-shrink-0 flex items-center justify-center font-black text-gray-500">
+                                                    {selectedProfessional?.fotoperfil ? <img src={selectedProfessional.fotoperfil} className="w-full h-full object-cover" /> : <span>{selectedProfessional?.nome?.substring(0,2).toUpperCase() || 'N'}</span>}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">Profissional Alocado</p>
+                                                    <h4 className="font-black text-gray-900 text-sm truncate">{selectedProfessional?.nome || 'Não definido'}</h4>
                                                 </div>
                                             </div>
-                                        )}
-
-                                        {/* RELATO DO CONSUMIDOR ADICIONADO NO MODAL GERAL (PLANEJISTA) */}
-                                        {currentClientDescription && (
-                                            <div className="bg-yellow-50/50 p-5 rounded-3xl border border-yellow-100 shadow-sm">
-                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-2">
-                                                    <AlignLeft size={16} />
-                                                    <h4 className="text-[10px] font-black uppercase tracking-widest">Relato do Consumidor</h4>
-                                                </div>
-                                                <p className="text-xs font-bold text-gray-800 leading-relaxed italic shadow-inner bg-white/40 p-3 rounded-xl border border-yellow-50">
-                                                    "{currentClientDescription}"
-                                                </p>
+                                            <div className={`px-2.5 py-1.5 rounded-lg border text-[9px] font-black uppercase text-center min-w-[80px] shadow-sm ${getStatusColor(formData.status)}`}>
+                                                {formData.status.replace('_', ' ')}
                                             </div>
-                                        )}
-
-                                        <div className="space-y-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional Competente</label>
-                                                <select 
-                                                    className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none ${availableProfessionals.length === 0 ? 'border-red-200 bg-red-50' : ''}`} 
-                                                    value={formData.profissionalUuid} 
-                                                    onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
-                                                >
-                                                    <option value="">{availableProfessionals.length === 0 ? 'Nenhum profissional compatível nesta cidade' : 'Escolha um profissional...'}</option>
-                                                    {availableProfessionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
-                                                </select>
-                                                {availableProfessionals.length === 0 && (
-                                                    <div className="flex items-center gap-1.5 text-[10px] text-red-600 font-bold px-1 animate-pulse">
-                                                        <AlertTriangle size={12} />
-                                                        <span>Não há profissionais registrados para este serviço nesta cidade.</span>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {selectedProfessional && (
-                                                <div className="bg-blue-50/50 p-4 rounded-3xl border border-blue-100 flex items-center gap-4 animate-in slide-in-from-top-2 duration-300 shadow-sm">
-                                                    <div className="w-16 h-16 rounded-full border-4 border-white shadow-sm overflow-hidden flex-shrink-0 bg-white">
-                                                        <img 
-                                                            src={selectedProfessional.fotoperfil || `https://ui-avatars.com/api/?name=${selectedProfessional.nome}`} 
-                                                            className="w-full h-full object-cover" 
-                                                        />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1 leading-none">Profissional Alocado</p>
-                                                        <h4 className="font-black text-gray-900 text-sm truncate">{selectedProfessional.nome}</h4>
-                                                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
-                                                            <div className="flex items-center text-[10px] text-gray-600 font-bold">
-                                                                <MapPin size={12} className="mr-1 text-blue-400" />
-                                                                {selectedProfessional.cidades?.cidade || 'Local não informado'}
-                                                            </div>
-                                                            <div className="flex items-center text-[10px] text-gray-600 font-bold">
-                                                                <Phone size={12} className="mr-1 text-ios-blue" />
-                                                                {formatPhone(selectedProfessional.whatsapp)}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
                                         </div>
                                         
-                                        {isInternal && (extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:") || extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") || editingItem.planejamento?.[0]?.pagamento) && (
-                                            <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 shadow-sm divide-y divide-blue-100/50 space-y-5">
-                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:") && (
-                                                    <div className="space-y-2.5">
-                                                        <div className="flex items-center gap-2 text-blue-800">
-                                                            <Clock size={16} />
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Flexibilidade de Horário</h4>
-                                                        </div>
-                                                        <div className="bg-white/80 p-3 rounded-2xl border border-blue-100/50">
-                                                            <p className="text-xs font-bold text-blue-900 leading-relaxed italic">
-                                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:")}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {editingItem.planejamento?.[0]?.pagamento && (
-                                                    <div className="pt-5 space-y-2">
-                                                        <div className="flex items-center gap-2 text-green-700">
-                                                            <Wallet size={16} />
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Tipo de Pagamento</h4>
-                                                        </div>
-                                                        <p className="text-sm font-black text-green-900 ml-1">
-                                                            {editingItem.planejamento[0].pagamento}
-                                                        </p>
-                                                    </div>
-                                                )}
-
-                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") && (
-                                                    <div className="pt-5 space-y-2">
-                                                        <div className="flex items-center gap-2 text-purple-800">
-                                                            <CreditCard size={16} />
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Parcelamento Desejado</h4>
-                                                        </div>
-                                                        <p className="text-sm font-black text-purple-900 ml-1">
-                                                            {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:")}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-4">
-                                            <div className="flex items-center gap-2 mb-2 text-gray-600"><FileText size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Planejamento</h4></div>
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-gray-400 ml-1">Visita Técnica</label>
-                                                    <input 
-                                                        type="datetime-local" 
-                                                        className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" 
-                                                        value={formData.planejamentoVisita} 
-                                                        onChange={(e) => {
-                                                            const val = e.target.value;
-                                                            setFormData(prev => ({
-                                                                ...prev,
-                                                                planejamentoVisita: val
-                                                            }));
-                                                        }} 
-                                                    />
+                                        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-50">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-1.5 bg-blue-50 rounded-lg text-ios-blue">
+                                                    <Clock size={14} />
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-gray-400 ml-1">Execução Prevista</label>
-                                                    <input 
-                                                        type="datetime-local" 
-                                                        className="w-full bg-gray-50 border border-gray-100 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" 
-                                                        value={formData.planejamentoData} 
-                                                        onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})} 
-                                                    />
+                                                <div>
+                                                    <p className="text-[8px] font-black text-gray-400 uppercase leading-none mb-0.5">Visita Técnica</p>
+                                                    <p className="text-[10px] font-bold text-gray-900">
+                                                        {formData.planejamentoVisita ? new Date(formData.planejamentoVisita).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : 'A definir'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-1.5 bg-purple-50 rounded-lg text-purple-600">
+                                                    <Calendar size={14} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[8px] font-black text-gray-400 uppercase leading-none mb-0.5">Execução Prevista</p>
+                                                    <p className="text-[10px] font-bold text-gray-900">
+                                                        {formData.planejamentoData ? new Date(formData.planejamentoData).toLocaleString('pt-BR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'}) : 'A definir'}
+                                                    </p>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                ) : isProfessional ? (
-                                    <div className="space-y-6 animate-in fade-in duration-300">
-                                        {/* RELATO DO CONSUMIDOR ADICIONADO NO MODAL GERAL (PROFISSIONAL) */}
-                                        {currentClientDescription && (
-                                            <div className="bg-yellow-50/50 p-5 rounded-3xl border border-yellow-100 shadow-sm">
-                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-2">
-                                                    <AlignLeft size={16} />
-                                                    <h4 className="text-[10px] font-black uppercase tracking-widest">O que o cliente precisa:</h4>
-                                                </div>
-                                                <p className="text-xs font-bold text-gray-800 leading-relaxed italic shadow-inner bg-white/40 p-3 rounded-xl border border-yellow-50">
-                                                    "{currentClientDescription}"
-                                                </p>
-                                            </div>
-                                        )}
 
-                                        <div className="bg-gray-50 p-5 rounded-3xl border border-gray-100 shadow-inner">
-                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 block">Status do Serviço</label>
+                                    {/* SEUS GANHOS - VISIBLE FOR PROFESSIONALS */}
+                                    {isProfessional && (editingItem.orcamentos?.length || 0) > 0 && (
+                                        <div className="bg-green-50/80 p-6 rounded-[2rem] border border-green-100 flex items-center justify-between shadow-sm animate-in slide-in-from-right-4 duration-500">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-3 bg-green-500 text-white rounded-2xl shadow-lg shadow-green-200">
+                                                    <Wallet size={20} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] font-black text-green-700 uppercase tracking-[0.1em] mb-0.5">Seus Ganhos (Mão de Obra)</p>
+                                                    <p className="text-xl font-black text-green-900">R$ {editingItem.orcamentos![0].hh.toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                            <div className="bg-green-100 px-3 py-1 rounded-full text-[10px] font-black text-green-700 border border-green-200">
+                                                $
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* STATUS SELECT - ALWAYS VISIBLE FOR RESPONSIBLE PARTIES */}
+                                    {(isProfessional || isGestor) && (
+                                        <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 shadow-inner">
+                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-4 block">Status do Serviço</label>
                                             <select 
-                                                disabled={editingItem.status === 'concluido' || processingAction}
-                                                className="w-full bg-white border border-gray-200 rounded-xl p-4 text-sm font-black text-gray-900 outline-none shadow-sm appearance-none"
-                                                value={formData.status}
+                                                disabled={(isProfessional && editingItem.status === 'concluido') || processingAction} 
+                                                className="w-full bg-white border border-gray-200 rounded-xl p-4 text-sm font-black text-gray-900 outline-none shadow-sm appearance-none" 
+                                                value={formData.status} 
                                                 onChange={(e) => setFormData({...formData, status: e.target.value})}
                                             >
-                                                <option value="aprovado">Aprovado pelo Consumidor</option>
+                                                <option value="aguardando_profissional">Aguardando Aceite</option>
+                                                <option value="aprovado">Agendado</option>
                                                 <option value="executando">Executando</option>
                                                 <option value="concluido">Concluído</option>
                                                 <option value="cancelado">Cancelado</option>
                                             </select>
                                         </div>
+                                    )}
 
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                                                <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Data Agendada</p>
-                                                <p className="text-xs font-bold text-gray-900">{editingItem.planejamento?.[0]?.execucao ? new Date(editingItem.planejamento[0].execucao).toLocaleString('pt-BR') : 'A definir'}</p>
-                                            </div>
-                                            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                                                <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Ganhos (Mão de Obra)</p>
-                                                <p className="text-xs font-black text-green-700">R$ {editingItem.orcamentos?.[0]?.hh.toFixed(2) || '0.00'}</p>
+                                    {/* CLIENT INFO CARD - ALWAYS VISIBLE ON GERAL */}
+                                    <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 flex items-center space-x-4 shadow-sm">
+                                        <div className="w-12 h-12 rounded-2xl bg-white border border-blue-100 overflow-hidden flex-shrink-0 shadow-sm">
+                                            <img src={editingItem.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${editingItem.clienteData?.nome || 'U'}`} className="w-full h-full object-cover"/>
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-0.5">Cliente</p>
+                                            <p className="text-sm font-bold text-gray-900 truncate">{editingItem.clienteData?.nome}</p>
+                                            <p className="text-[10px] text-gray-500 font-medium flex items-center gap-1 mt-1 truncate">
+                                                <MapPin size={10}/> {editingItem.clienteData?.rua}, {editingItem.clienteData?.numero}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* ADDITIONAL FORMS BASED ON ROLE */}
+                                    {actingAsPlanning && (
+                                        <div className="space-y-6 pt-4 animate-in slide-in-from-top-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Alterar Profissional</label>
+                                                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none" value={formData.profissionalUuid} onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}>
+                                                    <option value="">Escolha um profissional...</option>
+                                                    {availableProfessionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
+                                                </select>
                                             </div>
                                         </div>
+                                    )}
 
-                                        <div className="bg-blue-50/50 p-5 rounded-3xl border border-blue-100 flex items-center space-x-4">
-                                            <div className="w-12 h-12 rounded-full bg-white border border-blue-100 overflow-hidden flex-shrink-0"><img src={editingItem.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${editingItem.clienteData?.nome || 'U'}`} className="w-full h-full object-cover"/></div>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-[9px] font-black text-blue-600 uppercase mb-0.5">Cliente</p>
-                                                <p className="text-sm font-bold text-gray-900 truncate">{editingItem.clienteData?.nome}</p>
-                                                <p className="text-[10px] text-gray-500 font-medium flex items-center gap-1 mt-1"><MapPin size={10}/> {editingItem.clienteData?.rua}, {editingItem.clienteData?.numero}</p>
+                                    {actingAsBudget && (
+                                        <div className="space-y-6 pt-4 animate-in slide-in-from-top-4">
+                                            <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 space-y-6 shadow-sm">
+                                                <div className="flex justify-between items-center border-b border-blue-100 pb-3">
+                                                    <h4 className="text-xs font-black text-blue-900 uppercase tracking-widest flex items-center"><DollarSign size={14} className="mr-1"/> Detalhamento</h4>
+                                                    <div className="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-black">Total: R$ {formData.orcamentoPreco.toFixed(2)}</div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1.5"><label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Custo Fixo</label><input type="number" step="0.01" disabled={isBudgetLocked} className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none disabled:bg-gray-100" value={formData.orcamentoCusto} onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value) || 0})}/></div>
+                                                    <div className="space-y-1.5"><label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Mão de Obra</label><input type="number" step="0.01" disabled={isBudgetLocked} className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none disabled:bg-gray-100" value={formData.orcamentoHH} onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value) || 0})}/></div>
+                                                    <div className="space-y-1.5"><label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Lucro</label><input type="number" step="0.01" disabled={isBudgetLocked} className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none disabled:bg-gray-100" value={formData.orcamentoLucro} onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value) || 0})}/></div>
+                                                    <div className="space-y-1.5"><label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Impostos (%)</label><input type="number" step="0.1" disabled={isBudgetLocked} className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none disabled:bg-gray-100" value={formData.orcamentoImposto} onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value) || 0})}/></div>
+                                                </div>
                                             </div>
                                         </div>
+                                    )}
+                                </div>
+                            )}
 
-                                        {editingItem.status === 'aguardando_profissional' && (
-                                            <div className="p-6 bg-cyan-50 rounded-[2.5rem] border border-cyan-100 space-y-4 shadow-sm">
-                                                <div className="flex items-center gap-2 text-cyan-800"><AlertCircle size={20}/><p className="text-xs font-black uppercase">Decisão Pendente</p></div>
-                                                <p className="text-xs text-cyan-700 font-medium leading-relaxed">O cliente aprovou o orçamento. Você aceita realizar este serviço na data sugerida?</p>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => handleProfessionalDecision(true)} disabled={processingAction} className="flex-[2] bg-black text-white py-4 rounded-2xl font-black text-xs shadow-xl active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={16}/> : 'ACEITAR SERVIÇO'}</button>
-                                                    <button onClick={() => handleProfessionalDecision(false)} disabled={processingAction} className="flex-1 bg-white border border-red-100 text-red-500 py-4 rounded-2xl font-black text-xs active:scale-95 transition-all">RECUSAR</button>
+                            {modalSubTab === 'consumidor' && (
+                                <div className="space-y-6 animate-in fade-in duration-300">
+                                    <div className="bg-yellow-50/50 p-6 rounded-[2.5rem] border border-yellow-100 shadow-sm">
+                                        <div className="flex items-center gap-2 text-yellow-700 mb-4"><UserCircle size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Observações do Consumidor</h4></div>
+                                        <p className="text-sm font-bold text-gray-800 leading-relaxed italic mb-6">"{currentClientDescription || "Nenhuma descrição."}"</p>
+                                        {editingItem.planejamento?.[0]?.imagem_pedido && (
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-yellow-600 uppercase tracking-widest ml-1">Mídia do Cliente</label>
+                                                <div className="w-full h-48 bg-gray-100 rounded-2xl overflow-hidden border border-yellow-100 group">
+                                                    {isMediaVideo(editingItem.planejamento[0].imagem_pedido) ? <video src={editingItem.planejamento[0].imagem_pedido} className="w-full h-full object-cover" controls /> : <img src={editingItem.planejamento[0].imagem_pedido} className="w-full h-full object-contain cursor-zoom-in" onClick={() => window.open(editingItem.planejamento![0].imagem_pedido!, '_blank')} />}
                                                 </div>
                                             </div>
                                         )}
                                     </div>
-                                ) : actingAsBudget ? (
-                                    <div className="space-y-6 animate-in fade-in duration-300">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {editingItem.planejamento?.[0]?.imagem_pedido && (
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente</label>
-                                                    <div className="w-full h-32 bg-gray-50 rounded-2xl overflow-hidden border border-gray-100 shadow-inner">
-                                                        <img src={editingItem.planejamento[0].imagem_pedido} className="w-full h-full object-contain" />
-                                                    </div>
-                                                </div>
-                                            )}
+
+                                    {/* EXIBIÇÃO DE FLEXIBILIDADE DE HORÁRIO */}
+                                    {currentClientFlexibility && (
+                                        <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 shadow-sm">
+                                            <div className="flex items-center gap-2 text-blue-700 mb-4">
+                                                <Clock size={18} />
+                                                <h4 className="text-[10px] font-black uppercase tracking-widest">Flexibilidade de Horário</h4>
+                                            </div>
+                                            <p className="text-sm font-bold text-blue-900 leading-relaxed italic">
+                                                "{currentClientFlexibility}"
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className={`p-6 rounded-[2.5rem] border shadow-sm ${editingItem.avaliacao ? 'bg-green-50 border-green-100' : 'bg-gray-50 border-gray-100'}`}>
+                                        <div className={`flex items-center gap-2 mb-4 ${editingItem.avaliacao ? 'text-green-700' : 'text-gray-400'}`}><Star size={18} fill={editingItem.avaliacao ? "currentColor" : "none"} /><h4 className="text-[10px] font-black uppercase tracking-widest">Avaliação</h4></div>
+                                        {editingItem.avaliacao ? (
                                             <div className="space-y-4">
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional Alocado</label>
-                                                    <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-900 flex items-center gap-2">
-                                                        <UserIcon size={14} className="text-gray-400" />
-                                                        {editingItem.profissionalData?.nome || 'Não definido'}
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Execução Marcada</label>
-                                                    <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 text-sm font-bold text-gray-900 flex items-center gap-2">
-                                                        <Calendar size={14} className="text-gray-400" />
-                                                        {editingItem.planejamento?.[0]?.execucao ? new Date(editingItem.planejamento[0].execucao).toLocaleString('pt-BR') : 'Não definida'}
-                                                    </div>
-                                                </div>
+                                                <div className="flex space-x-1">{[1,2,3,4,5].map(s => <Star key={s} size={18} className={s <= editingItem.avaliacao!.nota ? 'fill-green-500 text-green-500' : 'text-green-200'} />)}</div>
+                                                <p className="text-xs font-bold text-green-900 leading-relaxed italic">"{editingItem.avaliacao.comentario}"</p>
                                             </div>
-                                        </div>
-
-                                        {/* RELATO DO CONSUMIDOR ADICIONADO NO MODAL GERAL (ORÇAMENTISTA) */}
-                                        {currentClientDescription && (
-                                            <div className="bg-yellow-50/50 p-5 rounded-3xl border border-yellow-100 shadow-sm">
-                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-2">
-                                                    <AlignLeft size={16} />
-                                                    <h4 className="text-[10px] font-black uppercase tracking-widest">Problema Relatado</h4>
-                                                </div>
-                                                <p className="text-xs font-bold text-gray-800 leading-relaxed italic shadow-inner bg-white/40 p-3 rounded-xl border border-yellow-50">
-                                                    "{currentClientDescription}"
-                                                </p>
-                                            </div>
-                                        )}
-
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><Banknote size={12} className="mr-1"/> Pagamento Preferencial (Cliente)</label>
-                                            <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-sm font-black text-blue-900 flex items-center gap-2">
-                                                <CheckCircle size={16} className="text-blue-600" />
-                                                {editingItem.planejamento?.[0]?.pagamento || 'Não informado'}
-                                            </div>
-                                            {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") && (
-                                                <div className="mt-1 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg border border-purple-100 text-xs font-bold">
-                                                    Parcelamento desejado pelo cliente: {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:")}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status do Pedido</label>
-                                            <select className="w-full bg-white border border-gray-200 rounded-2xl p-3 text-sm font-black text-gray-900 outline-none shadow-sm" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
-                                                <option value="analise">Em Análise</option>
-                                                <option value="aguardando_aprovacao">Enviar para Aprovação</option>
-                                                <option value="cancelado">Cancelado</option>
-                                            </select>
-                                        </div>
-
-                                        <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 space-y-6 shadow-sm">
-                                            <div className="flex justify-between items-center border-b border-blue-100 pb-3">
-                                                <h4 className="text-xs font-black text-blue-900 uppercase tracking-widest flex items-center"><DollarSign size={14} className="mr-1"/> Detalhamento do Orçamento</h4>
-                                                <div className="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-black">Preço Final: R$ {formData.orcamentoPreco.toFixed(2)}</div>
-                                            </div>
-                                            
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Custo Fixo (Peças)</label>
-                                                    <input type="number" step="0.01" className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-300 outline-none" value={formData.orcamentoCusto} onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value) || 0})}/>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Mão de Obra</label>
-                                                    <input type="number" step="0.01" className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-300 outline-none" value={formData.orcamentoHH} onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value) || 0})}/>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Lucro Estimado</label>
-                                                    <input type="number" step="0.01" className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-300 outline-none" value={formData.orcamentoLucro} onChange={(e) => setFormData({...formData, orcamentoLucro: parseFloat(e.target.value) || 0})}/>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Imposto (%)</label>
-                                                    <input type="number" step="0.1" className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 focus:ring-2 focus:ring-blue-300 outline-none" value={formData.orcamentoImposto} onChange={(e) => setFormData({...formData, orcamentoImposto: parseFloat(e.target.value) || 0})}/>
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-4 pt-2">
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Tipo de Pagamento</label>
-                                                    <select className="w-full bg-white border border-blue-200 rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.orcamentoTipoPgto} onChange={(e) => setFormData({...formData, orcamentoTipoPgto: e.target.value})}>
-                                                        <option value="Dinheiro">Dinheiro</option>
-                                                        <option value="PIX">PIX</option>
-                                                        <option value="Cartão de Débito">Cartão de Débito</option>
-                                                        <option value="Cartão de Crédito">Cartão de Crédito</option>
-                                                    </select>
-                                                </div>
-
-                                                {formData.orcamentoTipoPgto === 'Cartão de Crédito' && (
-                                                    <div className="space-y-1.5 animate-in slide-in-from-top-2">
-                                                        <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Número de Parcelas</label>
-                                                        <select className="w-full bg-white border border-ios-blue rounded-xl p-3 text-sm font-bold text-gray-900 outline-none" value={formData.orcamentoParcelas} onChange={(e) => setFormData({...formData, orcamentoParcelas: parseInt(e.target.value)})}>
-                                                            {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n}x</option>)}
-                                                        </select>
-                                                    </div>
-                                                )}
-
-                                                <div className="space-y-1.5">
-                                                    <label className="text-[10px] font-bold text-blue-700 uppercase tracking-wider ml-1">Observação para o Cliente</label>
-                                                    <textarea className="w-full bg-white border border-blue-200 rounded-xl p-4 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[100px] resize-none" value={formData.orcamentoObs} onChange={(e) => setFormData({...formData, orcamentoObs: e.target.value})} placeholder="Mensagem que o cliente verá ao analisar o orçamento..."/>
-                                                </div>
-                                            </div>
-                                        </div>
+                                        ) : <p className="text-xs font-bold text-gray-400 italic text-center py-2">Aguardando avaliação.</p>}
                                     </div>
-                                ) : (
-                                    <>
-                                        {isInternal && editingItem.planejamento?.[0]?.imagem_pedido && (
-                                            <div className="space-y-2 mb-4">
-                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><ImageIcon size={12} className="mr-1"/> Foto do Cliente (Análise)</label>
-                                                <div className="w-full h-48 bg-gray-50 rounded-[2rem] overflow-hidden border border-gray-100 shadow-inner">
-                                                    <img src={editingItem.planejamento[0].imagem_pedido} className="w-full h-full object-contain bg-gray-100" />
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* RELATO DO CONSUMIDOR ADICIONADO NO MODAL GERAL (VISÃO GERAL/GESTOR) */}
-                                        {currentClientDescription && (
-                                            <div className="bg-yellow-50/50 p-5 rounded-3xl border border-yellow-100 shadow-sm mb-4">
-                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-2">
-                                                    <AlignLeft size={16} />
-                                                    <h4 className="text-[10px] font-black uppercase tracking-widest">Relato do Cliente</h4>
-                                                </div>
-                                                <p className="text-xs font-bold text-gray-800 leading-relaxed italic shadow-inner bg-white/40 p-3 rounded-xl border border-yellow-50">
-                                                    "{currentClientDescription}"
-                                                </p>
-                                            </div>
-                                        )}
-
-                                        {isInternal && (extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:") || extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") || editingItem.planejamento?.[0]?.pagamento) && (
-                                            <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 shadow-sm divide-y divide-blue-100/50 space-y-5 mb-4">
-                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:") && (
-                                                    <div className="space-y-2.5">
-                                                        <div className="flex items-center gap-2 text-blue-800">
-                                                            <Clock size={16} />
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Flexibilidade de Horário</h4>
-                                                        </div>
-                                                        <div className="bg-white/80 p-3 rounded-2xl border border-blue-100/50">
-                                                            <p className="text-xs font-bold text-blue-900 leading-relaxed italic">
-                                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:")}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {editingItem.planejamento?.[0]?.pagamento && (
-                                                    <div className="pt-5 space-y-2">
-                                                        <div className="flex items-center gap-2 text-green-700">
-                                                            <Wallet size={16} />
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Tipo de Pagamento</h4>
-                                                        </div>
-                                                        <p className="text-sm font-black text-green-900 ml-1">
-                                                            {editingItem.planejamento[0].pagamento}
-                                                        </p>
-                                                    </div>
-                                                )}
-
-                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") && (
-                                                    <div className="pt-5 space-y-2">
-                                                        <div className="flex items-center gap-2 text-purple-800">
-                                                            <CreditCard size={16} />
-                                                            <h4 className="text-[10px] font-black uppercase tracking-widest">Parcelamento Desejado</h4>
-                                                        </div>
-                                                        <p className="text-sm font-black text-purple-900 ml-1">
-                                                            {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:")}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Status</label>
-                                                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none capitalize" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})}>
-                                                    <option value="pendente">Pendente</option>
-                                                    <option value="analise">Em Análise</option>
-                                                    <option value="aguardando_aprovacao">Aguardando Aprovação</option>
-                                                    <option value="aguardando_profissional">Aguardando Profissional</option>
-                                                    <option value="aprovado">Aprovado pelo Consumidor</option>
-                                                    <option value="executando">Executando</option>
-                                                    <option value="concluido">Concluído</option>
-                                                    <option value="cancelado">Cancelado</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Profissional</label>
-                                                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-xs font-bold text-gray-900 outline-none" value={formData.profissionalUuid} onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}>
-                                                    <option value="">Selecione...</option>
-                                                    {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
-                                                </select>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-3">
-                                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Planejamento</h4>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1"><label className="text-[9px] font-bold text-gray-400">Execução</label><input type="datetime-local" className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold" value={formData.planejamentoData} onChange={(e) => setFormData({...formData, planejamentoData: e.target.value})}/></div>
-                                                <div className="space-y-1"><label className="text-[9px] font-bold text-gray-400">Visita</label><input type="datetime-local" className="w-full bg-white border border-gray-200 rounded-xl p-3 text-xs font-bold" value={formData.planejamentoVisita} onChange={(e) => setFormData({...formData, planejamentoVisita: e.target.value})}/></div>
-                                            </div>
-                                        </div>
-
-                                        {showBudgetForm && (
-                                            <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-4 animate-in slide-in-from-right-4">
-                                                <div className="flex justify-between items-center"><h4 className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center"><DollarSign size={12} className="mr-1"/> Orçamento</h4><div className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-black">Total: R$ {formData.orcamentoPreco.toFixed(2)}</div></div>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700">Custo Fixo</label><input type="number" step="0.01" className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold" value={formData.orcamentoCusto} onChange={(e) => setFormData({...formData, orcamentoCusto: parseFloat(e.target.value) || 0})}/></div>
-                                                    <div className="space-y-1"><label className="text-[9px] font-bold text-blue-700">Mão de Obra</label><input type="number" step="0.01" className="w-full bg-white border border-blue-100 rounded-xl p-3 text-xs font-bold" value={formData.orcamentoHH} onChange={(e) => setFormData({...formData, orcamentoHH: parseFloat(e.target.value) || 0})}/></div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </>
-                                )
-                            )}
-
-                            {modalSubTab === 'fotos' && (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    {isProfessional && editingItem.status === 'aguardando_profissional' ? (
-                                        <div className="bg-cyan-50 p-6 rounded-[2rem] border border-cyan-100 text-center space-y-3">
-                                            <AlertCircle size={32} className="text-cyan-600 mx-auto" />
-                                            <h4 className="text-sm font-bold text-cyan-900">Aceite o serviço primeiro</h4>
-                                            <p className="text-xs text-cyan-700 leading-relaxed">Você precisa aceitar este serviço na aba "Geral" antes de poder registrar fotos e vídeos de execução.</p>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            {uploadError && (
-                                                <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start space-x-3 animate-in slide-in-from-top-2 duration-300">
-                                                    <AlertTriangle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
-                                                    <p className="text-xs font-bold text-red-700 leading-tight">{uploadError}</p>
-                                                    <button onClick={() => setUploadError(null)} className="text-red-400 hover:text-red-600 transition-colors"><X size={16}/></button>
-                                                </div>
-                                            )}
-
-                                            <div>
-                                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Antes (Fotos/Vídeos)</h4>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    {formData.fotoantes.map((url, i) => (
-                                                        <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
-                                                            {isMediaVideo(url) ? (
-                                                                <video src={url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
-                                                            ) : (
-                                                                <img src={url} className="w-full h-full object-cover"/>
-                                                            )}
-                                                            {isProfessional && editingItem.status !== 'concluido' && editingItem.status !== 'aguardando_profissional' && (
-                                                                <button onClick={() => setFormData({...formData, fotoantes: formData.fotoantes.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors z-10">
-                                                                    <Trash2 size={14}/>
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                    {isProfessional && editingItem.status !== 'concluido' && editingItem.status !== 'aguardando_profissional' && (
-                                                        <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-ios-blue/50 transition-all group">
-                                                            {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : (
-                                                                <>
-                                                                    <div className="flex gap-2 mb-2">
-                                                                        <Camera size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
-                                                                        <Play size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
-                                                                    </div>
-                                                                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Adicionar Mídia</span>
-                                                                </>
-                                                            )}
-                                                            <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'antes')} />
-                                                        </label>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Depois (Fotos/Vídeos)</h4>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    {formData.fotodepois.map((url, i) => (
-                                                        <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
-                                                            {isMediaVideo(url) ? (
-                                                                <video src={url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
-                                                            ) : (
-                                                                <img src={url} className="w-full h-full object-cover"/>
-                                                            )}
-                                                            {isProfessional && editingItem.status !== 'concluido' && editingItem.status !== 'aguardando_profissional' && (
-                                                                <button onClick={() => setFormData({...formData, fotodepois: formData.fotodepois.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500/90 backdrop-blur-sm text-white p-1.5 rounded-full shadow-lg hover:bg-red-600 transition-colors z-10">
-                                                                    <Trash2 size={14}/>
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                    {isProfessional && editingItem.status !== 'concluido' && editingItem.status !== 'aguardando_profissional' && (
-                                                        <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-ios-blue/50 transition-all group">
-                                                            {uploading ? <Loader2 className="animate-spin text-ios-blue"/> : (
-                                                                <>
-                                                                    <div className="flex gap-2 mb-2">
-                                                                        <Camera size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
-                                                                        <Play size={24} className="text-gray-300 group-hover:text-ios-blue transition-colors" />
-                                                                    </div>
-                                                                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Adicionar Mídia</span>
-                                                                </>
-                                                            )}
-                                                            <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'depois')} />
-                                                        </label>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </>
-                                    )}
                                 </div>
                             )}
 
-                            {modalSubTab === 'obs' && (
+                            {modalSubTab === 'profissional' && (
                                 <div className="space-y-6 animate-in fade-in duration-300">
-                                    {(isProfessional || isInternal) && (
-                                        <div className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 space-y-4 shadow-sm">
-                                            <div className="flex items-center gap-2 text-blue-800">
-                                                <UserIcon size={18} />
-                                                <h4 className="text-[10px] font-black uppercase tracking-widest">Relato do Consumidor</h4>
-                                            </div>
-                                            <div className="bg-white/80 p-4 rounded-2xl border border-blue-100/50 text-sm font-bold text-blue-900 leading-relaxed italic shadow-inner">
-                                                "{extractOriginalDesc(editingItem.planejamento?.[0]?.descricao) || "Consumidor não deixou descrição."}"
-                                            </div>
-                                            {editingItem.planejamento?.[0]?.imagem_pedido && (
-                                                <div className="space-y-2">
-                                                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest ml-1 flex items-center">
-                                                        <ImageIcon size={10} className="mr-1" /> Foto Anexada pelo Cliente
-                                                    </p>
-                                                    <div className="w-full h-48 bg-gray-100 rounded-2xl overflow-hidden border border-blue-100 shadow-sm group">
-                                                        <img 
-                                                            src={editingItem.planejamento[0].imagem_pedido} 
-                                                            className="w-full h-full object-contain cursor-zoom-in hover:scale-105 transition-transform" 
-                                                            onClick={() => window.open(editingItem.planejamento![0].imagem_pedido!, '_blank')}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
+                                    <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 shadow-sm">
+                                        <div className="flex items-center gap-2 text-blue-800 mb-4"><ClipboardList size={18} /><h4 className="text-[10px] font-black uppercase tracking-widest">Notas Técnicas</h4></div>
+                                        <div className="w-full bg-white/60 border border-blue-100 rounded-2xl p-5 min-h-[120px]">
+                                            {isProfessional ? <textarea className="w-full bg-transparent text-sm font-bold text-gray-900 outline-none resize-none" value={formData.agendaObs} onChange={(e) => setFormData({...formData, agendaObs: e.target.value})} placeholder="Notas da execução..."/> : <p className="text-sm font-bold text-blue-900 leading-relaxed italic">{formData.agendaObs || "Nenhuma nota técnica."}</p>}
                                         </div>
-                                    )}
-
-                                    {!isProfessional && (
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Notas Internas / Técnicas</label>
-                                            <textarea 
-                                                disabled={editingItem.status === 'concluido' || !isGestor}
-                                                className="w-full bg-yellow-50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-900 min-h-[150px] leading-relaxed outline-none focus:ring-2 focus:ring-yellow-200 disabled:opacity-70 shadow-inner"
-                                                value={isInternal ? extractOriginalDesc(formData.planejamentoDesc) : formData.planejamentoDesc}
-                                                onChange={(e) => {
-                                                    if (isInternal) {
-                                                        const flex = extractMetadata(formData.planejamentoDesc, "[FLEXIBILIDADE DE AGENDA]:");
-                                                        setFormData({...formData, planejamentoDesc: flex ? `${e.target.value}\n\n[FLEXIBILIDADE DE AGENDA]:\n${flex}` : e.target.value});
-                                                    } else {
-                                                        setFormData({...formData, planejamentoDesc: e.target.value});
-                                                    }
-                                                }}
-                                                placeholder="Suas anotações sobre a execução deste serviço..."
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {modalSubTab === 'avaliacao' && editingItem.avaliacao && (
-                                <div className="bg-green-50 p-8 rounded-[2.5rem] border border-green-100 text-center space-y-4 animate-in zoom-in duration-300">
-                                    <div className="flex justify-center items-center gap-2 mb-2">
-                                        <div className="bg-white p-2 rounded-full shadow-sm"><UserCheck size={20} className="text-green-600"/></div>
-                                        <h5 className="font-black text-green-900 text-sm uppercase tracking-wider">Avaliação do Cliente</h5>
                                     </div>
-                                    <div className="flex justify-center space-x-1">
-                                        {[1, 2, 3, 4, 5].map((star) => (<Star key={star} size={28} className={star <= (editingItem.avaliacao?.nota || 0) ? 'fill-green-500 text-green-500' : 'text-green-200'} />))}
+                                    <div className="space-y-6">
+                                        <div className="space-y-3"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Execução (Antes)</label><div className="grid grid-cols-2 gap-3">
+                                            {formData.fotoantes.map((url, i) => (<div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative border border-gray-200">{isMediaVideo(url) ? <video src={url} className="w-full h-full object-cover" controls /> : <img src={url} className="w-full h-full object-cover" />}{isProfessional && editingItem.status !== 'concluido' && <button onClick={() => setFormData({...formData, fotoantes: formData.fotoantes.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full"><Trash2 size={12}/></button>}</div>))}
+                                            {isProfessional && editingItem.status !== 'concluido' && <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center cursor-pointer">{uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={24} className="text-gray-300" />}<input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'antes')} /></label>}
+                                        </div></div>
+                                        <div className="space-y-3"><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Conclusão (Depois)</label><div className="grid grid-cols-2 gap-3">
+                                            {formData.fotodepois.map((url, i) => (<div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative border border-gray-200">{isMediaVideo(url) ? <video src={url} className="w-full h-full object-cover" controls /> : <img src={url} className="w-full h-full object-cover" />}{isProfessional && editingItem.status !== 'concluido' && <button onClick={() => setFormData({...formData, fotodepois: formData.fotodepois.filter((_, idx) => idx !== i)})} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full"><Trash2 size={12}/></button>}</div>))}
+                                            {isProfessional && editingItem.status !== 'concluido' && <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center cursor-pointer">{uploading ? <Loader2 className="animate-spin text-ios-blue"/> : <Camera size={24} className="text-gray-300" />}<input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleMediaUpload(e, 'depois')} /></label>}
+                                        </div></div>
                                     </div>
-                                    <p className="text-base font-bold text-green-800 leading-relaxed italic mt-4">"{editingItem.avaliacao?.comentario}"</p>
                                 </div>
                             )}
                         </div>
                         
-                        <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto space-y-3">
-                            {actingAsPlanning ? (
-                                <button onClick={handleSendToBudget} disabled={saving || availableProfessionals.length === 0} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar para Orçamento</span></>}</button>
+                        <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto">
+                            {isProfessional && formData.status === 'aguardando_profissional' ? (
+                                <div className="flex gap-3 animate-in slide-in-from-bottom-2">
+                                    <button onClick={() => handleProfessionalDecision(true)} disabled={processingAction} className="flex-[2] bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">
+                                        {processingAction ? <Loader2 className="animate-spin" size={18}/> : <><ThumbsUp size={18}/><span>Aceitar Serviço</span></>}
+                                    </button>
+                                    <button onClick={() => handleProfessionalDecision(false)} disabled={processingAction} className="flex-1 bg-white border border-red-100 text-red-500 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all">
+                                        <ThumbsDown size={14}/><span>Recusar</span>
+                                    </button>
+                                </div>
+                            ) : actingAsPlanning ? (
+                                <button onClick={handleSendToBudget} disabled={saving || !formData.profissionalUuid} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar para Orçamento</span></>}</button>
                             ) : actingAsBudget ? (
-                                <button onClick={handleSendToConsumer} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar Orçamento</span></>}</button>
+                                <button onClick={handleSendToConsumer} disabled={saving || isBudgetLocked} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">
+                                    {saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>{isBudgetLocked ? 'Orçamento Bloqueado' : 'Enviar Orçamento'}</span></>}
+                                </button>
                             ) : (
-                                <button onClick={handleSave} disabled={saving || editingItem.status === 'concluido'} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}</button>
+                                <button onClick={handleSave} disabled={saving || (editingItem.status === 'concluido' && isProfessional && !!editingItem.avaliacao)} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}</button>
                             )}
                         </div>
                     </div>
