@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { Chave, Geral, User, Orcamento, Planejamento, Avaliacao } from '../types';
 import { 
@@ -7,7 +7,7 @@ import {
     User as UserIcon, Calendar, DollarSign, CheckCircle, 
     AlertTriangle, ChevronRight, Ban, Clock, Briefcase, MapPin,
     Wallet, CreditCard, LayoutGrid, List, Package, Trash2, Hash, Percent, Calculator, Lock, ArrowRightCircle, Bell, Smartphone, Banknote, Camera, ThumbsUp, Star, UserCheck, ShieldCheck,
-    AlertCircle, Play, Image as ImageIcon, Phone
+    AlertCircle, Play, Image as ImageIcon, Phone, AlignLeft
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -31,6 +31,8 @@ interface NotificationItem {
 
 type ModalTab = 'geral' | 'fotos' | 'obs' | 'avaliacao';
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
 const Chamados: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'novos' | 'orcamentos' | 'execucao' | 'historico'>('novos');
     const [modalSubTab, setModalSubTab] = useState<ModalTab>('geral');
@@ -49,6 +51,7 @@ const Chamados: React.FC = () => {
     const [editingItem, setEditingItem] = useState<ChamadoExtended | null>(null);
     const [saving, setSaving] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadError, setUploadError] = useState<string | null>(null);
     const [processingAction, setProcessingAction] = useState(false);
     const [showBudgetForm, setShowBudgetForm] = useState(false);
 
@@ -74,7 +77,7 @@ const Chamados: React.FC = () => {
         fotodepois: [] as string[]
     });
 
-    const [professionals, setProfessionals] = useState<any[]>([]);
+    const [professionals, setProfessionals] = useState<User[]>([]);
 
     const allTabs = [
         { id: 'novos', label: 'Novos / Pendentes', icon: AlertTriangle },
@@ -91,9 +94,8 @@ const Chamados: React.FC = () => {
 
     const isMediaVideo = (url: string) => {
         if (!url) return false;
-        // Extrair apenas o path antes dos parâmetros de consulta (?token, etc)
         const cleanPath = url.split('?')[0].toLowerCase();
-        const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime', '.m4v'];
+        const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime', '.m4v', '.3gp', '.mkv'];
         return videoExtensions.some(ext => cleanPath.endsWith(ext)) || url.toLowerCase().includes('video');
     };
 
@@ -251,8 +253,12 @@ const Chamados: React.FC = () => {
     };
 
     const fetchProfessionals = async () => {
-        const { data } = await supabase.from('users').select('*, cidades(cidade)').ilike('tipo', 'profissional').eq('ativo', true);
-        if(data) setProfessionals(data);
+        const { data } = await supabase
+            .from('users')
+            .select('uuid, nome, fotoperfil, whatsapp, cidade, atividade, cidades(cidade)')
+            .ilike('tipo', 'profissional')
+            .eq('ativo', true);
+        if(data) setProfessionals(data as User[]);
     };
 
     const getFilteredTickets = () => {
@@ -288,6 +294,7 @@ const Chamados: React.FC = () => {
     const handleEdit = (ticket: ChamadoExtended) => {
         setEditingItem(ticket);
         setModalSubTab('geral');
+        setUploadError(null);
         const budget = ticket.orcamentos?.[0];
         const plan = ticket.planejamento?.[0];
         const status = (ticket.status || 'pendente').toLowerCase();
@@ -297,12 +304,11 @@ const Chamados: React.FC = () => {
         
         setShowBudgetForm(shouldShowBudget);
         
-        // REGRA: Se a visita for nula, pré-preenche com a data solicitada pelo consumidor (execucao)
         const consumerRequestedDate = plan?.execucao ? toLocalISOString(plan.execucao) : '';
         const initialVisita = plan?.visita ? toLocalISOString(plan.visita) : consumerRequestedDate;
 
         setFormData({
-            profissionalUuid: (ticket.profissional as string) || '',
+            profissionalUuid: (typeof ticket.profissional === 'string' ? ticket.profissional : (ticket.profissional as any)?.uuid) || '',
             status: status, 
             orcamentoPreco: budget?.preco || 0,
             orcamentoCusto: budget?.custofixo || 0,
@@ -391,7 +397,7 @@ const Chamados: React.FC = () => {
                 await supabase.from('chaves').update({ status: 'aprovado' }).eq('id', editingItem.id);
             } else {
                 await supabase.from('chaves').update({ status: 'pendente', profissional: null }).eq('id', editingItem.id);
-                await supabase.from('agenda').delete().eq('id', editingItem.id); // Ajuste no delete para ID da agenda
+                await supabase.from('agenda').delete().eq('id', editingItem.id);
             }
             await fetchData(); setIsModalOpen(false);
             alert(accept ? "Serviço aceito!" : "Serviço recusado.");
@@ -400,19 +406,40 @@ const Chamados: React.FC = () => {
 
     const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'antes' | 'depois') => {
         if (!isProfessional || !e.target.files?.length) return;
+        
+        const file = e.target.files[0];
+        setUploadError(null);
+        
+        if (file.size > MAX_FILE_SIZE) {
+            const sizeInMb = (file.size / 1024 / 1024).toFixed(1);
+            setUploadError(`O vídeo selecionado (${sizeInMb}MB) é maior que o tamanho máximo suportado de 50MB.`);
+            e.target.value = '';
+            return;
+        }
+
         setUploading(true);
         try {
-            const file = e.target.files[0];
-            const fileExt = file.name.split('.').pop();
+            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
             const path = `pedidos/${editingItem?.chaveunica || 'order'}_${target}_${Date.now()}.${fileExt}`;
-            const { error } = await supabase.storage.from('imagens').upload(path, file);
+            
+            const { error } = await supabase.storage.from('imagens').upload(path, file, {
+                contentType: file.type || undefined,
+                cacheControl: '3600',
+                upsert: false
+            });
+            
             if (error) throw error;
             const { data } = supabase.storage.from('imagens').getPublicUrl(path);
             setFormData(prev => ({
                 ...prev,
                 [target === 'antes' ? 'fotoantes' : 'fotodepois']: [...prev[target === 'antes' ? 'fotoantes' : 'fotodepois'], data.publicUrl]
             }));
-        } catch (error: any) { alert(error.message); } finally { setUploading(false); }
+        } catch (error: any) { 
+            console.error("Upload error:", error);
+            setUploadError("Ocorreu um erro ao enviar o arquivo. Tente novamente.");
+        } finally { 
+            setUploading(false); 
+        }
     };
 
     const handleSendToBudget = async () => {
@@ -474,7 +501,23 @@ const Chamados: React.FC = () => {
     const actingAsPlanning = isPlanejista || (isGestor && formData.status === 'pendente');
     const actingAsBudget = isOrcamentista || (isGestor && formData.status === 'analise');
 
-    const selectedProfessional = professionals.find(p => p.uuid === formData.profissionalUuid);
+    // FILTRO DOS PROFISSIONAIS: Cidade do Chamado (que é a do consumidor) + Especialidade da Tarefa
+    const availableProfessionals = useMemo(() => {
+        if (!editingItem) return [];
+        return professionals.filter(p => {
+            const matchesCity = p.cidade === editingItem.cidade;
+            const matchesSpecialty = p.atividade?.includes(editingItem.atividade);
+            return matchesCity && matchesSpecialty;
+        });
+    }, [professionals, editingItem]);
+
+    const selectedProfessional = useMemo(() => {
+        return professionals.find(p => p.uuid === formData.profissionalUuid);
+    }, [professionals, formData.profissionalUuid]);
+
+    const currentClientDescription = useMemo(() => {
+        return extractOriginalDesc(editingItem?.planejamento?.[0]?.descricao);
+    }, [editingItem]);
 
     return (
         <div className="min-h-screen bg-ios-bg pb-20">
@@ -515,6 +558,7 @@ const Chamados: React.FC = () => {
                         const flexibility = extractFlexibility(t.planejamento?.[0]?.descricao);
                         const installmentsRequested = extractInstallments(t.planejamento?.[0]?.descricao);
                         const paymentMethod = t.planejamento?.[0]?.pagamento;
+                        const clientDescription = extractOriginalDesc(t.planejamento?.[0]?.descricao);
                         
                         return (
                             <div key={t.id} onClick={() => handleEdit(t)} className="bg-white p-5 rounded-[2rem] shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer relative overflow-hidden group">
@@ -537,29 +581,44 @@ const Chamados: React.FC = () => {
                                 </div>
                                 <div className="bg-gray-50 p-3 rounded-xl flex items-center space-x-2 mb-3"><div className="w-8 h-8 rounded-full bg-white overflow-hidden border border-gray-100"><img src={t.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${t.clienteData?.nome || 'U'}`} className="w-full h-full object-cover"/></div><div className="overflow-hidden"><p className="text-[10px] font-bold text-gray-400 uppercase">Cliente</p><p className="text-xs font-bold text-gray-900 truncate">{t.clienteData?.nome}</p></div></div>
                                 
-                                {isInternal && (flexibility || installmentsRequested || paymentMethod) && (
-                                    <div className="mb-3 space-y-1.5">
-                                        {flexibility && (
-                                            <div className="px-3 py-2 bg-blue-50/50 border border-blue-100 rounded-xl">
-                                                <p className="text-[9px] font-black text-blue-600 uppercase tracking-wider flex items-center gap-1 mb-1">
-                                                    <Clock size={10} /> Flexibilidade: <span className="text-blue-900 italic">"{flexibility}"</span>
+                                {isInternal && (
+                                    <div className="mb-3 space-y-2">
+                                        {/* RELATO DO CONSUMIDOR NO CARD */}
+                                        {clientDescription && (
+                                            <div className="px-4 py-3 bg-yellow-50/50 border border-yellow-100 rounded-2xl shadow-sm">
+                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-1.5">
+                                                    <AlignLeft size={14} />
+                                                    <span className="text-[10px] font-black uppercase tracking-wider">Relato do Cliente:</span>
+                                                </div>
+                                                <p className="text-xs font-bold text-gray-800 line-clamp-3 leading-relaxed italic">
+                                                    "{clientDescription}"
                                                 </p>
                                             </div>
                                         )}
-                                        {paymentMethod && (
-                                            <div className="px-3 py-2 bg-green-50/50 border border-green-100 rounded-xl">
-                                                <p className="text-[9px] font-black text-green-600 uppercase tracking-wider flex items-center gap-1">
-                                                    <Wallet size={10} /> Pagamento: {paymentMethod}
-                                                </p>
-                                            </div>
-                                        )}
-                                        {installmentsRequested && (
-                                            <div className="px-3 py-2 bg-purple-50/50 border border-purple-100 rounded-xl">
-                                                <p className="text-[9px] font-black text-purple-600 uppercase tracking-wider flex items-center gap-1">
-                                                    <CreditCard size={10} /> Parcelas: {installmentsRequested}
-                                                </p>
-                                            </div>
-                                        )}
+
+                                        <div className="space-y-1.5">
+                                            {flexibility && (
+                                                <div className="px-3 py-2 bg-blue-50/50 border border-blue-100 rounded-xl">
+                                                    <p className="text-[9px] font-black text-blue-600 uppercase tracking-wider flex items-center gap-1 mb-1">
+                                                        <Clock size={10} /> Flexibilidade: <span className="text-blue-900 italic">"{flexibility}"</span>
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {paymentMethod && (
+                                                <div className="px-3 py-2 bg-green-50/50 border border-green-100 rounded-xl">
+                                                    <p className="text-[9px] font-black text-green-600 uppercase tracking-wider flex items-center gap-1">
+                                                        <Wallet size={10} /> Pagamento: {paymentMethod}
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {installmentsRequested && (
+                                                <div className="px-3 py-2 bg-purple-50/50 border border-purple-100 rounded-xl">
+                                                    <p className="text-[9px] font-black text-purple-600 uppercase tracking-wider flex items-center gap-1">
+                                                        <CreditCard size={10} /> Parcelas: {installmentsRequested}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 
@@ -627,13 +686,36 @@ const Chamados: React.FC = () => {
                                             </div>
                                         )}
 
+                                        {/* RELATO DO CONSUMIDOR ADICIONADO NO MODAL GERAL (PLANEJISTA) */}
+                                        {currentClientDescription && (
+                                            <div className="bg-yellow-50/50 p-5 rounded-3xl border border-yellow-100 shadow-sm">
+                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-2">
+                                                    <AlignLeft size={16} />
+                                                    <h4 className="text-[10px] font-black uppercase tracking-widest">Relato do Consumidor</h4>
+                                                </div>
+                                                <p className="text-xs font-bold text-gray-800 leading-relaxed italic shadow-inner bg-white/40 p-3 rounded-xl border border-yellow-50">
+                                                    "{currentClientDescription}"
+                                                </p>
+                                            </div>
+                                        )}
+
                                         <div className="space-y-4">
                                             <div className="space-y-2">
-                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional</label>
-                                                <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none" value={formData.profissionalUuid} onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}>
-                                                    <option value="">Escolha um profissional...</option>
-                                                    {professionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Selecionar Profissional Competente</label>
+                                                <select 
+                                                    className={`w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none ${availableProfessionals.length === 0 ? 'border-red-200 bg-red-50' : ''}`} 
+                                                    value={formData.profissionalUuid} 
+                                                    onChange={(e) => setFormData({...formData, profissionalUuid: e.target.value})}
+                                                >
+                                                    <option value="">{availableProfessionals.length === 0 ? 'Nenhum profissional compatível nesta cidade' : 'Escolha um profissional...'}</option>
+                                                    {availableProfessionals.map(p => (<option key={p.uuid} value={p.uuid}>{p.nome}</option>))}
                                                 </select>
+                                                {availableProfessionals.length === 0 && (
+                                                    <div className="flex items-center gap-1.5 text-[10px] text-red-600 font-bold px-1 animate-pulse">
+                                                        <AlertTriangle size={12} />
+                                                        <span>Não há profissionais registrados para este serviço nesta cidade.</span>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {selectedProfessional && (
@@ -645,7 +727,7 @@ const Chamados: React.FC = () => {
                                                         />
                                                     </div>
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1 leading-none">Profissional Escalado</p>
+                                                        <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mb-1 leading-none">Profissional Alocado</p>
                                                         <h4 className="font-black text-gray-900 text-sm truncate">{selectedProfessional.nome}</h4>
                                                         <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
                                                             <div className="flex items-center text-[10px] text-gray-600 font-bold">
@@ -662,9 +744,9 @@ const Chamados: React.FC = () => {
                                             )}
                                         </div>
                                         
-                                        {isInternal && (extractFlexibility(editingItem.planejamento?.[0]?.descricao) || extractInstallments(editingItem.planejamento?.[0]?.descricao) || editingItem.planejamento?.[0]?.pagamento) && (
+                                        {isInternal && (extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:") || extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") || editingItem.planejamento?.[0]?.pagamento) && (
                                             <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 shadow-sm divide-y divide-blue-100/50 space-y-5">
-                                                {extractFlexibility(editingItem.planejamento?.[0]?.descricao) && (
+                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:") && (
                                                     <div className="space-y-2.5">
                                                         <div className="flex items-center gap-2 text-blue-800">
                                                             <Clock size={16} />
@@ -672,7 +754,7 @@ const Chamados: React.FC = () => {
                                                         </div>
                                                         <div className="bg-white/80 p-3 rounded-2xl border border-blue-100/50">
                                                             <p className="text-xs font-bold text-blue-900 leading-relaxed italic">
-                                                                {extractFlexibility(editingItem.planejamento?.[0]?.descricao)}
+                                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:")}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -690,14 +772,14 @@ const Chamados: React.FC = () => {
                                                     </div>
                                                 )}
 
-                                                {extractInstallments(editingItem.planejamento?.[0]?.descricao) && (
+                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") && (
                                                     <div className="pt-5 space-y-2">
                                                         <div className="flex items-center gap-2 text-purple-800">
                                                             <CreditCard size={16} />
                                                             <h4 className="text-[10px] font-black uppercase tracking-widest">Parcelamento Desejado</h4>
                                                         </div>
                                                         <p className="text-sm font-black text-purple-900 ml-1">
-                                                            {extractInstallments(editingItem.planejamento?.[0]?.descricao)}
+                                                            {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:")}
                                                         </p>
                                                     </div>
                                                 )}
@@ -736,6 +818,19 @@ const Chamados: React.FC = () => {
                                     </div>
                                 ) : isProfessional ? (
                                     <div className="space-y-6 animate-in fade-in duration-300">
+                                        {/* RELATO DO CONSUMIDOR ADICIONADO NO MODAL GERAL (PROFISSIONAL) */}
+                                        {currentClientDescription && (
+                                            <div className="bg-yellow-50/50 p-5 rounded-3xl border border-yellow-100 shadow-sm">
+                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-2">
+                                                    <AlignLeft size={16} />
+                                                    <h4 className="text-[10px] font-black uppercase tracking-widest">O que o cliente precisa:</h4>
+                                                </div>
+                                                <p className="text-xs font-bold text-gray-800 leading-relaxed italic shadow-inner bg-white/40 p-3 rounded-xl border border-yellow-50">
+                                                    "{currentClientDescription}"
+                                                </p>
+                                            </div>
+                                        )}
+
                                         <div className="bg-gray-50 p-5 rounded-3xl border border-gray-100 shadow-inner">
                                             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 block">Status do Serviço</label>
                                             <select 
@@ -811,15 +906,28 @@ const Chamados: React.FC = () => {
                                             </div>
                                         </div>
 
+                                        {/* RELATO DO CONSUMIDOR ADICIONADO NO MODAL GERAL (ORÇAMENTISTA) */}
+                                        {currentClientDescription && (
+                                            <div className="bg-yellow-50/50 p-5 rounded-3xl border border-yellow-100 shadow-sm">
+                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-2">
+                                                    <AlignLeft size={16} />
+                                                    <h4 className="text-[10px] font-black uppercase tracking-widest">Problema Relatado</h4>
+                                                </div>
+                                                <p className="text-xs font-bold text-gray-800 leading-relaxed italic shadow-inner bg-white/40 p-3 rounded-xl border border-yellow-50">
+                                                    "{currentClientDescription}"
+                                                </p>
+                                            </div>
+                                        )}
+
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1 flex items-center"><Banknote size={12} className="mr-1"/> Pagamento Preferencial (Cliente)</label>
                                             <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-sm font-black text-blue-900 flex items-center gap-2">
                                                 <CheckCircle size={16} className="text-blue-600" />
                                                 {editingItem.planejamento?.[0]?.pagamento || 'Não informado'}
                                             </div>
-                                            {extractInstallments(editingItem.planejamento?.[0]?.descricao) && (
+                                            {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") && (
                                                 <div className="mt-1 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg border border-purple-100 text-xs font-bold">
-                                                    Parcelamento desejado pelo cliente: {extractInstallments(editingItem.planejamento?.[0]?.descricao)}
+                                                    Parcelamento desejado pelo cliente: {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:")}
                                                 </div>
                                             )}
                                         </div>
@@ -896,9 +1004,22 @@ const Chamados: React.FC = () => {
                                             </div>
                                         )}
 
-                                        {isInternal && (extractFlexibility(editingItem.planejamento?.[0]?.descricao) || extractInstallments(editingItem.planejamento?.[0]?.descricao) || editingItem.planejamento?.[0]?.pagamento) && (
+                                        {/* RELATO DO CONSUMIDOR ADICIONADO NO MODAL GERAL (VISÃO GERAL/GESTOR) */}
+                                        {currentClientDescription && (
+                                            <div className="bg-yellow-50/50 p-5 rounded-3xl border border-yellow-100 shadow-sm mb-4">
+                                                <div className="flex items-center gap-1.5 text-yellow-700 mb-2">
+                                                    <AlignLeft size={16} />
+                                                    <h4 className="text-[10px] font-black uppercase tracking-widest">Relato do Cliente</h4>
+                                                </div>
+                                                <p className="text-xs font-bold text-gray-800 leading-relaxed italic shadow-inner bg-white/40 p-3 rounded-xl border border-yellow-50">
+                                                    "{currentClientDescription}"
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {isInternal && (extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:") || extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") || editingItem.planejamento?.[0]?.pagamento) && (
                                             <div className="bg-blue-50/50 p-6 rounded-[2.5rem] border border-blue-100 shadow-sm divide-y divide-blue-100/50 space-y-5 mb-4">
-                                                {extractFlexibility(editingItem.planejamento?.[0]?.descricao) && (
+                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:") && (
                                                     <div className="space-y-2.5">
                                                         <div className="flex items-center gap-2 text-blue-800">
                                                             <Clock size={16} />
@@ -906,7 +1027,7 @@ const Chamados: React.FC = () => {
                                                         </div>
                                                         <div className="bg-white/80 p-3 rounded-2xl border border-blue-100/50">
                                                             <p className="text-xs font-bold text-blue-900 leading-relaxed italic">
-                                                                {extractFlexibility(editingItem.planejamento?.[0]?.descricao)}
+                                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[FLEXIBILIDADE DE AGENDA]:")}
                                                             </p>
                                                         </div>
                                                     </div>
@@ -924,14 +1045,14 @@ const Chamados: React.FC = () => {
                                                     </div>
                                                 )}
 
-                                                {extractInstallments(editingItem.planejamento?.[0]?.descricao) && (
+                                                {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:") && (
                                                     <div className="pt-5 space-y-2">
                                                         <div className="flex items-center gap-2 text-purple-800">
                                                             <CreditCard size={16} />
                                                             <h4 className="text-[10px] font-black uppercase tracking-widest">Parcelamento Desejado</h4>
                                                         </div>
                                                         <p className="text-sm font-black text-purple-900 ml-1">
-                                                            {extractInstallments(editingItem.planejamento?.[0]?.descricao)}
+                                                            {extractMetadata(editingItem?.planejamento?.[0]?.descricao, "[PARCELAMENTO DESEJADO]:")}
                                                         </p>
                                                     </div>
                                                 )}
@@ -992,13 +1113,21 @@ const Chamados: React.FC = () => {
                                         </div>
                                     ) : (
                                         <>
+                                            {uploadError && (
+                                                <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start space-x-3 animate-in slide-in-from-top-2 duration-300">
+                                                    <AlertTriangle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
+                                                    <p className="text-xs font-bold text-red-700 leading-tight">{uploadError}</p>
+                                                    <button onClick={() => setUploadError(null)} className="text-red-400 hover:text-red-600 transition-colors"><X size={16}/></button>
+                                                </div>
+                                            )}
+
                                             <div>
                                                 <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 ml-1">Antes (Fotos/Vídeos)</h4>
                                                 <div className="grid grid-cols-2 gap-3">
                                                     {formData.fotoantes.map((url, i) => (
                                                         <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
                                                             {isMediaVideo(url) ? (
-                                                                <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                                                <video src={url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
                                                             ) : (
                                                                 <img src={url} className="w-full h-full object-cover"/>
                                                             )}
@@ -1031,7 +1160,7 @@ const Chamados: React.FC = () => {
                                                     {formData.fotodepois.map((url, i) => (
                                                         <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200 shadow-sm">
                                                             {isMediaVideo(url) ? (
-                                                                <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                                                <video src={url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
                                                             ) : (
                                                                 <img src={url} className="w-full h-full object-cover"/>
                                                             )}
@@ -1100,7 +1229,7 @@ const Chamados: React.FC = () => {
                                                 value={isInternal ? extractOriginalDesc(formData.planejamentoDesc) : formData.planejamentoDesc}
                                                 onChange={(e) => {
                                                     if (isInternal) {
-                                                        const flex = extractFlexibility(formData.planejamentoDesc);
+                                                        const flex = extractMetadata(formData.planejamentoDesc, "[FLEXIBILIDADE DE AGENDA]:");
                                                         setFormData({...formData, planejamentoDesc: flex ? `${e.target.value}\n\n[FLEXIBILIDADE DE AGENDA]:\n${flex}` : e.target.value});
                                                     } else {
                                                         setFormData({...formData, planejamentoDesc: e.target.value});
@@ -1129,7 +1258,7 @@ const Chamados: React.FC = () => {
                         
                         <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto space-y-3">
                             {actingAsPlanning ? (
-                                <button onClick={handleSendToBudget} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar para Orçamento</span></>}</button>
+                                <button onClick={handleSendToBudget} disabled={saving || availableProfessionals.length === 0} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2 disabled:opacity-50">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar para Orçamento</span></>}</button>
                             ) : actingAsBudget ? (
                                 <button onClick={handleSendToConsumer} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl active:scale-[0.98] transition-all flex justify-center items-center gap-2">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar Orçamento</span></>}</button>
                             ) : (

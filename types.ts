@@ -94,6 +94,8 @@ export interface Chave {
   chaveunica: string;
   status: string;
   atividade: number;
+  // FIX: Added missing 'cidade' property to Chave interface to resolve filtering error in Chamados.tsx
+  cidade: number;
   created_at: string;
   // Execution Photos
   fotoantes?: string[];

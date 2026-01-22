@@ -14,6 +14,8 @@ interface NotificationItem {
   read: boolean;
 }
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
 const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<User | null>(null);
@@ -225,9 +227,21 @@ const Profile: React.FC = () => {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!canEdit || !e.target.files?.length || !profile) return;
+      
+      const file = e.target.files[0];
+      
+      // VALIDAÇÃO EXPLÍCITA DE TAMANHO
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`O arquivo da foto é muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). O limite máximo permitido para uploads é de 50MB.`);
+        return;
+      }
+
       setUploadingPhoto(true); setMessage(null);
-      const file = e.target.files[0], fileExt = file.name.split('.').pop(), fileName = `perfil/${profile.uuid}_${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('imagens').upload(fileName, file, { upsert: true });
+      const fileExt = file.name.split('.').pop(), fileName = `perfil/${profile.uuid}_${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('imagens').upload(fileName, file, { 
+        upsert: true,
+        contentType: file.type || undefined
+      });
       if (uploadError) throw uploadError;
       const { data } = supabase.storage.from('imagens').getPublicUrl(fileName);
       const { error: updateError } = await supabase.from('users').update({ fotoperfil: data.publicUrl }).eq('id', profile.id);
@@ -266,7 +280,7 @@ const Profile: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-ios-bg pb-20">
-      {/* HEADER: Aumentado z-index para z-40 */}
+      {/* Header */}
       <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-40 border-b border-gray-200">
         <div className="flex justify-between items-center">
              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Meu Perfil</h1>
@@ -276,7 +290,6 @@ const Profile: React.FC = () => {
                     {notifications.length > 0 && <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full ring-1 ring-white"></span>}
                 </button>
                 {showNotifications && (
-                    /* DROPDOWN: Aumentado z-index para z-[100] */
                     <div className="absolute right-0 top-12 w-80 bg-white/95 backdrop-blur-xl border border-gray-200 shadow-2xl rounded-[1.5rem] overflow-hidden z-[100] animate-in fade-in slide-in-from-top-2">
                         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50"><h3 className="font-bold text-gray-900 text-sm">Notificações</h3><button onClick={() => setShowNotifications(false)}><X size={16} className="text-gray-400"/></button></div>
                         <div className="max-h-64 overflow-y-auto">
@@ -316,7 +329,7 @@ const Profile: React.FC = () => {
           <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Nome Completo</label><div className="relative"><UserIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={nome} onChange={(e) => setNome(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="Ex: João da Silva" /></div></div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">CPF</label><div className="relative"><FileText className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={cpf} onChange={(e) => setCpf(formatCpf(e.target.value))} disabled={!canEdit} maxLength={14} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="000.000.000-00" /></div></div>
-              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">WhatsApp</label><div className="relative"><Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={whatsapp} onChange={(e) => setWhatsapp(formatPhone(e.target.value))} disabled={!canEdit} maxLength={15} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="(00) 00000-0000" /></div></div>
+              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">WhatsApp</label><div className="relative"><Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={whatsapp} onChange={(e) => setWhatsapp(formatPhone(e.target.value))} disabled={!canEdit} maxLength={15} className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="(00) 00000-0000" /></div></div>
               <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Sexo</label><div className="relative"><Users className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><select value={sexo} onChange={(e) => setSexo(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 appearance-none disabled:bg-gray-100"><option value="">Selecione...</option><option value="Masculino">Masculino</option><option value="Feminino">Feminino</option><option value="Outro">Outro</option></select></div></div>
           </div>
         </div>

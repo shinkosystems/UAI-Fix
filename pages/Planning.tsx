@@ -6,8 +6,10 @@ import { User, Geral } from '../types';
 import { 
     ChevronLeft, Calendar, FileText, CheckCircle, Loader2, AlertTriangle, 
     MapPin, Package, Plus, X, Clock, Banknote, Wallet, Camera, 
-    Image as ImageIcon, Ban, CreditCard, Smartphone, CalendarDays, Briefcase
+    Image as ImageIcon, Ban, CreditCard, Smartphone, CalendarDays, Briefcase, Play
 } from 'lucide-react';
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
 const Planning: React.FC = () => {
   const { serviceId: paramServiceId } = useParams<{ serviceId: string }>();
@@ -33,6 +35,7 @@ const Planning: React.FC = () => {
   // Image Upload State
   const [imagePedido, setImagePedido] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   
   // Resources State
   const [resources, setResources] = useState<string[]>([]);
@@ -106,21 +109,33 @@ const Planning: React.FC = () => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     
+    const file = e.target.files[0];
+    setUploadError(null);
+    
+    // VALIDAÇÃO EXPLÍCITA DE TAMANHO COM AVISO NO CARD
+    if (file.size > MAX_FILE_SIZE) {
+        const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+        setUploadError(`O vídeo selecionado (${sizeMB}MB) é maior que o tamanho máximo suportado de 50MB.`);
+        e.target.value = ''; // Limpa o input
+        return;
+    }
+
     setUploadingImage(true);
     try {
-        const file = e.target.files[0];
-        const fileExt = file.name.split('.').pop();
+        const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
         const fileName = `pedidos/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `${fileName}`;
 
-        const { error: uploadError } = await supabase.storage.from('imagens').upload(filePath, file);
+        const { error: uploadError } = await supabase.storage.from('imagens').upload(filePath, file, {
+            contentType: file.type || undefined
+        });
         if (uploadError) throw uploadError;
 
         const { data } = supabase.storage.from('imagens').getPublicUrl(filePath);
         setImagePedido(data.publicUrl);
     } catch (error: any) {
         console.error("Upload error:", error);
-        alert("Erro ao enviar imagem: " + error.message);
+        setUploadError("Falha ao enviar arquivo. Tente novamente.");
     } finally {
         setUploadingImage(false);
     }
@@ -130,6 +145,7 @@ const Planning: React.FC = () => {
       e.preventDefault();
       e.stopPropagation();
       setImagePedido(null);
+      setUploadError(null);
   };
 
   const handleSubmit = async () => {
@@ -184,7 +200,6 @@ const Planning: React.FC = () => {
 
         const executionDate = new Date(date).toISOString();
         
-        // Inclusão das preferências de parcelamento na descrição para os usuários internos
         let fullDescription = description;
         if (flexibility) fullDescription += `\n\n[FLEXIBILIDADE DE AGENDA]:\n${flexibility}`;
         if (paymentType === 'Cartão de Crédito') fullDescription += `\n\n[PARCELAMENTO DESEJADO]: ${installments}x`;
@@ -396,19 +411,39 @@ const Planning: React.FC = () => {
 
              <div className="space-y-2">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 flex items-center">
-                    <ImageIcon size={12} className="mr-1" /> Foto do Local / Item (Opcional)
+                    <ImageIcon size={12} className="mr-1" /> Foto ou Vídeo do Local (Opcional)
                 </label>
+                {uploadError && (
+                    <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start space-x-3 animate-in slide-in-from-bottom-2 duration-300 mb-3">
+                        <AlertTriangle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
+                        <p className="text-xs font-bold text-red-700 leading-tight">{uploadError}</p>
+                        <button onClick={() => setUploadError(null)} className="text-red-400 hover:text-red-600 transition-colors"><X size={16}/></button>
+                    </div>
+                )}
                 {imagePedido ? (
                     <div className="relative w-full h-48 bg-gray-100 rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
-                        <img src={imagePedido} alt="Foto do pedido" className="w-full h-full object-cover" />
+                        {imagePedido.toLowerCase().includes('.mp4') || imagePedido.toLowerCase().includes('.mov') ? (
+                            <video src={imagePedido} className="w-full h-full object-cover" controls playsInline />
+                        ) : (
+                            <img src={imagePedido} alt="Foto do pedido" className="w-full h-full object-cover" />
+                        )}
                         <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
                             <button onClick={handleRemoveImage} className="bg-red-500 text-white px-4 py-2 rounded-xl font-bold text-xs hover:bg-red-600 shadow-lg flex items-center"><X size={14} className="mr-1" /> Remover</button>
                         </div>
                     </div>
                 ) : (
-                    <label className="w-full h-32 bg-white border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 transition-colors">
-                        {uploadingImage ? <Loader2 className="animate-spin text-ios-blue" size={24} /> : <><Camera size={24} className="text-gray-300 mb-2" /><span className="text-[10px] font-bold text-gray-400 uppercase">Enviar Foto</span></>}
-                        <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploadingImage} />
+                    <label className="w-full h-32 bg-white border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                        {uploadingImage ? <Loader2 className="animate-spin text-ios-blue" size={24} /> : (
+                            <>
+                                <div className="flex gap-2 mb-2">
+                                    <Camera size={24} className="text-gray-300" />
+                                    <Play size={24} className="text-gray-300" />
+                                </div>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Enviar Foto ou Vídeo</span>
+                                <span className="text-[9px] text-gray-400 mt-1">(Máx 50MB)</span>
+                            </>
+                        )}
+                        <input type="file" accept="image/*,video/*" className="hidden" onChange={handleImageUpload} disabled={uploadingImage} />
                     </label>
                 )}
             </div>

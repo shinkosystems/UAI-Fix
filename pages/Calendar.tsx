@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { Agenda, Geral } from '../types';
-import { Loader2, ChevronLeft, ChevronRight, X, Clock, User, Wrench, Save, FileText, Calendar as CalendarIcon, MapPin, Grid, Columns, List, Camera, Package, Trash2, AlertCircle, Eye, Check, Ban, Banknote, Image as ImageIcon, Play } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, X, Clock, User, Wrench, Save, FileText, Calendar as CalendarIcon, MapPin, Grid, Columns, List, Camera, Package, Trash2, AlertCircle, Eye, Check, Ban, Banknote, Image as ImageIcon, Play, AlertTriangle } from 'lucide-react';
 
 interface AgendaExtended extends Agenda {
     geral?: Geral;
@@ -43,6 +43,8 @@ interface AgendaExtended extends Agenda {
 type CalendarView = 'month' | 'week' | 'day';
 type ModalTab = 'geral' | 'fotos' | 'obs';
 
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
 const CalendarPage: React.FC = () => {
   const [events, setEvents] = useState<AgendaExtended[]>([]);
   const [pendingAcceptance, setPendingAcceptance] = useState<AgendaExtended[]>([]);
@@ -57,6 +59,7 @@ const CalendarPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<ModalTab>('geral');
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<number | null>(null);
   
   const [formData, setFormData] = useState({
@@ -69,7 +72,7 @@ const CalendarPage: React.FC = () => {
   const isMediaVideo = (url: string) => {
     if (!url) return false;
     const cleanPath = url.split('?')[0].toLowerCase();
-    const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime', '.m4v'];
+    const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime', '.m4v', '.3gp', '.mkv'];
     return videoExtensions.some(ext => cleanPath.endsWith(ext)) || url.toLowerCase().includes('video');
   };
 
@@ -158,6 +161,7 @@ const CalendarPage: React.FC = () => {
 
   const handleEventClick = (event: AgendaExtended) => {
       setSelectedEvent(event);
+      setUploadError(null);
       setFormData({
           status: event.chaveData?.status || 'pendente',
           observacoes: event.observacoes || '',
@@ -463,13 +467,21 @@ const CalendarPage: React.FC = () => {
                                 </div>
                             ) : (
                                 <>
+                                    {uploadError && (
+                                        <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start space-x-3 animate-in slide-in-from-top-2 duration-300">
+                                            <AlertTriangle size={18} className="text-red-500 mt-0.5 flex-shrink-0" />
+                                            <p className="text-xs font-bold text-red-700 leading-tight">{uploadError}</p>
+                                            <button onClick={() => setUploadError(null)} className="text-red-400 hover:text-red-600 transition-colors"><X size={16}/></button>
+                                        </div>
+                                    )}
+
                                     <div>
-                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos do 'Antes'</h4>
+                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos/Vídeos do 'Antes'</h4>
                                         <div className="grid grid-cols-3 gap-2">
                                             {formData.fotoantes.map((url, i) => (
                                                 <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
                                                     {isMediaVideo(url) ? (
-                                                        <video src={url} className="w-full h-full object-cover" playsInline controls />
+                                                        <video src={url} className="w-full h-full object-cover" playsInline controls preload="metadata" />
                                                     ) : (
                                                         <img src={url} className="w-full h-full object-cover"/>
                                                     )}
@@ -483,11 +495,23 @@ const CalendarPage: React.FC = () => {
                                                     <Camera size={20} className="text-gray-300"/>
                                                     <input type="file" className="hidden" accept="image/*,video/*" onChange={async (e) => {
                                                         if (!e.target.files?.length) return;
-                                                        setUploading(true);
                                                         const file = e.target.files[0];
-                                                        const fileExt = file.name.split('.').pop();
+                                                        setUploadError(null);
+                                                        
+                                                        if (file.size > MAX_FILE_SIZE) {
+                                                            const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+                                                            setUploadError(`O vídeo (${sizeMb}MB) é maior que o tamanho máximo de 50MB.`);
+                                                            return;
+                                                        }
+
+                                                        setUploading(true);
+                                                        const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
                                                         const path = `execucao/${selectedEvent.chaveData?.chaveunica}_antes_${Date.now()}.${fileExt}`;
-                                                        await supabase.storage.from('imagens').upload(path, file);
+                                                        
+                                                        await supabase.storage.from('imagens').upload(path, file, {
+                                                            contentType: file.type || undefined
+                                                        });
+                                                        
                                                         const { data } = supabase.storage.from('imagens').getPublicUrl(path);
                                                         setFormData(prev => ({...prev, fotoantes: [...prev.fotoantes, data.publicUrl]}));
                                                         setUploading(false);
@@ -497,12 +521,12 @@ const CalendarPage: React.FC = () => {
                                         </div>
                                     </div>
                                     <div>
-                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos da Conclusão</h4>
+                                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1">Fotos/Vídeos da Conclusão</h4>
                                         <div className="grid grid-cols-3 gap-2">
                                             {formData.fotodepois.map((url, i) => (
                                                 <div key={i} className="aspect-square bg-gray-100 rounded-2xl overflow-hidden relative group">
                                                     {isMediaVideo(url) ? (
-                                                        <video src={url} className="w-full h-full object-cover" playsInline controls />
+                                                        <video src={url} className="w-full h-full object-cover" playsInline controls preload="metadata" />
                                                     ) : (
                                                         <img src={url} className="w-full h-full object-cover"/>
                                                     )}
@@ -516,11 +540,23 @@ const CalendarPage: React.FC = () => {
                                                     <Camera size={20} className="text-gray-300"/>
                                                     <input type="file" className="hidden" accept="image/*,video/*" onChange={async (e) => {
                                                         if (!e.target.files?.length) return;
-                                                        setUploading(true);
                                                         const file = e.target.files[0];
-                                                        const fileExt = file.name.split('.').pop();
+                                                        setUploadError(null);
+
+                                                        if (file.size > MAX_FILE_SIZE) {
+                                                            const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+                                                            setUploadError(`O vídeo (${sizeMb}MB) é maior que o tamanho máximo de 50MB.`);
+                                                            return;
+                                                        }
+
+                                                        setUploading(true);
+                                                        const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
                                                         const path = `execucao/${selectedEvent.chaveData?.chaveunica}_depois_${Date.now()}.${fileExt}`;
-                                                        await supabase.storage.from('imagens').upload(path, file);
+                                                        
+                                                        await supabase.storage.from('imagens').upload(path, file, {
+                                                            contentType: file.type || undefined
+                                                        });
+                                                        
                                                         const { data } = supabase.storage.from('imagens').getPublicUrl(path);
                                                         setFormData(prev => ({...prev, fotodepois: [...prev.fotodepois, data.publicUrl]}));
                                                         setUploading(false);

@@ -50,8 +50,9 @@ const ClientOrders: React.FC = () => {
 
   const isMediaVideo = (url: string) => {
     if (!url) return false;
-    const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime'];
-    return videoExtensions.some(ext => url.toLowerCase().includes(ext)) || url.toLowerCase().includes('video');
+    const cleanPath = url.split('?')[0].toLowerCase();
+    const videoExtensions = ['.mp4', '.mov', '.webm', '.quicktime', '.m4v', '.3gp', '.mkv'];
+    return videoExtensions.some(ext => cleanPath.endsWith(ext)) || url.toLowerCase().includes('video');
   };
 
   useEffect(() => { fetchOrders(); }, []);
@@ -406,7 +407,7 @@ const ClientOrders: React.FC = () => {
                                     {executionData.fotoantes.length > 0 ? executionData.fotoantes.map((url, i) => (
                                         <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200">
                                             {isMediaVideo(url) ? (
-                                                <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                                <video src={url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
                                             ) : (
                                                 <img src={url} className="w-full h-full object-cover"/>
                                             )}
@@ -420,7 +421,7 @@ const ClientOrders: React.FC = () => {
                                     {executionData.fotodepois.length > 0 ? executionData.fotodepois.map((url, i) => (
                                         <div key={i} className="aspect-video bg-gray-100 rounded-2xl overflow-hidden relative group border border-gray-200">
                                             {isMediaVideo(url) ? (
-                                                <video src={url} className="w-full h-full object-cover" controls playsInline />
+                                                <video src={url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
                                             ) : (
                                                 <img src={url} className="w-full h-full object-cover"/>
                                             )}
