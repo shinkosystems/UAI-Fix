@@ -40,6 +40,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
 
+  // Skip interception for API calls (Supabase) and other cross-origin requests
+  if (requestUrl.origin !== self.location.origin) {
+    return;
+  }
+
   // Estratégia para Navegação (SPA):
   // Se for uma navegação de página (ex: recarregar, abrir app), tenta a rede.
   // Se falhar (offline), retorna o index.html do cache.

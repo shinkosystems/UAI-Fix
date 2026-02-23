@@ -5,7 +5,7 @@ import { Agenda, Geral } from '../types';
 import { 
     Loader2, ChevronLeft, ChevronRight, X, Clock, User, Save, 
     Calendar as CalendarIcon, Grid, Columns, List, 
-    Camera, Package, Trash2, Check, Ban, Eye, AlertCircle, Banknote, MapPin, Image as ImageIcon, Play, AlertTriangle
+    Camera, Package, Trash2, Check, Ban, Eye, AlertCircle, Banknote, MapPin, Image as ImageIcon, Play, AlertTriangle, HelpCircle
 } from 'lucide-react';
 
 interface AgendaExtended extends Agenda {
@@ -51,6 +51,7 @@ const Execution: React.FC = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<CalendarView>('month');
   const [userType, setUserType] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   
   const [selectedEvent, setSelectedEvent] = useState<AgendaExtended | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -66,6 +67,13 @@ const Execution: React.FC = () => {
       fotoantes: [] as string[],
       fotodepois: [] as string[]
   });
+
+  const extractOriginalDesc = (desc: string | undefined | null) => {
+    if (!desc) return "";
+    const marker = '\n\n[';
+    const index = desc.indexOf(marker);
+    return index !== -1 ? desc.substring(0, index).trim() : desc.trim();
+  };
 
   const isMediaVideo = (url: string) => {
     if (!url) return false;
@@ -206,6 +214,9 @@ const Execution: React.FC = () => {
   const isSameDay = (d1: Date, d2: Date) => d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
   const isToday = (d: Date) => isSameDay(d, new Date());
 
+  // Aplicação do filtro de status nos eventos exibidos
+  const filteredEvents = events.filter(ev => !statusFilter || ev.chaveData?.status?.toLowerCase() === statusFilter);
+
   const renderMonthView = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -217,7 +228,7 @@ const Execution: React.FC = () => {
     
     for (let d = 1; d <= daysInMonth; d++) {
         const date = new Date(year, month, d);
-        const dayEvents = events.filter(e => isSameDay(new Date(e.execucao), date));
+        const dayEvents = filteredEvents.filter(e => isSameDay(new Date(e.execucao), date));
         dayCells.push(
             <div key={d} className={`bg-white min-h-[100px] p-2 border-b border-r border-gray-100 hover:bg-gray-50 transition-colors ${isToday(date) ? 'bg-blue-50/20' : ''}`}>
                 <span className={`text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-full ${isToday(date) ? 'bg-ios-blue text-white shadow-sm' : 'text-gray-400'}`}>{d}</span>
@@ -229,7 +240,7 @@ const Execution: React.FC = () => {
             </div>
         );
     }
-    return <div className="grid grid-cols-7 border-l border-t border-gray-100 rounded-3xl overflow-hidden shadow-sm">{dayCells}</div>;
+    return <div className="grid grid-cols-7 border-l border-t border-gray-100 rounded-3xl overflow-hidden shadow-sm bg-white">{dayCells}</div>;
   };
 
   const renderWeekView = () => {
@@ -244,7 +255,7 @@ const Execution: React.FC = () => {
       return (
           <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
               {weekDays.map((date, i) => {
-                  const dayEvents = events.filter(e => isSameDay(new Date(e.execucao), date));
+                  const dayEvents = filteredEvents.filter(e => isSameDay(new Date(e.execucao), date));
                   return (
                       <div key={i} className={`bg-white rounded-[1.8rem] p-4 shadow-sm border border-gray-100 flex flex-col min-h-[250px] ${isToday(date) ? 'ring-2 ring-ios-blue border-transparent' : ''}`}>
                           <div className="text-center border-b border-gray-50 pb-2 mb-3">
@@ -267,7 +278,7 @@ const Execution: React.FC = () => {
   };
 
   const renderDayView = () => {
-      const dayEvents = events.filter(e => isSameDay(new Date(e.execucao), currentDate));
+      const dayEvents = filteredEvents.filter(e => isSameDay(new Date(e.execucao), currentDate));
       return (
           <div className="max-w-2xl mx-auto space-y-3">
               {dayEvents.length > 0 ? dayEvents.map(ev => (
@@ -294,9 +305,13 @@ const Execution: React.FC = () => {
       );
   };
 
+  const toggleFilter = (status: string) => {
+    setStatusFilter(prev => prev === status ? null : status);
+  };
+
   return (
     <div className="min-h-screen bg-ios-bg pb-20">
-       <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-20 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+       <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-20 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
             <div className="flex items-center gap-4">
                 <div className="flex gap-1">
                     <button onClick={() => handleNavigate('prev')} className="p-2 bg-gray-100 rounded-full text-gray-600 hover:bg-gray-200 active:scale-90 transition-all"><ChevronLeft size={20}/></button>
@@ -375,17 +390,75 @@ const Execution: React.FC = () => {
            {loading ? (
                <div className="flex justify-center py-20"><Loader2 className="animate-spin text-ios-blue" size={40}/></div>
            ) : (
-               <div className="animate-in fade-in duration-500">
-                    {view === 'month' && (
-                        <>
-                            <div className="grid grid-cols-7 mb-1">
-                                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (<div key={day} className="text-center text-[9px] font-black text-gray-400 uppercase tracking-widest py-2">{day}</div>))}
+               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    
+                    {/* FILTRO DE STATUS NO TOPO */}
+                    <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] shadow-sm border border-white flex flex-col gap-5 mb-8 animate-in slide-in-from-top-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 bg-ios-blue/10 rounded-xl text-ios-blue">
+                                    <HelpCircle size={18} />
+                                </div>
+                                <h2 className="text-xs font-black uppercase tracking-widest text-gray-900">Filtrar por Status</h2>
                             </div>
-                            {renderMonthView()}
-                        </>
-                    )}
-                    {view === 'week' && renderWeekView()}
-                    {view === 'day' && renderDayView()}
+                            <button onClick={() => setStatusFilter(null)} className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg transition-all ${!statusFilter ? 'bg-gray-100 text-gray-400 cursor-default' : 'bg-ios-blue text-white shadow-sm'}`}>Limpar Filtro</button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                            <button 
+                                onClick={() => toggleFilter('aprovado')}
+                                className={`flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-full border shadow-sm transition-all active:scale-95 ${statusFilter === 'aprovado' ? 'border-green-500 ring-2 ring-green-100 scale-105' : 'border-green-100 opacity-60 hover:opacity-100'}`}
+                            >
+                                <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                                <span className="text-[9px] font-black uppercase text-green-800 tracking-tight">Serviço Agendado</span>
+                            </button>
+                            <button 
+                                onClick={() => toggleFilter('executando')}
+                                className={`flex items-center gap-2 bg-purple-50 px-3 py-1.5 rounded-full border shadow-sm transition-all active:scale-95 ${statusFilter === 'executando' ? 'border-purple-500 ring-2 ring-purple-100 scale-105' : 'border-purple-100 opacity-60 hover:opacity-100'}`}
+                            >
+                                <div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div>
+                                <span className="text-[9px] font-black uppercase text-purple-800 tracking-tight">Em Execução</span>
+                            </button>
+                            <button 
+                                onClick={() => toggleFilter('concluido')}
+                                className={`flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-full border shadow-sm transition-all active:scale-95 ${statusFilter === 'concluido' ? 'border-gray-500 ring-2 ring-gray-200 scale-105' : 'border-gray-100 opacity-60 hover:opacity-100'}`}
+                            >
+                                <div className="w-2.5 h-2.5 rounded-full bg-gray-400"></div>
+                                <span className="text-[9px] font-black uppercase text-gray-800 tracking-tight">Concluído</span>
+                            </button>
+                            <button 
+                                onClick={() => toggleFilter('pendente')}
+                                className={`flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-full border shadow-sm transition-all active:scale-95 ${statusFilter === 'pendente' ? 'border-blue-500 ring-2 ring-blue-100 scale-105' : 'border-blue-100 opacity-60 hover:opacity-100'}`}
+                            >
+                                <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                                <span className="text-[9px] font-black uppercase text-blue-800 tracking-tight">Pendente / Outros</span>
+                            </button>
+                        </div>
+
+                        {isProfessional && (
+                            <div className="pt-4 border-t border-gray-100">
+                                <div className="flex items-center gap-2 bg-cyan-50 px-4 py-2 rounded-2xl border border-cyan-100">
+                                    <AlertTriangle size={14} className="text-cyan-500" />
+                                    <p className="text-[9px] font-bold text-cyan-700 leading-tight uppercase tracking-tight">
+                                        PROFISSIONAL: Serviços com status "Aguardando Profissional" aparecem no topo para seu aceite.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mb-8">
+                        {view === 'month' && (
+                            <>
+                                <div className="grid grid-cols-7 mb-1">
+                                    {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (<div key={day} className="text-center text-[9px] font-black text-gray-400 uppercase tracking-widest py-2">{day}</div>))}
+                                </div>
+                                {renderMonthView()}
+                            </>
+                        )}
+                        {view === 'week' && renderWeekView()}
+                        {view === 'day' && renderDayView()}
+                    </div>
                </div>
            )}
       </div>
@@ -420,6 +493,25 @@ const Execution: React.FC = () => {
                                 <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-white overflow-hidden shadow-sm border border-white"><img src={selectedEvent.clienteData?.fotoperfil || `https://ui-avatars.com/api/?name=${selectedEvent.clienteData?.nome}`} className="w-full h-full object-cover"/></div><div><p className="text-[10px] font-bold text-gray-400 uppercase">Cliente</p><p className="font-bold text-sm text-gray-900 leading-tight">{selectedEvent.clienteData?.nome}</p></div></div>
                                 <div className="flex items-center gap-3 text-right"><div><p className="text-[10px] font-bold text-gray-400 uppercase">Profissional</p><p className="font-bold text-sm text-gray-900 leading-tight">{selectedEvent.profissionalData?.nome}</p></div><div className="w-10 h-10 rounded-full bg-white overflow-hidden shadow-sm border border-white"><img src={selectedEvent.profissionalData?.fotoperfil || `https://ui-avatars.com/api/?name=${selectedEvent.profissionalData?.nome}`} className="w-full h-full object-cover"/></div></div>
                             </div>
+
+                            {/* VALOR DO SERVIÇO - Condicional por tipo de usuário */}
+                            <div className="bg-green-50/50 p-5 rounded-[2rem] border border-green-100 flex items-center justify-between shadow-sm animate-in slide-in-from-top-2">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-green-500 text-white rounded-2xl shadow-lg shadow-green-100"><Banknote size={20} /></div>
+                                    <div>
+                                        <p className="text-[9px] font-black text-green-700 uppercase tracking-widest leading-none mb-1">
+                                            {isProfessional ? 'Sua Mão de Obra' : 'Valor Total do Serviço'}
+                                        </p>
+                                        <p className="text-xl font-black text-green-900">
+                                            R$ {isProfessional 
+                                                ? (selectedEvent.orcamentoData?.hh?.toFixed(2) || '0.00') 
+                                                : (selectedEvent.orcamentoData?.preco?.toFixed(2) || '0.00')}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="bg-green-100 px-3 py-1 rounded-full text-[10px] font-black text-green-700 border border-green-200">$</div>
+                            </div>
+
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Status do Pedido</label>
                                 <select 
@@ -444,7 +536,9 @@ const Execution: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">Descrição do Problema</label>
-                                <div className="w-full bg-yellow-50/50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-800 leading-relaxed min-h-[80px]">{selectedEvent.planejamentoData?.descricao || "Sem detalhes adicionais."}</div>
+                                <div className="w-full bg-yellow-50/50 border border-yellow-100 rounded-2xl p-5 text-sm font-bold text-gray-800 leading-relaxed min-h-[80px]">
+                                    {extractOriginalDesc(selectedEvent.planejamentoData?.descricao) || "Sem detalhes adicionais."}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -500,7 +594,6 @@ const Execution: React.FC = () => {
                                                         const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
                                                         const path = `execucao/${selectedEvent.chaveData?.chaveunica}_antes_${Date.now()}.${fileExt}`;
                                                         
-                                                        // CRITICAL: Specify contentType during upload
                                                         await supabase.storage.from('imagens').upload(path, file, {
                                                             contentType: file.type || undefined
                                                         });
@@ -546,7 +639,6 @@ const Execution: React.FC = () => {
                                                         const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
                                                         const path = `execucao/${selectedEvent.chaveData?.chaveunica}_depois_${Date.now()}.${fileExt}`;
                                                         
-                                                        // CRITICAL: Specify contentType during upload
                                                         await supabase.storage.from('imagens').upload(path, file, {
                                                             contentType: file.type || undefined
                                                         });
@@ -574,7 +666,7 @@ const Execution: React.FC = () => {
                                             <h4 className="text-[10px] font-black uppercase tracking-widest">Relato do Consumidor</h4>
                                         </div>
                                         <div className="bg-white/80 p-4 rounded-2xl border border-blue-100/50 text-sm font-bold text-blue-900 leading-relaxed italic shadow-inner">
-                                            "{selectedEvent.planejamentoData?.descricao || "Consumidor não deixou descrição."}"
+                                            "{extractOriginalDesc(selectedEvent.planejamentoData?.descricao) || "Consumidor não deixou descrição."}"
                                         </div>
                                         {selectedEvent.planejamentoData?.imagem_pedido && (
                                             <div className="space-y-2">
@@ -617,5 +709,4 @@ const Execution: React.FC = () => {
   );
 };
 
-// Fixing incorrect default export name from 'CalendarPage' to 'Execution'
 export default Execution;

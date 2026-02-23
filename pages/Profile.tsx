@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import { User, City, Estado } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { User as UserIcon, Phone, LogOut, Camera, Save, Loader2, AlertCircle, Search, MapPin, X, Edit2, FileText, Home, Navigation, Users, Bell } from 'lucide-react';
+import { User as UserIcon, Phone, LogOut, Camera, Save, Loader2, AlertCircle, Search, MapPin, X, FileText, Home, Navigation, Bell } from 'lucide-react';
 
 interface NotificationItem {
   id: number;
@@ -19,12 +19,12 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const Profile: React.FC = () => {
   const navigate = useNavigate();
   const [profile, setProfile] = useState<User | null>(null);
-  const [searchedCities, setSearchedCities] = useState<City[]>([]);
   const [states, setStates] = useState<Estado[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingCep, setLoadingCep] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchingCity, setSearchingCity] = useState(false);
-  const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+  const [message, setMessage] = useState<{type: 'success' | 'error' | 'warning', text: string} | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const [nome, setNome] = useState('');
@@ -41,6 +41,7 @@ const Profile: React.FC = () => {
   const [selectedCityId, setSelectedCityId] = useState<number | null>(null);
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
   const [modalSearchTerm, setModalSearchTerm] = useState('');
+  const [searchedCities, setSearchedCities] = useState<City[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -66,7 +67,8 @@ const Profile: React.FC = () => {
   }, [modalSearchTerm]);
 
   useEffect(() => {
-    if (cep.replace(/\D/g, '').length === 8) fetchCepData(cep);
+    const cleanCep = cep.replace(/\D/g, '');
+    if (cleanCep.length === 8) fetchCepData(cleanCep);
   }, [cep]);
 
   const fetchNotifications = async (role: string, uuid: string) => {
@@ -134,23 +136,63 @@ const Profile: React.FC = () => {
       else navigate('/calendar');
   };
 
-  const fetchCepData = async (cepValue: string) => {
+  const fetchCepData = async (cleanCep: string) => {
       if (!canEdit) return;
       try {
-          const cleanCep = cepValue.replace(/\D/g, '');
-          const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+          setLoadingCep(true);
+          // Adicionado timeout e tratamento de erro robusto para evitar "Failed to fetch"
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+          const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) throw new Error("Erro na conexão com o serviço de CEP");
+          
           const data = await response.json();
           if (!data.erro) {
-              setRua(data.logradouro);
-              setBairro(data.bairro);
+              setRua(data.logradouro || '');
+              setBairro(data.bairro || '');
               const stateObj = states.find(s => s.uf === data.uf);
+              
               if(data.localidade && stateObj) {
-                  let { data: cityDB } = await supabase.from('cidades').select('*').eq('uf', stateObj.id).ilike('cidade', data.localidade.trim()).maybeSingle();
-                  if (!cityDB) { const { data: fuzzyData } = await supabase.from('cidades').select('*').eq('uf', stateObj.id).ilike('cidade', `%${data.localidade.trim()}%`).limit(1).maybeSingle(); cityDB = fuzzyData; }
-                  if(cityDB) { setCityName(cityDB.cidade); setSelectedCityId(cityDB.id); setSelectedStateId(cityDB.uf); }
+                  setSelectedStateId(stateObj.id);
+                  
+                  let { data: cityDB } = await supabase
+                    .from('cidades')
+                    .select('*')
+                    .eq('uf', stateObj.id)
+                    .ilike('cidade', data.localidade.trim())
+                    .maybeSingle();
+                  
+                  if (!cityDB) {
+                      const { data: fuzzyData } = await supabase
+                        .from('cidades')
+                        .select('*')
+                        .eq('uf', stateObj.id)
+                        .ilike('cidade', `%${data.localidade.trim().split(' ')[0]}%`)
+                        .limit(1)
+                        .maybeSingle();
+                      cityDB = fuzzyData;
+                  }
+
+                  if(cityDB) { 
+                      setCityName(cityDB.cidade); 
+                      setSelectedCityId(cityDB.id); 
+                      setMessage(null);
+                  } else {
+                      setCityName('');
+                      setSelectedCityId(null);
+                      setMessage({ type: 'warning', text: 'CEP localizado, mas a cidade precisa ser selecionada manualmente.' });
+                  }
               }
           }
-      } catch (error) { console.error(error); }
+      } catch (error) { 
+          console.error("Erro ao buscar CEP:", error); 
+          setMessage({ type: 'warning', text: 'Não foi possível conectar ao serviço de CEP. Preencha manualmente.' });
+      } finally { 
+          setLoadingCep(false); 
+      }
   };
 
   const cleanValue = (val: string | undefined | null) => {
@@ -165,9 +207,15 @@ const Profile: React.FC = () => {
       setLoading(true);
       const { data: { user: authUser } } = await supabase.auth.getUser();
       let uuidToFetch = authUser?.id;
-      if (!uuidToFetch) { const { data: demoUsers } = await supabase.from('users').select('*').eq('ativo', true).limit(1); if (demoUsers && demoUsers.length > 0) uuidToFetch = demoUsers[0].uuid; }
+      
+      if (!uuidToFetch) { 
+        const { data: demoUsers } = await supabase.from('users').select('*').eq('ativo', true).limit(1); 
+        if (demoUsers && demoUsers.length > 0) uuidToFetch = demoUsers[0].uuid; 
+      }
+
       const { data: statesData } = await supabase.from('estados').select('*').order('uf', { ascending: true });
       setStates(statesData || []);
+
       if (uuidToFetch) {
         const { data: userData, error: userError } = await supabase.from('users').select('*').eq('uuid', uuidToFetch).single();
         if (userError) throw userError;
@@ -185,20 +233,34 @@ const Profile: React.FC = () => {
           setComplemento(cleanValue(userData.complemento));
           setUserType(userData.tipo || '');
           fetchNotifications(userData.tipo || '', uuidToFetch);
+          
           if (!isNewAccount) {
               setSelectedStateId(userData.estado || '');
               setSelectedCityId(userData.cidade);
-              if (userData.cidade) { const { data: cityData } = await supabase.from('cidades').select('*').eq('id', userData.cidade).single(); if (cityData) setCityName(cityData.cidade); }
-          } else { setSelectedStateId(''); setSelectedCityId(null); setCityName(''); }
+              if (userData.cidade) { 
+                const { data: cityData } = await supabase.from('cidades').select('*').eq('id', userData.cidade).single(); 
+                if (cityData) setCityName(cityData.cidade); 
+              }
+          } else { 
+            setSelectedStateId(''); setSelectedCityId(null); setCityName(''); 
+          }
         }
       }
-    } catch (error: any) { setMessage({ type: 'error', text: 'Erro ao carregar dados.' }); } finally { setLoading(false); }
+    } catch (error: any) { 
+      setMessage({ type: 'error', text: 'Erro ao carregar dados do perfil.' }); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const performCitySearch = async (term: string) => {
     try {
       setSearchingCity(true);
-      const { data, error } = await supabase.from('cidades').select('*').ilike('cidade', `%${term}%`).limit(20);
+      let query = supabase.from('cidades').select('*').ilike('cidade', `%${term}%`);
+      if (selectedStateId) {
+          query = query.eq('uf', selectedStateId);
+      }
+      const { data, error } = await query.limit(50);
       if (error) throw error;
       setSearchedCities(data || []);
     } catch (err) { console.error(err); } finally { setSearchingCity(false); }
@@ -229,8 +291,6 @@ const Profile: React.FC = () => {
       if (!canEdit || !e.target.files?.length || !profile) return;
       
       const file = e.target.files[0];
-      
-      // VALIDAÇÃO EXPLÍCITA DE TAMANHO
       if (file.size > MAX_FILE_SIZE) {
         alert(`O arquivo da foto é muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). O limite máximo permitido para uploads é de 50MB.`);
         return;
@@ -271,7 +331,7 @@ const Profile: React.FC = () => {
   const handleLogout = async () => { try { await supabase.auth.signOut(); navigate('/login'); } catch (error) { console.error(error); } };
 
   const handleCitySelect = (city: City) => {
-    setCityName(city.cidade); setSelectedStateId(city.uf); setSelectedCityId(city.id); setIsCityModalOpen(false); setModalSearchTerm(''); setSearchedCities([]);
+    setCityName(city.cidade); setSelectedStateId(city.uf); setSelectedCityId(city.id); setIsCityModalOpen(false); setModalSearchTerm(''); setSearchedCities([]); setMessage(null);
   };
 
   const getStateUf = (id: number) => { const state = states.find(s => s.id === id); return state ? state.uf : ''; };
@@ -280,9 +340,8 @@ const Profile: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-ios-bg pb-20">
-      {/* Header */}
       <div className="bg-white/80 backdrop-blur-md px-5 pt-12 pb-4 sticky top-0 z-40 border-b border-gray-200">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-start">
              <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Meu Perfil</h1>
              <div className="relative" ref={notificationRef}>
                 <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
@@ -327,40 +386,58 @@ const Profile: React.FC = () => {
         <div className="bg-white rounded-3xl p-6 shadow-glass border border-white space-y-5">
           <h2 className="text-lg font-bold text-gray-900 mb-1 border-b border-gray-100 pb-2">Dados Pessoais</h2>
           <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Nome Completo</label><div className="relative"><UserIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={nome} onChange={(e) => setNome(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="Ex: João da Silva" /></div></div>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">CPF</label><div className="relative"><FileText className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={cpf} onChange={(e) => setCpf(formatCpf(e.target.value))} disabled={!canEdit} maxLength={14} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="000.000.000-00" /></div></div>
-              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">WhatsApp</label><div className="relative"><Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={whatsapp} onChange={(e) => setWhatsapp(formatPhone(e.target.value))} disabled={!canEdit} maxLength={15} className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="(00) 00000-0000" /></div></div>
-              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Sexo</label><div className="relative"><Users className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><select value={sexo} onChange={(e) => setSexo(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 appearance-none disabled:bg-gray-100"><option value="">Selecione...</option><option value="Masculino">Masculino</option><option value="Feminino">Feminino</option><option value="Outro">Outro</option></select></div></div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">CPF</label>
+                <div className="relative">
+                  <FileText className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                  {/* CAMPO CPF: readOnly conforme solicitado para ser apenas legível e não editável */}
+                  <input 
+                    type="text" 
+                    value={cpf} 
+                    readOnly 
+                    className="w-full bg-gray-100 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-500 text-sm outline-none cursor-default font-medium" 
+                    placeholder="000.000.000-00" 
+                  />
+                </div>
+              </div>
+              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">WhatsApp</label><div className="relative"><Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={whatsapp} onChange={(e) => setWhatsapp(formatPhone(e.target.value))} disabled={!canEdit} maxLength={15} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="(00) 00000-0000" /></div></div>
           </div>
+          
+          <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Sexo / Gênero</label><select value={sexo} onChange={(e) => setSexo(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 appearance-none"><option value="Masculino">Masculino</option><option value="Feminino">Feminino</option><option value="Outro">Outro</option></select></div>
         </div>
 
         <div className="bg-white rounded-3xl p-6 shadow-glass border border-white space-y-5">
-            <h2 className="text-lg font-bold text-gray-900 mb-1 border-b border-gray-100 pb-2">Endereço</h2>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">CEP</label><div className="relative"><Navigation className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={cep} onChange={(e) => setCep(formatCep(e.target.value))} disabled={!canEdit} maxLength={9} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="00000-000" /></div></div>
-                <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Cidade</label><div className={`relative ${canEdit ? 'cursor-pointer' : ''}`} onClick={() => canEdit && setIsCityModalOpen(true)}><MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={cityName} readOnly className={`w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-10 text-gray-900 text-sm outline-none disabled:bg-gray-100 ${canEdit ? 'cursor-pointer' : ''}`} placeholder="Selecione..." />{canEdit && <Edit2 size={16} className="absolute right-4 top-1/2 transform -translate-y-1/2 text-ios-blue"/>}</div></div>
-            </div>
-            <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Rua</label><div className="relative"><Home className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={rua} onChange={(e) => setRua(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="Ex: Av. Principal" /></div></div>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Número</label><input type="text" value={numero} onChange={(e) => setNumero(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 text-sm focus:outline-none disabled:bg-gray-100" placeholder="Ex: 123" /></div>
-                <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Bairro</label><input type="text" value={bairro} onChange={(e) => setBairro(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 text-sm focus:outline-none disabled:bg-gray-100" placeholder="Ex: Centro" /></div>
-            </div>
-            <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Complemento</label><input type="text" value={complemento} onChange={(e) => setComplemento(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 text-sm focus:outline-none disabled:bg-gray-100" placeholder="Ex: Apto 101" /></div>
+          <h2 className="text-lg font-bold text-gray-900 mb-1 border-b border-gray-100 pb-2">Endereço de Atendimento</h2>
+          <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">CEP</label><div className="relative"><Navigation className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={cep} onChange={(e) => setCep(formatCep(e.target.value))} disabled={!canEdit} maxLength={9} className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="00000-000" />{loadingCep && <Loader2 className="absolute right-4 top-1/2 transform -translate-y-1/2 animate-spin text-ios-blue" size={16} />}</div></div>
+              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Cidade</label><div onClick={() => canEdit && setIsCityModalOpen(true)} className="relative cursor-pointer"><MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={cityName} readOnly className={`w-full bg-gray-50 border rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm outline-none cursor-pointer disabled:bg-gray-100 ${!selectedCityId && canEdit ? 'border-orange-300 ring-2 ring-orange-50' : 'border-gray-100'}`} placeholder="Selecionar..." disabled={!canEdit} /></div></div>
+          </div>
+          <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Logradouro / Rua</label><div className="relative"><Home className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} /><input type="text" value={rua} onChange={(e) => setRua(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" /></div></div>
+          <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Número</label><input type="text" value={numero} onChange={(e) => setNumero(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" /></div>
+              <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Bairro</label><input type="text" value={bairro} onChange={(e) => setBairro(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" /></div>
+          </div>
+          <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Complemento</label><input type="text" value={complemento} onChange={(e) => setComplemento(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100" placeholder="Apto, Bloco, etc." /></div>
         </div>
 
-        {message && <div className={`p-3 rounded-xl flex items-center space-x-2 text-sm font-medium animate-in fade-in ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{message.type === 'error' && <AlertCircle size={16} />}<span>{message.text}</span></div>}
+        {message && (<div className={`p-4 rounded-2xl flex items-center space-x-3 animate-in fade-in slide-in-from-top-2 ${message.type === 'success' ? 'bg-green-50 text-green-700' : message.type === 'warning' ? 'bg-orange-50 text-orange-700' : 'bg-red-50 text-red-700'}`}><AlertCircle size={20} /> <p className="text-sm font-bold">{message.text}</p></div>)}
 
-        {canEdit && <button onClick={handleSave} disabled={saving} className="w-full bg-ios-blue text-white font-bold py-3.5 rounded-xl shadow-lg active:scale-[0.98] transition-all flex items-center justify-center space-x-2 disabled:opacity-70">{saving ? <Loader2 className="animate-spin" size={20} /> : <><Save size={18} /><span>Salvar Alterações</span></>}</button>}
-        <button onClick={handleLogout} className="w-full bg-white border border-red-100 text-red-500 font-bold py-3.5 rounded-xl active:scale-[0.98] transition-all flex items-center justify-center space-x-2 shadow-sm"><LogOut size={18} /><span>Sair do App</span></button>
+        {canEdit && (
+            <button onClick={handleSave} disabled={saving} className="w-full bg-ios-blue text-white py-4 rounded-2xl font-bold shadow-lg shadow-blue-200 active:scale-95 transition-all flex items-center justify-center space-x-2">{saving ? <Loader2 className="animate-spin" /> : <><Save size={20} /><span>Salvar Alterações</span></>}</button>
+        )}
+
+        <button onClick={handleLogout} className="w-full bg-white border border-red-100 text-red-500 py-4 rounded-2xl font-bold active:bg-red-50 transition-all flex items-center justify-center space-x-2"><LogOut size={20} /><span>Sair da Conta</span></button>
       </div>
 
       {isCityModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10"><h3 className="font-bold text-gray-900 text-lg ml-2">Selecionar Cidade</h3><button onClick={() => setIsCityModalOpen(false)} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200"><X size={18} /></button></div>
-            <div className="p-4 bg-gray-50"><div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} /><input type="text" autoFocus placeholder="Busque pelo nome da cidade..." value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} className="w-full bg-white border border-ios-blue/30 rounded-xl py-3.5 pl-11 pr-4 text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30" /></div></div>
-            <div className="flex-1 overflow-y-auto p-2 no-scrollbar">{searchingCity ? <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-ios-blue" size={24} /></div> : searchedCities.length > 0 ? <div className="space-y-1">{searchedCities.map(city => (<button key={city.id} onClick={() => handleCitySelect(city)} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 flex items-center justify-between group border-b border-gray-50 last:border-0"><div><span className="font-semibold text-gray-900 block group-hover:text-ios-blue transition-colors">{city.cidade}</span><span className="text-xs text-gray-400 font-medium">{getStateUf(city.uf)}</span></div>{selectedCityId === city.id && <div className="w-2 h-2 bg-ios-blue rounded-full"></div>}</button>))}</div> : <div className="py-10 text-center text-gray-400 px-6">{modalSearchTerm.length < 2 ? <p>Digite pelo menos 2 letras para buscar.</p> : <p>Nenhuma cidade encontrada</p>}</div>}</div>
-          </div>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-in fade-in duration-200">
+             <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+                <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10"><h3 className="font-bold text-gray-900 text-lg ml-2">Selecionar Cidade</h3><button onClick={() => setIsCityModalOpen(false)} className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors"><X size={18} /></button></div>
+                <div className="p-4 bg-gray-50"><div className="relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} /><input type="text" autoFocus placeholder="Busque pelo nome..." value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} className="w-full bg-white border border-gray-100 rounded-xl py-3 pl-11 pr-4 text-black outline-none focus:ring-2 focus:ring-ios-blue/30 transition-all shadow-sm" /></div></div>
+                <div className="flex-1 overflow-y-auto p-2 no-scrollbar">{searchingCity ? <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-ios-blue" size={24} /></div> : searchedCities.length > 0 ? <div className="space-y-1">{searchedCities.map(city => (<button key={city.id} onClick={() => handleCitySelect(city)} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 active:bg-blue-50 transition-colors flex items-center justify-between group border-b border-gray-50 last:border-0"><div><span className="font-semibold text-gray-900 block group-hover:text-ios-blue transition-colors">{city.cidade}</span><span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{getStateUf(city.uf)}</span></div>{selectedCityId === city.id && <div className="w-2 h-2 bg-ios-blue rounded-full"></div>}</button>))}</div> : <div className="py-10 text-center text-gray-400 px-6">{modalSearchTerm.length < 2 ? <p>Digite pelo menos 2 letras para buscar{selectedStateId && ` em ${getStateUf(selectedStateId as number)}`}.</p> : <p>Nenhuma cidade encontrada</p>}</div>}</div>
+             </div>
         </div>
       )}
     </div>

@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -43,8 +42,11 @@ const Planning: React.FC = () => {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Melhoria: getTodayMin agora garante que o atributo 'min' do input datetime-local 
+  // bloqueie minutos passados no dia de hoje.
   const getTodayMin = () => {
     const now = new Date();
+    // Ajuste de fuso horário para o formato ISO aceito pelo input HTML
     const offset = now.getTimezoneOffset() * 60000;
     return new Date(now.getTime() - offset).toISOString().slice(0, 16);
   };
@@ -112,11 +114,10 @@ const Planning: React.FC = () => {
     const file = e.target.files[0];
     setUploadError(null);
     
-    // VALIDAÇÃO EXPLÍCITA DE TAMANHO COM AVISO NO CARD
     if (file.size > MAX_FILE_SIZE) {
         const sizeMB = (file.size / 1024 / 1024).toFixed(1);
         setUploadError(`O vídeo selecionado (${sizeMB}MB) é maior que o tamanho máximo suportado de 50MB.`);
-        e.target.value = ''; // Limpa o input
+        e.target.value = ''; 
         return;
     }
 
@@ -133,6 +134,7 @@ const Planning: React.FC = () => {
 
         const { data } = supabase.storage.from('imagens').getPublicUrl(filePath);
         setImagePedido(data.publicUrl);
+        setErrorMsg(null);
     } catch (error: any) {
         console.error("Upload error:", error);
         setUploadError("Falha ao enviar arquivo. Tente novamente.");
@@ -160,13 +162,20 @@ const Planning: React.FC = () => {
         return;
     }
 
+    if (!imagePedido) {
+        setErrorMsg("Por favor, envie uma foto ou vídeo do local para continuar.");
+        return;
+    }
+
+    // VALIDAÇÃO RIGOROSA DE DATA E HORA
     const selectedDate = new Date(date);
     const now = new Date();
+    
+    // Truncamos segundos e milissegundos para permitir agendar no minuto atual exato
     now.setSeconds(0, 0);
-    const nowWithTolerance = new Date(now.getTime() - 60000); 
-
-    if (selectedDate.getTime() < nowWithTolerance.getTime()) {
-        setErrorMsg("Não é possível agendar serviços para uma data ou horário que já passou.");
+    
+    if (selectedDate.getTime() < now.getTime()) {
+        setErrorMsg("Não é possível agendar serviços para uma data ou horário que já passaram.");
         return;
     }
 
@@ -411,7 +420,7 @@ const Planning: React.FC = () => {
 
              <div className="space-y-2">
                 <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 flex items-center">
-                    <ImageIcon size={12} className="mr-1" /> Foto ou Vídeo do Local (Opcional)
+                    <ImageIcon size={12} className="mr-1" /> Foto ou Vídeo do Local <span className="text-red-500 ml-1 font-black">(Obrigatório)</span>
                 </label>
                 {uploadError && (
                     <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-start space-x-3 animate-in slide-in-from-bottom-2 duration-300 mb-3">
@@ -432,14 +441,14 @@ const Planning: React.FC = () => {
                         </div>
                     </div>
                 ) : (
-                    <label className="w-full h-32 bg-white border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors">
+                    <label className={`w-full h-32 bg-white border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors ${errorMsg && !imagePedido ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}>
                         {uploadingImage ? <Loader2 className="animate-spin text-ios-blue" size={24} /> : (
                             <>
                                 <div className="flex gap-2 mb-2">
-                                    <Camera size={24} className="text-gray-300" />
-                                    <Play size={24} className="text-gray-300" />
+                                    <Camera size={24} className={errorMsg && !imagePedido ? 'text-red-300' : 'text-gray-300'} />
+                                    <Play size={24} className={errorMsg && !imagePedido ? 'text-red-300' : 'text-gray-300'} />
                                 </div>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Enviar Foto ou Vídeo</span>
+                                <span className={`text-[10px] font-bold uppercase tracking-widest ${errorMsg && !imagePedido ? 'text-red-500' : 'text-gray-400'}`}>Enviar Foto ou Vídeo</span>
                                 <span className="text-[9px] text-gray-400 mt-1">(Máx 50MB)</span>
                             </>
                         )}

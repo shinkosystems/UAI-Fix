@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Lock, Loader2, ArrowRight, CheckCircle, User, FileText, MapPin, Home, Navigation, Search, X, Phone } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, CheckCircle, User, FileText, MapPin, Home, Navigation, Search, X, Phone, AlertCircle } from 'lucide-react';
 import { City, Estado } from '../types';
 
 const Login: React.FC = () => {
@@ -78,12 +78,13 @@ const Login: React.FC = () => {
   const performCitySearch = async (term: string) => {
     try {
       setSearchingCity(true);
-      const { data } = await supabase
-        .from('cidades')
-        .select('*')
-        .ilike('cidade', `%${term}%`)
-        .limit(20);
+      let query = supabase.from('cidades').select('*').ilike('cidade', `%${term}%`);
+      
+      if (selectedStateId) {
+          query = query.eq('uf', selectedStateId);
+      }
 
+      const { data } = await query.limit(50);
       setSearchedCities(data || []);
     } catch (err) {
       console.error('Error searching cities:', err);
@@ -102,49 +103,65 @@ const Login: React.FC = () => {
       
       setIsCityModalOpen(false);
       setCitySearchTerm('');
+      setErrorMsg(null);
   };
 
   const fetchAddressByCep = async (cleanCep: string) => {
       setLoadingCep(true);
+      setErrorMsg(null);
       try {
           const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+          if (!response.ok) throw new Error("Serviço de CEP indisponível");
+          
           const data = await response.json();
-          if (!data.erro) {
-              setRua(data.logradouro);
-              setBairro(data.bairro);
-              setDisplayStateUf(data.uf);
+          
+          if (data.erro) {
+              setErrorMsg("CEP não localizado.");
+              return;
+          }
+
+          setRua(data.logradouro || '');
+          setBairro(data.bairro || '');
+          setDisplayStateUf(data.uf);
+          
+          const stateObj = states.find(s => s.uf === data.uf);
+          
+          if (data.localidade && stateObj) {
+              setSelectedStateId(stateObj.id);
               
-              const stateObj = states.find(s => s.uf === data.uf);
+              // Busca robusta na tabela de cidades
+              let { data: cityDB, error: cityError } = await supabase
+                .from('cidades')
+                .select('*')
+                .eq('uf', stateObj.id)
+                .ilike('cidade', data.localidade.trim())
+                .maybeSingle();
               
-              if (data.localidade && stateObj) {
-                  let { data: cityDB } = await supabase
+              if (!cityDB) {
+                  const { data: fuzzyData } = await supabase
                     .from('cidades')
                     .select('*')
                     .eq('uf', stateObj.id)
-                    .ilike('cidade', data.localidade.trim())
+                    .ilike('cidade', `%${data.localidade.trim().split(' ')[0]}%`)
+                    .limit(1)
                     .maybeSingle();
-                  
-                  if (!cityDB) {
-                      const { data: fuzzyData } = await supabase
-                        .from('cidades')
-                        .select('*')
-                        .eq('uf', stateObj.id)
-                        .ilike('cidade', `%${data.localidade.trim()}%`)
-                        .limit(1)
-                        .maybeSingle();
-                      cityDB = fuzzyData;
-                  }
-
-                  if (cityDB) {
-                      setSelectedCityId(cityDB.id.toString());
-                      setSelectedCityName(cityDB.cidade);
-                      setSelectedStateId(cityDB.uf);
-                  }
+                  cityDB = fuzzyData;
               }
-              document.getElementById('numeroInput')?.focus();
+
+              if (cityDB) {
+                  setSelectedCityId(cityDB.id.toString());
+                  setSelectedCityName(cityDB.cidade);
+              } else {
+                  setSelectedCityId('');
+                  setSelectedCityName('');
+                  setErrorMsg("CEP encontrado, mas a cidade precisa ser selecionada manualmente abaixo.");
+              }
           }
+          
+          document.getElementById('numeroInput')?.focus();
       } catch (error) {
           console.error("Erro ao buscar CEP", error);
+          setErrorMsg("Não foi possível conectar ao serviço de CEP. Preencha os dados manualmente.");
       } finally {
           setLoadingCep(false);
       }
@@ -177,20 +194,19 @@ const Login: React.FC = () => {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    // Limpa erro anterior antes de nova tentativa para evitar confusão (iOS pattern)
     setErrorMsg(null);
+    setLoading(true);
 
     try {
       if (isSignUp) {
-        // Validation
         if (password !== confirmPassword) throw new Error("As senhas não coincidem.");
         if (password.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
         if (!nome.trim()) throw new Error("Preencha seu nome completo.");
         if (!whatsapp.trim() || whatsapp.replace(/\D/g, '').length < 10) throw new Error("WhatsApp/Telefone inválido.");
         if (cpf.length < 14) throw new Error("CPF inválido.");
-        if (!cep || !rua || !numero || !bairro || !selectedCityId) throw new Error("Preencha todo o endereço.");
+        if (!cep || !rua || !numero || !bairro || !selectedCityId) throw new Error("Preencha todo o endereço e selecione a cidade.");
 
-        // 1. Create User in Auth
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email,
           password,
@@ -200,23 +216,19 @@ const Login: React.FC = () => {
 
         if (authData.user) {
             const stateId = selectedStateId || 1;
-
-            // 2. Insert into 'users' table
             const { error: profileError } = await supabase
                 .from('users')
                 .insert({
                     uuid: authData.user.id,
                     email: email,
                     nome: nome,
-                    cpf: cpf,
+                    cpf: cpf.replace(/\D/g, ''),
                     whatsapp: whatsapp.replace(/\D/g, ''),
                     tipo: 'consumidor',
                     sexo: 'Outro',
                     ativo: true,
                     fotoperfil: '',
-                    
-                    // Address
-                    cep: cep,
+                    cep: cep.replace(/\D/g, ''),
                     rua: rua,
                     numero: numero,
                     bairro: bairro,
@@ -245,7 +257,11 @@ const Login: React.FC = () => {
       }
     } catch (error: any) {
       console.error(error);
-      setErrorMsg(error.message || 'Ocorreu um erro. Tente novamente.');
+      // Tratamento amigável para erro de credenciais Supabase
+      const message = error.message === 'Invalid login credentials' 
+        ? "E-mail ou senha incorretos. Verifique e tente novamente."
+        : error.message || 'Ocorreu um erro. Tente novamente.';
+      setErrorMsg(message);
     } finally {
       setLoading(false);
     }
@@ -255,7 +271,6 @@ const Login: React.FC = () => {
     <div className="min-h-screen bg-ios-bg flex flex-col items-center justify-center p-6">
       <div className={`w-full ${isSignUp ? 'max-w-lg' : 'max-w-sm'} transition-all duration-300 space-y-8`}>
         
-        {/* Logo / Header */}
         <div className="text-center space-y-2">
           <div className="w-24 h-24 rounded-3xl mx-auto flex items-center justify-center shadow-2xl shadow-blue-200 mb-6 overflow-hidden bg-white">
             <img 
@@ -268,10 +283,7 @@ const Login: React.FC = () => {
           <p className="text-gray-500 text-sm">Agende serviços com facilidade.</p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleAuth} className="bg-white p-8 rounded-[2rem] shadow-glass space-y-5 border border-white">
-          
-          {/* Toggle Login/Signup */}
           <div className="flex bg-gray-100 p-1 rounded-xl mb-4">
             <button
               type="button"
@@ -290,8 +302,6 @@ const Login: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            
-            {/* SIGN UP EXTRA FIELDS */}
             {isSignUp && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
                     <div className="space-y-2">
@@ -376,7 +386,7 @@ const Login: React.FC = () => {
                                     required={isSignUp}
                                     value={selectedCityName}
                                     placeholder="Selecionar..."
-                                    className="w-full bg-gray-50 border border-gray-100 rounded-xl py-3.5 pl-11 pr-3 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm cursor-pointer"
+                                    className={`w-full bg-gray-50 border rounded-xl py-3.5 pl-11 pr-3 text-black outline-none focus:ring-2 focus:ring-ios-blue/20 transition-all text-sm cursor-pointer ${!selectedCityId && !loadingCep ? 'border-orange-300 ring-orange-100 ring-2' : 'border-gray-100'}`}
                                 />
                             </div>
                         </div>
@@ -450,7 +460,6 @@ const Login: React.FC = () => {
                 </div>
             )}
 
-            {/* COMMON FIELDS */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-gray-400 uppercase ml-1">E-mail</label>
               <div className="relative">
@@ -481,7 +490,6 @@ const Login: React.FC = () => {
               </div>
             </div>
 
-            {/* Confirm Password Field */}
             {isSignUp && (
                 <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
                 <label className="text-xs font-bold text-gray-400 uppercase ml-1">Confirmar Senha</label>
@@ -503,8 +511,11 @@ const Login: React.FC = () => {
           </div>
 
           {errorMsg && (
-            <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl border border-red-100 font-medium animate-in fade-in">
-              {errorMsg}
+            <div className={`p-3 text-xs rounded-xl border font-medium animate-in fade-in ${errorMsg.includes("encontrado") || errorMsg.includes("conectar") ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+              <div className="flex items-center gap-2">
+                <AlertCircle size={14} />
+                <span>{errorMsg}</span>
+              </div>
             </div>
           )}
 
@@ -529,7 +540,6 @@ const Login: React.FC = () => {
         </p>
       </div>
 
-      {/* CITY SEARCH MODAL */}
       {isCityModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-md animate-in fade-in duration-200">
              <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
@@ -574,6 +584,7 @@ const Login: React.FC = () => {
                                         <span className="font-semibold text-gray-900 block group-hover:text-ios-blue transition-colors">
                                             {city.cidade}
                                         </span>
+                                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{states.find(s => s.id === city.uf)?.uf}</span>
                                     </div>
                                     {selectedCityId === city.id.toString() && (
                                         <div className="w-2 h-2 bg-ios-blue rounded-full"></div>
@@ -584,7 +595,7 @@ const Login: React.FC = () => {
                     ) : (
                         <div className="py-10 text-center text-gray-400 px-6">
                             {citySearchTerm.length < 2 ? (
-                                <p>Digite pelo menos 2 letras para buscar.</p>
+                                <p>Digite pelo menos 2 letras para buscar{selectedStateId && ` em ${displayStateUf}`}.</p>
                             ) : (
                                 <div>
                                     <p className="font-medium">Nenhuma cidade encontrada</p>

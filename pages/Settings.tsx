@@ -1,9 +1,8 @@
-
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { createClient } from '@supabase/supabase-js';
 import { Geral, User, City, Estado } from '../types';
-import { Loader2, Plus, Edit2, Trash2, X, Save, CheckCircle, AlertTriangle, Layers, Users, Image as ImageIcon, FolderTree, LayoutGrid, Box, CloudUpload, Search, MapPin, Briefcase, Home, Navigation, FileText, Lock } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, X, Save, CheckCircle, AlertTriangle, Layers, Users, Image as ImageIcon, FolderTree, LayoutGrid, Box, CloudUpload, Search, MapPin, Briefcase, Home, Navigation, FileText, Lock, AlertCircle } from 'lucide-react';
 
 // Hardcoded keys for temp client
 const SUPABASE_URL = 'https://uehyjyyvkrlggwmfdhgh.supabase.co';
@@ -58,6 +57,7 @@ const Settings: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loadingCep, setLoadingCep] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [cepAlert, setCepAlert] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -144,38 +144,60 @@ const Settings: React.FC = () => {
       const cleanCep = cep.replace(/\D/g, '');
       if (cleanCep.length === 8) {
           setLoadingCep(true);
+          setCepAlert(null);
           try {
               const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+              if (!response.ok) throw new Error("Network error");
+              
               const data = await response.json();
               
               if (!data.erro) {
                   const updates: any = {
-                      rua: data.logradouro,
-                      bairro: data.bairro,
-                      displayStateUf: data.uf // Preenche sigla visual
+                      rua: data.logradouro || '',
+                      bairro: data.bairro || '',
+                      displayStateUf: data.uf
                   };
 
                   const stateObj = states.find(s => s.uf === data.uf);
                   
                   if (data.localidade && stateObj) {
-                      const { data: cityDB } = await supabase
+                      updates.estado = stateObj.id;
+                      
+                      let { data: cityDB } = await supabase
                         .from('cidades')
                         .select('*')
                         .eq('uf', stateObj.id)
-                        .ilike('cidade', data.localidade)
-                        .single();
+                        .ilike('cidade', data.localidade.trim())
+                        .maybeSingle();
                       
+                      if (!cityDB) {
+                          const { data: fuzzyData } = await supabase
+                            .from('cidades')
+                            .select('*')
+                            .eq('uf', stateObj.id)
+                            .ilike('cidade', `%${data.localidade.trim().split(' ')[0]}%`)
+                            .limit(1)
+                            .maybeSingle();
+                          cityDB = fuzzyData;
+                      }
+
                       if (cityDB) {
                           updates.cidade = cityDB.id;
-                          updates.estado = cityDB.uf;
                           updates.cidade_data = { cidade: cityDB.cidade, uf: cityDB.uf };
+                      } else {
+                          updates.cidade = null;
+                          updates.cidade_data = null;
+                          setCepAlert("Cuidado: A cidade não foi encontrada automaticamente no banco. Selecione-a abaixo.");
                       }
                   }
                   
                   setFormData(prev => ({ ...prev, ...updates }));
+              } else {
+                  setCepAlert("CEP não encontrado.");
               }
           } catch (error) {
               console.error("Erro ao buscar CEP", error);
+              setCepAlert("Não foi possível conectar ao serviço de CEP. Preencha os dados manualmente.");
           } finally {
               setLoadingCep(false);
           }
@@ -185,12 +207,13 @@ const Settings: React.FC = () => {
   const performCitySearch = async (term: string) => {
     try {
       setSearchingCity(true);
-      const { data, error } = await supabase
-        .from('cidades')
-        .select('*')
-        .ilike('cidade', `%${term}%`)
-        .limit(50);
+      let query = supabase.from('cidades').select('*').ilike('cidade', `%${term}%`);
+      
+      if (formData.estado) {
+          query = query.eq('uf', formData.estado);
+      }
 
+      const { data, error } = await query.limit(50);
       if (error) throw error;
       setSearchedCities(data || []);
     } catch (err) {
@@ -222,7 +245,7 @@ const Settings: React.FC = () => {
   };
   
   const getFormCityDisplay = () => {
-      if (!formData.cidade) return 'Selecione a cidade...';
+      if (!formData.cidade) return 'Selecionar cidade...';
       if (formData.cidade_data) {
           const uf = getStateUf(formData.cidade_data.uf);
           return uf ? `${formData.cidade_data.cidade}, ${uf}` : formData.cidade_data.cidade;
@@ -260,13 +283,13 @@ const Settings: React.FC = () => {
         };
         setFormData(normalizedItem);
     } else {
-        // Serviços não precisam de normalização de campos de usuário
         setFormData({ ...item });
     }
     setActivitySearchTerm(''); 
     setPassword('');
     setEditingId(item.id);
     setIsModalOpen(true);
+    setCepAlert(null);
   };
 
   const handleAddNew = () => {
@@ -306,6 +329,7 @@ const Settings: React.FC = () => {
     setActivitySearchTerm('');
     setEditingId(null);
     setIsModalOpen(true);
+    setCepAlert(null);
   };
 
   const handleDelete = async (id: number) => {
@@ -369,7 +393,6 @@ const Settings: React.FC = () => {
         let payload: any = {};
         
         if (activeTab === 'services') {
-            // WHITE-LIST estrita para evitar enviar campos inexistentes como 'displayStateUf'
             payload = {
                 nome: dataToSave.nome,
                 imagem: dataToSave.imagem,
@@ -379,11 +402,8 @@ const Settings: React.FC = () => {
             };
         } else if (activeTab === 'users') {
             payload = { ...dataToSave };
-            
-            // REMOVER campos de UI que não pertencem a tabela 'users'
             delete payload.displayStateUf;
 
-            // VALIDAÇÃO DE CAMPOS OBRIGATÓRIOS (CONFORME SOLICITADO PELO USUÁRIO)
             const requiredFields = [
                 { key: 'nome', label: 'Nome' },
                 { key: 'email', label: 'E-mail' },
@@ -404,7 +424,6 @@ const Settings: React.FC = () => {
                 }
             }
 
-            // Validação adicional para profissionais
             if (payload.tipo.toLowerCase() === 'profissional' && (!payload.atividade || payload.atividade.length === 0)) {
                 throw new Error('Profissionais devem ter pelo menos uma especialidade selecionada.');
             }
@@ -479,6 +498,7 @@ const Settings: React.FC = () => {
       setIsCitySearchOpen(false);
       setCitySearchTerm('');
       setSearchedCities([]);
+      setCepAlert(null);
   };
 
   const toggleActivity = (activityId: number) => {
@@ -738,9 +758,15 @@ const Settings: React.FC = () => {
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Cidade <span className="text-red-500 ml-0.5">*</span></label>
-                                        <div onClick={() => setIsCitySearchOpen(true)} className="relative cursor-pointer"><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none cursor-pointer" value={getFormCityDisplay()} readOnly /><Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"/></div>
+                                        <div onClick={() => setIsCitySearchOpen(true)} className="relative cursor-pointer"><input className={`w-full bg-gray-50 border rounded-2xl p-4 text-sm font-medium text-black outline-none cursor-pointer ${!formData.cidade && !loadingCep ? 'border-orange-300 ring-2 ring-orange-50' : 'border-gray-100'}`} value={getFormCityDisplay()} readOnly /><Search size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"/></div>
                                     </div>
                                 </div>
+                                {cepAlert && (
+                                    <div className={`p-3 rounded-xl border flex items-start gap-2 mb-3 animate-in fade-in ${cepAlert.includes("conectar") ? 'bg-orange-100 border-orange-200' : 'bg-orange-50 border-orange-100'}`}>
+                                        <AlertCircle size={14} className="text-orange-600 mt-0.5 flex-shrink-0" />
+                                        <p className="text-[10px] font-bold text-orange-700 leading-tight">{cepAlert}</p>
+                                    </div>
+                                )}
                                 <div className="grid grid-cols-2 gap-4 mb-3">
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Estado (UF) <span className="text-red-500 ml-0.5">*</span></label>

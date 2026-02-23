@@ -16,30 +16,40 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [loadingUserType, setLoadingUserType] = useState(true);
 
   useEffect(() => {
-    const fetchUserType = async (user: any) => {
-      setLoadingUserType(true);
-      if (user) {
-        try {
-          const { data, error } = await supabase
-            .from('users')
-            .select('tipo')
-            .eq('uuid', user.id)
-            .maybeSingle();
-          
-          if (error) {
-             console.error("Supabase error fetching user type:", error.message || error);
-             throw error;
-          }
-          
-          setUserType(data?.tipo || null);
-        } catch (error: any) {
-          console.error("Error fetching user type:", error.message || error);
-          setUserType(null);
-        }
-      } else {
+    const fetchUserType = async (user: any, retryCount = 0) => {
+      if (!user) {
         setUserType(null);
+        setLoadingUserType(false);
+        return;
       }
-      setLoadingUserType(false);
+
+      setLoadingUserType(true);
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('tipo')
+          .eq('uuid', user.id)
+          .maybeSingle();
+        
+        if (error) {
+           console.error(`Supabase error fetching user type (attempt ${retryCount + 1}):`, error.message || error);
+           throw error;
+        }
+        
+        setUserType(data?.tipo || null);
+        setLoadingUserType(false);
+      } catch (error: any) {
+        console.error(`Error fetching user type (attempt ${retryCount + 1}):`, error.message || error);
+        
+        if (retryCount < 2) {
+          console.log(`Retrying user type fetch in 1.5s...`);
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          return fetchUserType(user, retryCount + 1);
+        }
+        
+        setUserType(null);
+        setLoadingUserType(false);
+      }
     };
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -67,20 +77,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return location.pathname === path ? 'text-ios-blue' : 'text-gray-400';
   };
 
-  const shouldHideNav = location.pathname.includes('/professional/') || location.pathname.includes('/planning/');
-  
   const normType = userType?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || '';
   
   const isManager = !loadingUserType && normType === 'gestor';
-  const isInternalOrPro = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista' || normType === 'profissional');
   
-  const showMyOrders = !loadingUserType && (normType === 'consumidor' || normType === 'gestor');
-  
-  const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor' && normType !== 'profissional';
-  const showExecution = !loadingUserType && (normType === 'consumidor' || normType === 'profissional');
+  // Regras de visibilidade de itens de menu
+  const showMyOrders = !loadingUserType && (normType === 'consumidor');
+  const showTicketManagement = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista' || normType === 'profissional');
+  const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor';
+  const showSearch = !loadingUserType && (normType === 'consumidor');
 
-  // REGRA: Buscar Serviços apenas para Consumidor e Gestor
-  const showSearch = !loadingUserType && (normType === 'consumidor' || normType === 'gestor');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/login');
+  };
 
   return (
     <div className="flex h-screen w-full bg-[#F2F4F8] overflow-hidden">
@@ -123,7 +133,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">UAI Fix</h1>
-              <p className="text-xs text-gray-400 font-medium">Painel de Gestão</p>
+              <p className="text-xs text-gray-400 font-medium capitalize">{userType || 'Usuário'}</p>
             </div>
           </div>
           <button 
@@ -134,7 +144,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </button>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto no-scrollbar">
           <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4">Menu Principal</p>
           
           <button 
@@ -170,23 +180,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               onClick={() => navigate('/calendar')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/calendar')}`}
             >
-              <Calendar size={20} />
-              <span>Agenda</span>
-            </button>
-          )}
-
-          {showExecution && (
-            <button 
-              onClick={() => navigate('/execution')}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/execution')}`}
-            >
               <CalendarCheck size={20} />
               <span>Agenda</span>
             </button>
           )}
 
-          <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-6">Conta</p>
-
+          <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-8">Conta</p>
+          
           <button 
             onClick={() => navigate('/profile')}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/profile')}`}
@@ -194,8 +194,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <User size={20} />
             <span>Meu Perfil</span>
           </button>
-          
-          {isInternalOrPro && (
+
+          {showTicketManagement && (
             <button 
               onClick={() => navigate('/chamados')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/chamados')}`}
@@ -216,87 +216,55 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
         </nav>
 
-        <div className="p-4 border-t border-gray-100 flex-shrink-0">
-            <button 
-                onClick={async () => { await supabase.auth.signOut(); navigate('/'); }}
-                className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 transition-all font-medium"
-            >
-                <LogOut size={20} />
-                <span>Sair</span>
-            </button>
+        <div className="p-4 border-t border-gray-100">
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 transition-all font-medium"
+          >
+            <LogOut size={20} />
+            <span>Sair da Conta</span>
+          </button>
         </div>
       </aside>
 
       {/* --- MAIN CONTENT AREA --- */}
-      <main className="flex-1 h-full overflow-y-auto relative w-full max-w-[100vw] min-w-0">
-        <div className={`w-full mx-auto md:p-8 ${shouldHideNav ? 'pb-8' : 'pb-28 md:pb-8'}`}>
-          <div className="md:max-w-7xl mx-auto w-full">
-            {children}
-          </div>
+      <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
+        <div className="flex-1 overflow-y-auto no-scrollbar">
+          {children}
         </div>
-      </main>
 
-      {/* --- MOBILE BOTTOM NAV --- */}
-      {!isDrawerOpen && (
-        <div 
-            className={`md:hidden fixed bottom-6 left-6 right-6 z-40 transition-transform duration-500 ease-in-out ${shouldHideNav ? 'translate-y-[200%]' : 'translate-y-0'}`}
-        >
-            <nav className="vitrified rounded-[2rem] shadow-floating max-w-md mx-auto">
-            <div className="flex justify-around items-center h-16 px-2">
-                <button 
-                onClick={() => navigate('/home')} 
-                className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/home')}`}
-                >
-                <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/home' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                    <Home size={22} strokeWidth={location.pathname === '/home' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
-                </div>
-                </button>
-                
-                {showSearch && (
-                  <button 
-                  onClick={() => navigate('/search')} 
-                  className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/search')}`}
-                  >
-                  <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/search' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                      <Search size={22} strokeWidth={location.pathname === '/search' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
-                  </div>
-                  </button>
-                )}
-                
-                {showMyOrders && (
-                    <button 
-                    onClick={() => navigate('/orders')} 
-                    className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/orders')}`}
-                    >
-                    <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/orders' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                        <ShoppingBag size={22} strokeWidth={location.pathname === '/orders' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
-                    </div>
-                    </button>
-                )}
-                
-                {showExecution ? (
-                    <button 
-                    onClick={() => navigate('/execution')} 
-                    className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/execution')}`}
-                    >
-                    <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/execution' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                        <CalendarCheck size={22} strokeWidth={location.pathname === '/execution' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
-                    </div>
-                    </button>
-                ) : (
-                    <button 
-                    onClick={() => navigate('/profile')} 
-                    className={`flex flex-col items-center justify-center w-full space-y-1 group ${isActiveMobile('/profile')}`}
-                    >
-                    <div className={`p-1.5 rounded-full transition-all duration-300 ${location.pathname === '/profile' ? 'bg-blue-50/50' : 'bg-transparent'}`}>
-                        <User size={22} strokeWidth={location.pathname === '/profile' ? 2.5 : 2} className="transition-transform group-active:scale-90" />
-                    </div>
-                    </button>
-                )}
-            </div>
-            </nav>
-        </div>
-      )}
+        {/* --- MOBILE BOTTOM TAB BAR --- */}
+        <nav className="md:hidden flex items-center justify-around bg-white/80 backdrop-blur-xl border-t border-gray-200 px-2 py-3 pb-8 shrink-0">
+          <button onClick={() => navigate('/home')} className={`flex flex-col items-center space-y-1 ${isActiveMobile('/home')}`}>
+            <Home size={22} />
+            <span className="text-[10px] font-bold uppercase tracking-tight">Início</span>
+          </button>
+          
+          {showSearch && (
+            <button onClick={() => navigate('/search')} className={`flex flex-col items-center space-y-1 ${isActiveMobile('/search')}`}>
+              <Search size={22} />
+              <span className="text-[10px] font-bold uppercase tracking-tight">Buscar</span>
+            </button>
+          )}
+          
+          {showAgenda ? (
+            <button onClick={() => navigate('/calendar')} className={`flex flex-col items-center space-y-1 ${isActiveMobile('/calendar')}`}>
+              <Calendar size={22} />
+              <span className="text-[10px] font-bold uppercase tracking-tight">Agenda</span>
+            </button>
+          ) : showMyOrders && (
+            <button onClick={() => navigate('/orders')} className={`flex flex-col items-center space-y-1 ${isActiveMobile('/orders')}`}>
+              <ShoppingBag size={22} />
+              <span className="text-[10px] font-bold uppercase tracking-tight">Pedidos</span>
+            </button>
+          )}
+
+          <button onClick={() => navigate('/profile')} className={`flex flex-col items-center space-y-1 ${isActiveMobile('/profile')}`}>
+            <User size={22} />
+            <span className="text-[10px] font-bold uppercase tracking-tight">Perfil</span>
+          </button>
+        </nav>
+      </main>
     </div>
   );
 };

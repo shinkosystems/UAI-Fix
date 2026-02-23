@@ -97,6 +97,8 @@ export interface Chave {
   // FIX: Added missing 'cidade' property to Chave interface to resolve filtering error in Chamados.tsx
   cidade: number;
   created_at: string;
+  // New field for rejection reason
+  motivo_recusa?: string | null;
   // Execution Photos
   fotoantes?: string[];
   fotodepois?: string[];
@@ -129,6 +131,10 @@ export interface Orcamento {
   id: number;
   tipopagmto: string;
   parcelas: number;
+  tipopagmto_sugerido?: string;
+  parcelas_sugerido?: number;
+  justificativa_sugerido?: string;
+  desconto: number; // Porcentagem (0-100)
   notafiscal: boolean;
   imposto: number;
   custofixo: number;
