@@ -133,12 +133,11 @@ export interface Orcamento {
   parcelas: number;
   tipopagmto_sugerido?: string;
   parcelas_sugerido?: number;
+  desconto_sugerido?: number;
   justificativa_sugerido?: string;
-  desconto: number; // Porcentagem (0-100)
   notafiscal: boolean;
   imposto: number;
   custofixo: number;
-  custovariavel: number;
   preco: number;
   lucro: number;
   hh: number;

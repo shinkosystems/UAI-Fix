@@ -104,7 +104,7 @@ const Profile: React.FC = () => {
                   const approvalNotifs: NotificationItem[] = chavesRes.data.map(c => ({
                       id: c.id,
                       title: 'Orçamento Pronto!',
-                      description: `O orçamento para "${c.geral?.nome}" está disponível para sua aprovação.`,
+                      description: `O orçamento para "${(c.geral as any)?.nome || (c.geral as any)?.[0]?.nome}" está disponível para sua aprovação.`,
                       date: new Date(c.created_at).toLocaleDateString('pt-BR'),
                       type: 'approval',
                       read: false

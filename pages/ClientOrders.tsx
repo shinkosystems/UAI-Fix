@@ -198,8 +198,8 @@ const ClientOrders: React.FC = () => {
               const finalParcelas = paymentChoice === 'suggested' ? budget.parcelas_sugerido : budget.parcelas;
               
               let finalPrice = budget.preco;
-              if (paymentChoice === 'suggested' && budget.desconto > 0) {
-                  finalPrice = budget.preco * (1 - budget.desconto / 100);
+              if (paymentChoice === 'suggested' && (budget.desconto_sugerido || 0) > 0) {
+                  finalPrice = budget.preco * (1 - (budget.desconto_sugerido || 0) / 100);
               }
 
               await supabase.from('orcamentos').update({
@@ -476,11 +476,11 @@ const ClientOrders: React.FC = () => {
                                                             </div>
                                                         </div>
                                                         <div className="text-right">
-                                                            {selectedOrder.orcamentos[0].desconto > 0 ? (
+                                                            {(selectedOrder.orcamentos[0].desconto_sugerido || 0) > 0 ? (
                                                                 <div className="space-y-0.5">
                                                                     <p className="text-[10px] text-gray-400 line-through">R$ {selectedOrder.orcamentos[0].preco.toFixed(2)}</p>
-                                                                    <p className="text-sm font-black text-green-600">R$ {(selectedOrder.orcamentos[0].preco * (1 - selectedOrder.orcamentos[0].desconto / 100)).toFixed(2)}</p>
-                                                                    <div className="bg-green-100 text-green-700 px-2 py-0.5 rounded-md text-[8px] font-black uppercase inline-block">-{selectedOrder.orcamentos[0].desconto}% OFF</div>
+                                                                    <p className="text-sm font-black text-green-600">R$ {(selectedOrder.orcamentos[0].preco * (1 - (selectedOrder.orcamentos[0].desconto_sugerido || 0) / 100)).toFixed(2)}</p>
+                                                                    <div className="bg-green-100 text-green-700 px-2 py-0.5 rounded-md text-[8px] font-black uppercase inline-block">-{(selectedOrder.orcamentos[0].desconto_sugerido || 0)}% OFF</div>
                                                                 </div>
                                                             ) : (
                                                                 <p className="text-xs font-black text-gray-900">R$ {selectedOrder.orcamentos[0].preco.toFixed(2)}</p>
