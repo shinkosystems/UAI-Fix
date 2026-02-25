@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { MapPin, Calendar, Banknote, User as UserIcon } from 'lucide-react';
+import { MapPin, Calendar, Banknote, User as UserIcon, AlertCircle, Ban } from 'lucide-react';
 import { ChamadoExtended } from '../../pages/Chamados';
 
 interface StatusSectionProps {
@@ -13,14 +13,14 @@ interface StatusSectionProps {
     setShowBudgetForm: (show: boolean) => void;
 }
 
-const StatusSection: React.FC<StatusSectionProps> = ({ 
-    formData, 
-    setFormData, 
-    isGestor, 
+const StatusSection: React.FC<StatusSectionProps> = ({
+    formData,
+    setFormData,
+    isGestor,
     isOrcamentista,
     isProfessional,
     editingItem,
-    setShowBudgetForm 
+    setShowBudgetForm
 }) => {
     const budget = editingItem.orcamentos?.[0];
     const plan = editingItem.planejamento?.[0];
@@ -33,10 +33,22 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                 <div className="bg-gray-50/80 p-6 rounded-[2rem] border border-gray-100 text-center">
                     <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block mb-2">Status do Fluxo</label>
                     <span className="text-xl font-black text-gray-900">
-                        {formData.status === 'aguardando_profissional' ? 'Aguardando Profissional' : 
-                         formData.status.replace('_', ' ').charAt(0).toUpperCase() + formData.status.replace('_', ' ').slice(1)}
+                        {formData.status === 'aguardando_profissional' ? 'Aguardando Profissional' :
+                            formData.status.replace('_', ' ').charAt(0).toUpperCase() + formData.status.replace('_', ' ').slice(1)}
                     </span>
                 </div>
+
+                {formData.status === 'reprovado' && editingItem.motivo_recusa && (
+                    <div className="bg-red-50 p-5 rounded-3xl border border-red-100 flex gap-4 animate-in slide-in-from-top-2">
+                        <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
+                            <Ban size={20} />
+                        </div>
+                        <div>
+                            <p className="text-[9px] font-black text-red-700 uppercase tracking-widest leading-none mb-1">Motivo da Recusa</p>
+                            <p className="text-sm font-medium text-red-900 leading-relaxed italic">"{editingItem.motivo_recusa}"</p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Consumer Info */}
                 <div className="bg-white p-5 rounded-3xl border border-gray-100 flex items-center gap-4 shadow-sm">
@@ -102,12 +114,12 @@ const StatusSection: React.FC<StatusSectionProps> = ({
     return (
         <div className="bg-gray-50/50 p-6 rounded-[2rem] border border-gray-100 space-y-4">
             <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block ml-1">Status do Fluxo</label>
-            <select 
-                className="w-full bg-white border border-gray-200 rounded-xl p-4 text-sm font-black text-gray-900 outline-none shadow-sm appearance-none" 
-                value={formData.status} 
+            <select
+                className="w-full bg-white border border-gray-200 rounded-xl p-4 text-sm font-black text-gray-900 outline-none shadow-sm appearance-none"
+                value={formData.status}
                 onChange={(e) => {
                     const newStatus = e.target.value;
-                    setFormData({...formData, status: newStatus});
+                    setFormData({ ...formData, status: newStatus });
                     if (isGestor || isOrcamentista) {
                         setShowBudgetForm(newStatus !== 'pendente');
                     }
@@ -123,6 +135,18 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                 <option value="reprovado">Reprovado</option>
                 <option value="cancelado">Cancelado</option>
             </select>
+
+            {formData.status === 'reprovado' && editingItem.motivo_recusa && (
+                <div className="bg-red-50 p-5 rounded-3xl border border-red-100 flex gap-4 animate-in slide-in-from-top-2 mt-2">
+                    <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
+                        <AlertCircle size={20} />
+                    </div>
+                    <div>
+                        <p className="text-[9px] font-black text-red-700 uppercase tracking-widest leading-none mb-1">Justificativa do Consumidor</p>
+                        <p className="text-sm font-medium text-red-900 leading-relaxed">"{editingItem.motivo_recusa}"</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

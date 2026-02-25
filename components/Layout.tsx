@@ -30,23 +30,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           .select('tipo')
           .eq('uuid', user.id)
           .maybeSingle();
-        
+
         if (error) {
-           console.error(`Supabase error fetching user type (attempt ${retryCount + 1}):`, error.message || error);
-           throw error;
+          console.error(`Supabase error fetching user type (attempt ${retryCount + 1}):`, error.message || error);
+          throw error;
         }
-        
+
         setUserType(data?.tipo || null);
         setLoadingUserType(false);
       } catch (error: any) {
         console.error(`Error fetching user type (attempt ${retryCount + 1}):`, error.message || error);
-        
+
         if (retryCount < 2) {
           console.log(`Retrying user type fetch in 1.5s...`);
           await new Promise(resolve => setTimeout(resolve, 1500));
           return fetchUserType(user, retryCount + 1);
         }
-        
+
         setUserType(null);
         setLoadingUserType(false);
       }
@@ -78,13 +78,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const normType = userType?.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") || '';
-  
+
   const isManager = !loadingUserType && normType === 'gestor';
-  
+
   // Regras de visibilidade de itens de menu
   const showMyOrders = !loadingUserType && (normType === 'consumidor');
   const showTicketManagement = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista' || normType === 'profissional');
-  const showAgenda = !loadingUserType && normType !== '' && normType !== 'consumidor';
+  const showAgenda = !loadingUserType && normType !== '';
   const showSearch = !loadingUserType && (normType === 'consumidor');
 
   const handleLogout = async () => {
@@ -94,10 +94,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className="flex h-screen w-full bg-[#F2F4F8] overflow-hidden">
-      
+
       {/* --- MOBILE HEADER BUTTON (Hamburger) --- */}
       <div className="md:hidden fixed top-4 left-4 z-50">
-        <button 
+        <button
           onClick={() => setIsDrawerOpen(true)}
           className="bg-white/90 backdrop-blur-md p-2.5 rounded-full shadow-lg border border-white/50 text-gray-700 active:scale-95 transition-transform"
         >
@@ -107,14 +107,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* --- MOBILE DRAWER OVERLAY --- */}
       {isDrawerOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm md:hidden animate-in fade-in duration-300"
           onClick={() => setIsDrawerOpen(false)}
         />
       )}
 
       {/* --- SIDEBAR (Desktop & Mobile Drawer) --- */}
-      <aside 
+      <aside
         className={`
           fixed inset-y-0 left-0 z-[60] w-72 bg-white border-r border-gray-200 flex flex-col h-full
           transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none
@@ -125,18 +125,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="p-6 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shadow-sm">
-               <img 
-                 src="https://uehyjyyvkrlggwmfdhgh.supabase.co/storage/v1/object/public/imagens/imagens/994ff870-5268-4a13-8378-0661a9ffe9b9.jpeg" 
-                 alt="Logo" 
-                 className="w-full h-full object-cover"
-               />
+              <img
+                src="https://uehyjyyvkrlggwmfdhgh.supabase.co/storage/v1/object/public/imagens/imagens/994ff870-5268-4a13-8378-0661a9ffe9b9.jpeg"
+                alt="Logo"
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">UAI Fix</h1>
               <p className="text-xs text-gray-400 font-medium capitalize">{userType || 'Usuário'}</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={() => setIsDrawerOpen(false)}
             className="md:hidden p-2 text-gray-400 hover:text-gray-600 bg-gray-50 rounded-full"
           >
@@ -146,8 +146,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto no-scrollbar">
           <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-4">Menu Principal</p>
-          
-          <button 
+
+          <button
             onClick={() => navigate('/home')}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/home')}`}
           >
@@ -156,7 +156,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </button>
 
           {showSearch && (
-            <button 
+            <button
               onClick={() => navigate('/search')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/search')}`}
             >
@@ -166,7 +166,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
 
           {showMyOrders && (
-            <button 
+            <button
               onClick={() => navigate('/orders')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/orders')}`}
             >
@@ -176,7 +176,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
 
           {showAgenda && (
-            <button 
+            <button
               onClick={() => navigate('/calendar')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/calendar')}`}
             >
@@ -186,8 +186,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
 
           <p className="px-4 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 mt-8">Conta</p>
-          
-          <button 
+
+          <button
             onClick={() => navigate('/profile')}
             className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/profile')}`}
           >
@@ -196,7 +196,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </button>
 
           {showTicketManagement && (
-            <button 
+            <button
               onClick={() => navigate('/chamados')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/chamados')}`}
             >
@@ -206,7 +206,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
 
           {isManager && (
-            <button 
+            <button
               onClick={() => navigate('/settings')}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/settings')}`}
             >
@@ -217,7 +217,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         </nav>
 
         <div className="p-4 border-t border-gray-100">
-          <button 
+          <button
             onClick={handleLogout}
             className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 transition-all font-medium"
           >
@@ -239,20 +239,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <Home size={22} />
             <span className="text-[10px] font-bold uppercase tracking-tight">Início</span>
           </button>
-          
+
           {showSearch && (
             <button onClick={() => navigate('/search')} className={`flex flex-col items-center space-y-1 ${isActiveMobile('/search')}`}>
               <Search size={22} />
               <span className="text-[10px] font-bold uppercase tracking-tight">Buscar</span>
             </button>
           )}
-          
-          {showAgenda ? (
+
+          {showAgenda && (
             <button onClick={() => navigate('/calendar')} className={`flex flex-col items-center space-y-1 ${isActiveMobile('/calendar')}`}>
               <Calendar size={22} />
               <span className="text-[10px] font-bold uppercase tracking-tight">Agenda</span>
             </button>
-          ) : showMyOrders && (
+          )}
+
+          {showMyOrders && (
             <button onClick={() => navigate('/orders')} className={`flex flex-col items-center space-y-1 ${isActiveMobile('/orders')}`}>
               <ShoppingBag size={22} />
               <span className="text-[10px] font-bold uppercase tracking-tight">Pedidos</span>

@@ -42,7 +42,7 @@ export interface User {
   uuid: string;
   tipo: string;
   sexo: string; // Added field to match DB constraint
-  
+
   // Address Fields
   rua?: string;
   numero?: string;
@@ -56,7 +56,7 @@ export interface User {
   cpf?: string;
 
   atividade?: number[]; // Changed to number array (int8[])
-  
+
   // For nested data
   cidades?: City; // For nested queries
   // Aliased Nested object from JOIN to avoid conflicts
@@ -64,7 +64,7 @@ export interface User {
     cidade: string;
     uf: number;
   };
-  
+
   whatsapp?: string;
   rating?: number; // Optional derived field for UI
   reviewCount?: number; // Optional derived field for UI
@@ -105,8 +105,18 @@ export interface Chave {
   // Nested data from JOINs
   geral?: { nome: string; imagem?: string };
   // cliente object might be injected manually or via join
-  clienteData?: User; 
+  clienteData?: User;
   profissional?: string | User | null; // Depending on how we map it
+}
+
+export interface ChamadoExtended extends Chave {
+  geral?: Geral;
+  clienteData?: User;
+  profissionalData?: User;
+  orcamentos?: Orcamento[];
+  planejamento?: Planejamento[];
+  avaliacao?: Avaliacao;
+  agenda?: Agenda[];
 }
 
 export interface Planejamento {
