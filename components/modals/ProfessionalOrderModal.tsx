@@ -145,7 +145,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
     const fetchProfessionals = async () => {
         try {
-            const { data } = await supabase.from('usuarios').select('*').eq('tipo', 'profissional').eq('ativo', true).order('nome');
+            const { data } = await supabase.from('users').select('*').eq('tipo', 'profissional').eq('ativo', true).order('nome');
             if (data) setAvailableProfessionals(data);
         } catch (error) {
             console.error('Erro ao buscar profissionais:', error);
@@ -272,6 +272,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         }
     };
 
+    const isBudgetReadOnly = ['aprovado', 'executando', 'concluido'].includes(formData.status);
+
     const handleSave = async () => {
         setSaving(true);
         try {
@@ -313,7 +315,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
             await supabase.from('chaves').update(updatesChave).eq('id', ticketId);
 
-            if (showBudgetForm && (isGestor || isOrcamentista)) {
+            if (showBudgetForm && (isGestor || isOrcamentista) && !isBudgetReadOnly) {
                 const b: any = {
                     chave: ticketId,
                     preco: formData.orcamentoPreco,
@@ -446,6 +448,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 formData={formData}
                                 setFormData={setFormData}
                                 showBudgetForm={showBudgetForm}
+                                isReadOnly={isBudgetReadOnly}
                             />
 
                             {normalizedItem.avaliacao && (
