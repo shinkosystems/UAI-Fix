@@ -102,13 +102,18 @@ const Execution: React.FC = () => {
 
             const { data: userData } = await supabase.from('users').select('tipo').eq('uuid', user.id).single();
             const role = userData?.tipo || '';
+            const roleNormalized = role.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             setUserType(role);
             setCurrentUserId(user.id);
+            let agendaQuery = supabase.from('agenda').select('*');
 
-            const { data: agendaData, error: agendaError } = await supabase
-                .from('agenda')
-                .select('*')
-                .or(`cliente.eq.${user.id},profissional.eq.${user.id}`);
+            if (roleNormalized === 'consumidor') {
+                agendaQuery = agendaQuery.eq('cliente', user.id);
+            } else if (roleNormalized === 'profissional') {
+                agendaQuery = agendaQuery.eq('profissional', user.id);
+            }
+
+            const { data: agendaData, error: agendaError } = await agendaQuery;
 
             if (agendaError) throw agendaError;
             if (!agendaData) return;
@@ -474,7 +479,16 @@ const Execution: React.FC = () => {
             </div>
 
             <ProfessionalOrderModal
-                order={selectedEvent}
+                order={{
+                    ...selectedEvent,
+                    geral: selectedEvent.geral,
+                    planejamento: selectedEvent.planejamentoData ? [selectedEvent.planejamentoData] : [],
+                    orcamentos: selectedEvent.orcamentoData ? [selectedEvent.orcamentoData] : [],
+                    agenda: [selectedEvent],
+                    clienteData: selectedEvent.clienteData,
+                    profissionalData: selectedEvent.profissionalData,
+                    avaliacao: selectedEvent.avaliacao
+                }}
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onUpdate={fetchAgenda}

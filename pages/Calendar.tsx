@@ -469,9 +469,12 @@ const CalendarPage: React.FC = () => {
                         order={{
                             ...selectedEvent,
                             geral: selectedEvent.geralData,
-                            planejamentoData: selectedEvent.planejamentoData,
-                            orcamentoData: selectedEvent.orcamentoData,
-                            chaveData: selectedEvent // selectedEvent is the 'chave' record itself
+                            planejamento: selectedEvent.planejamentoData ? [selectedEvent.planejamentoData] : [],
+                            orcamentos: selectedEvent.orcamentoData ? [selectedEvent.orcamentoData] : [],
+                            agenda: selectedEvent.agendaData ? [selectedEvent.agendaData] : [],
+                            clienteData: selectedEvent.clienteData,
+                            profissionalData: selectedEvent.profissionalData,
+                            avaliacao: selectedEvent.avaliacao
                         }}
                         isOpen={isModalOpen}
                         onClose={() => setIsModalOpen(false)}
