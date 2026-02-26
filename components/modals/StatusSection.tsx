@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { MapPin, Calendar, Banknote, User as UserIcon, AlertCircle, Ban } from 'lucide-react';
+import { MapPin, Calendar, Banknote, User as UserIcon, AlertCircle, Ban, CheckCircle2, Sparkles } from 'lucide-react';
 import { ChamadoExtended } from '../../pages/Chamados';
 
 interface StatusSectionProps {
@@ -8,6 +8,7 @@ interface StatusSectionProps {
     setFormData: (data: any) => void;
     isGestor: boolean;
     isOrcamentista: boolean;
+    isPlanejista: boolean;
     isProfessional: boolean;
     editingItem: ChamadoExtended;
     setShowBudgetForm: (show: boolean) => void;
@@ -18,6 +19,7 @@ const StatusSection: React.FC<StatusSectionProps> = ({
     setFormData,
     isGestor,
     isOrcamentista,
+    isPlanejista,
     isProfessional,
     editingItem,
     setShowBudgetForm
@@ -144,6 +146,36 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                     <div>
                         <p className="text-[9px] font-black text-red-700 uppercase tracking-widest leading-none mb-1">Justificativa do Consumidor</p>
                         <p className="text-sm font-medium text-red-900 leading-relaxed">"{editingItem.motivo_recusa}"</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Payment Choice Info for Admins */}
+            {(isGestor || isOrcamentista || isPlanejista) && ['aprovado', 'executando', 'concluido'].includes(formData.status) && budget && (
+                <div className="bg-white/80 p-5 rounded-3xl border border-gray-100 shadow-sm space-y-3 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="p-2 bg-ios-blue text-white rounded-xl">
+                                <Banknote size={16} />
+                            </div>
+                            <h4 className="text-[9px] font-black uppercase tracking-widest text-gray-500">Pagamento Selecionado</h4>
+                        </div>
+                        {budget.tipopagmto_sugerido && budget.tipopagmto === budget.tipopagmto_sugerido && budget.parcelas === budget.parcelas_sugerido ? (
+                            <div className="bg-blue-600 text-white px-2 py-1 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                <Sparkles size={10} /> Sugestão UAI Fix
+                            </div>
+                        ) : (
+                            <div className="bg-emerald-500 text-white px-2 py-1 rounded-lg text-[8px] font-black uppercase flex items-center gap-1 shadow-sm">
+                                <CheckCircle2 size={10} /> Escolha do Consumidor
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        <p className="text-sm font-black text-gray-900 leading-tight">
+                            {budget.tipopagmto}
+                            {budget.tipopagmto === 'Cartão de Crédito' && ` (${budget.parcelas}x)`}
+                        </p>
+                        <p className="text-[10px] font-bold text-gray-400 mt-0.5">Valor Final: R$ {budget.preco.toFixed(2)}</p>
                     </div>
                 </div>
             )}

@@ -418,6 +418,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 setFormData={setFormData}
                                 isGestor={isGestor}
                                 isOrcamentista={isOrcamentista}
+                                isPlanejista={isPlanejista}
                                 isProfessional={isProfessional}
                                 editingItem={normalizedItem}
                                 setShowBudgetForm={setShowBudgetForm}
