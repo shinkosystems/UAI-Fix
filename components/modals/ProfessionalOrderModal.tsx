@@ -78,6 +78,21 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         }
     }, [order, isOpen]);
 
+    useEffect(() => {
+        const custoFixo = parseFloat(formData.orcamentoCusto.toString()) || 0;
+        const hh = parseFloat(formData.orcamentoHH.toString()) || 0;
+        const lucro = parseFloat(formData.orcamentoLucro.toString()) || 0;
+        const impostoPercent = parseFloat(formData.orcamentoImposto.toString()) || 0;
+
+        const subtotal = custoFixo + hh + lucro;
+        const impostoValor = subtotal * (impostoPercent / 100);
+        const total = subtotal + impostoValor;
+
+        if (Math.abs(total - formData.orcamentoPreco) > 0.01) {
+            setFormData(prev => ({ ...prev, orcamentoPreco: total }));
+        }
+    }, [formData.orcamentoCusto, formData.orcamentoHH, formData.orcamentoImposto, formData.orcamentoLucro]);
+
     const toLocalISOString = (s: string) => {
         const date = new Date(s);
         const tzOffset = date.getTimezoneOffset() * 60000;
