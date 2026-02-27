@@ -84,17 +84,25 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
     };
 
-    const extractInstallments = (desc: string | undefined | null) => {
-        if (!desc) return 1;
-        const match = desc.match(/\[PARCELAS:\s*(\d+)\]/i);
-        return match ? parseInt(match[1]) : 1;
+    const extractMetadata = (desc: string | undefined | null, marker: string) => {
+        if (!desc) return null;
+        if (desc.includes(marker)) {
+            const parts = desc.split(marker);
+            if (parts.length > 1) {
+                return parts[1].split('\n\n[').shift()?.trim();
+            }
+        }
+        return null;
     };
 
-    const extractFlexibility = (desc: string | undefined | null) => {
-        if (!desc) return null;
-        const match = desc.match(/\[FLEXIBILIDADE:\s*([^\]]+)\]/i);
-        return match ? match[1].trim() : null;
+    const extractInstallments = (desc: string | undefined | null) => {
+        const val = extractMetadata(desc, "[PARCELAMENTO DESEJADO]:");
+        if (!val) return 1;
+        const num = parseInt(val.replace(/\D/g, ''));
+        return isNaN(num) ? 1 : num;
     };
+
+    const extractFlexibility = (desc: string | undefined | null) => extractMetadata(desc, "[FLEXIBILIDADE DE AGENDA]:");
 
     const initializeForm = (ticket: any) => {
         const budget = ticket.orcamentoData || ticket.orcamentos?.[0];
