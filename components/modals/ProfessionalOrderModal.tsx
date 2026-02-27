@@ -73,7 +73,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         if (order && isOpen) {
             initializeForm(order);
             if (isGestor || isPlanejista) {
-                fetchProfessionals();
+                const atividadeId = order.atividade || order.chaveData?.atividade;
+                fetchProfessionals(atividadeId);
             }
         }
     }, [order, isOpen]);
@@ -166,9 +167,15 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         });
     };
 
-    const fetchProfessionals = async () => {
+    const fetchProfessionals = async (atividadeId?: number) => {
         try {
-            const { data } = await supabase.from('users').select('*').eq('tipo', 'profissional').eq('ativo', true).order('nome');
+            let query = supabase.from('users').select('*').eq('tipo', 'profissional').eq('ativo', true);
+
+            if (atividadeId) {
+                query = query.contains('atividade', [atividadeId]);
+            }
+
+            const { data } = await query.order('nome');
             if (data) setAvailableProfessionals(data);
         } catch (error) {
             console.error('Erro ao buscar profissionais:', error);
