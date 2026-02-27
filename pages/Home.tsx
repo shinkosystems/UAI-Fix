@@ -265,7 +265,10 @@ const Home: React.FC = () => {
           const weightedRating = (v / (v + m)) * R + (m / (v + m)) * globalMeanC;
           return { uuid: p.uuid, nome: p.nome, fotoperfil: p.fotoperfil, serviceCount: count, rating: R, weightedRating: weightedRating };
         });
-        setTopProfessionals(stats.sort((a, b) => b.weightedRating - a.weightedRating).slice(0, 5));
+        setTopProfessionals(stats.sort((a, b) => {
+          if (b.weightedRating !== a.weightedRating) return b.weightedRating - a.weightedRating;
+          return b.serviceCount - a.serviceCount;
+        }).slice(0, 5));
       }
     } catch (error) { console.error("Home Fetch Error:", error); } finally { setLoading(false); }
   };
