@@ -572,8 +572,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     ) : isProfessional && formData.status === 'executando' ? (
                         <button
                             onClick={handleFinishTask}
-                            disabled={saving}
-                            className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                            disabled={saving || formData.fotoantes.length === 0 || formData.fotodepois.length === 0 || !formData.agendaObs || formData.agendaObs.trim().length < 5}
+                            className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
                         >
                             {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Finalizar Tarefa</span></>}
                         </button>
