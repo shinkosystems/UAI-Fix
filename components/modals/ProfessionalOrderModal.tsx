@@ -503,6 +503,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                             saving={saving}
                             editingItem={normalizedItem}
                             isMediaVideo={isMediaVideo}
+                            isReadOnly={isGestor || isPlanejista}
                         />
                     )}
                 </div>

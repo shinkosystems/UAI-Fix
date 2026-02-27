@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ClipboardList, Camera, Trash2, Loader2, AlertTriangle, FileText } from 'lucide-react';
-import { ChamadoExtended } from '../../pages/Chamados';
+import { ChamadoExtended } from '../../types';
 import { supabase } from '../../supabaseClient';
 
 interface ProfessionalTabProps {
@@ -9,6 +9,7 @@ interface ProfessionalTabProps {
     saving: boolean;
     editingItem: ChamadoExtended;
     isMediaVideo: (url: string) => boolean;
+    isReadOnly?: boolean;
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -18,7 +19,8 @@ const ProfessionalTab: React.FC<ProfessionalTabProps> = ({
     setFormData,
     saving,
     editingItem,
-    isMediaVideo
+    isMediaVideo,
+    isReadOnly = false
 }) => {
     const [localUploading, setLocalUploading] = useState<'antes' | 'depois' | null>(null);
     const [localError, setLocalError] = useState<string | null>(null);
@@ -96,20 +98,23 @@ const ProfessionalTab: React.FC<ProfessionalTabProps> = ({
                             ) : (
                                 <img src={url} className="w-full h-full object-cover" />
                             )}
-                            <button
-                                onClick={() => removeMedia(i, 'antes')}
-                                className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                <Trash2 size={12} />
-                            </button>
+                            {!isReadOnly && (
+                                <button
+                                    onClick={() => removeMedia(i, 'antes')}
+                                    className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <Trash2 size={12} />
+                                </button>
+                            )}
                         </div>
                     ))}
-
-                    <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-all active:scale-[0.98]">
-                        <Camera size={24} className="text-gray-300 mb-1" />
-                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-tight">Adicionar 'Antes'</span>
-                        <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleFileUpload(e, 'antes')} disabled={!!localUploading} />
-                    </label>
+                    {!isReadOnly && (
+                        <label className="aspect-video bg-ios-bg border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-all active:scale-[0.98]">
+                            <Camera size={24} className="text-gray-300 mb-1" />
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-tight">Adicionar 'Antes'</span>
+                            <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleFileUpload(e, 'antes')} disabled={!!localUploading} />
+                        </label>
+                    )}
                 </div>
             </div>
 
@@ -131,20 +136,23 @@ const ProfessionalTab: React.FC<ProfessionalTabProps> = ({
                             ) : (
                                 <img src={url} className="w-full h-full object-cover" />
                             )}
-                            <button
-                                onClick={() => removeMedia(i, 'depois')}
-                                className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                <Trash2 size={12} />
-                            </button>
+                            {!isReadOnly && (
+                                <button
+                                    onClick={() => removeMedia(i, 'depois')}
+                                    className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <Trash2 size={12} />
+                                </button>
+                            )}
                         </div>
                     ))}
-
-                    <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-all active:scale-[0.98]">
-                        <Camera size={24} className="text-gray-300 mb-1" />
-                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-tight">Adicionar 'Depois'</span>
-                        <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleFileUpload(e, 'depois')} disabled={!!localUploading} />
-                    </label>
+                    {!isReadOnly && (
+                        <label className="aspect-video bg-ios-bg border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-all active:scale-[0.98]">
+                            <Camera size={24} className="text-gray-300 mb-1" />
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-tight">Adicionar 'Depois'</span>
+                            <input type="file" className="hidden" accept="image/*,video/*" onChange={(e) => handleFileUpload(e, 'depois')} disabled={!!localUploading} />
+                        </label>
+                    )}
                 </div>
             </div>
 
@@ -158,8 +166,9 @@ const ProfessionalTab: React.FC<ProfessionalTabProps> = ({
                     <textarea
                         value={formData.agendaObs}
                         onChange={(e) => setFormData({ ...formData, agendaObs: e.target.value })}
-                        placeholder="Descreva detalhes importantes da execução, peças trocadas, etc..."
-                        className="w-full bg-white border border-gray-100 rounded-[1.8rem] p-5 text-sm font-bold text-gray-900 outline-none focus:ring-4 focus:ring-ios-blue/5 min-h-[160px] resize-none transition-all placeholder:text-gray-300 shadow-inner"
+                        readOnly={isReadOnly}
+                        placeholder={isReadOnly ? "Sem observações." : "Descreva detalhes importantes da execução, peças trocadas, etc..."}
+                        className={`w-full bg-white border border-gray-100 rounded-[1.8rem] p-5 text-sm font-bold text-gray-900 outline-none focus:ring-4 focus:ring-ios-blue/5 min-h-[160px] resize-none transition-all placeholder:text-gray-300 shadow-inner ${isReadOnly ? 'opacity-70 select-none' : ''}`}
                     />
                     <div className="absolute top-4 right-4 text-gray-200">
                         <FileText size={20} />
