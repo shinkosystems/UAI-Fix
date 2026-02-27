@@ -74,7 +74,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             initializeForm(order);
             if (isGestor || isPlanejista) {
                 const atividadeId = order.atividade || order.chaveData?.atividade;
-                fetchProfessionals(atividadeId);
+                const cidadeId = order.cidade || order.chaveData?.cidade;
+                fetchProfessionals(atividadeId, cidadeId);
             }
         }
     }, [order, isOpen]);
@@ -167,12 +168,22 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         });
     };
 
-    const fetchProfessionals = async (atividadeId?: number) => {
+    const fetchProfessionals = async (atividadeId?: number | string, cidadeId?: number | string) => {
         try {
-            let query = supabase.from('users').select('*').eq('tipo', 'profissional').eq('ativo', true);
+            let query = supabase.from('users').select('*').ilike('tipo', 'profissional').eq('ativo', true);
 
             if (atividadeId) {
-                query = query.contains('atividade', [atividadeId]);
+                const id = typeof atividadeId === 'string' ? parseInt(atividadeId) : atividadeId;
+                if (!isNaN(id)) {
+                    query = query.contains('atividade', [id]);
+                }
+            }
+
+            if (cidadeId) {
+                const cid = typeof cidadeId === 'string' ? parseInt(cidadeId) : cidadeId;
+                if (!isNaN(cid)) {
+                    query = query.eq('cidade', cid);
+                }
             }
 
             const { data } = await query.order('nome');

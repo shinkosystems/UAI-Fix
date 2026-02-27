@@ -245,7 +245,7 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                                                             {paymentChoice === 'suggested' && <div className="inline-block bg-blue-600 text-white p-1 rounded-full mt-2"><Check size={12} /></div>}
                                                         </div>
                                                     </div>
-                                                    {order.orcamentos[0].justificativa_sugerido && order.orcamentos[0].tipopagmto_sugerido !== order.orcamentos[0].tipopagmto && (
+                                                    {order.orcamentos[0].justificativa_sugerido && (
                                                         <div className="mt-4 p-3 bg-blue-100/50 rounded-2xl border border-blue-200">
                                                             <p className="text-[9px] font-black text-blue-600 uppercase mb-1 flex items-center gap-1"><MessageSquare size={10} /> Por que sugerimos?</p>
                                                             <p className="text-xs font-bold text-blue-900 italic leading-relaxed">"{order.orcamentos[0].justificativa_sugerido}"</p>
