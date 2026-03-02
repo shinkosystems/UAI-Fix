@@ -245,8 +245,8 @@ const Home: React.FC = () => {
 
       if (topProsData && topProsData.length > 0) {
         const proIds = topProsData.map(p => p.uuid);
-        const [{ data: ags }, { data: rats }, { data: allEvaluations }] = await Promise.all([
-          supabase.from('agenda').select('profissional').in('profissional', proIds),
+        const [{ data: servicosConcluidos }, { data: rats }, { data: allEvaluations }] = await Promise.all([
+          supabase.from('chaves').select('profissional').eq('status', 'concluido'),
           supabase.from('avaliacoes').select('profissional, nota').in('profissional', proIds),
           supabase.from('avaliacoes').select('nota')
         ]);
@@ -259,15 +259,15 @@ const Home: React.FC = () => {
         const m = 5;
 
         const stats = topProsData.map(p => {
-          const count = ags?.filter(a => a.profissional === p.uuid).length || 0;
+          const count = servicosConcluidos?.filter(a => a.profissional === p.uuid).length || 0;
           const pRats = rats?.filter(r => r.profissional === p.uuid) || [];
           const v = pRats.length;
           const R = v > 0 ? pRats.reduce((a, b) => a + b.nota, 0) / v : 0;
           // Se não tem avaliações, WR é 0 para não superar quem já tem histórico.
           const weightedRating = v > 0 ? (v / (v + m)) * R + (m / (v + m)) * globalMeanC : 0;
 
-          // Score Elite: Peso da nota + Bônus de Volume (0.1 por atendimento)
-          const rankingScore = weightedRating + (count * 0.1);
+          // Score Elite: Peso da nota + Bônus de Volume (0.5 por atendimento concluído)
+          const rankingScore = weightedRating + (count * 0.5);
 
           return {
             uuid: p.uuid,
@@ -280,8 +280,10 @@ const Home: React.FC = () => {
           };
         });
 
-        // Ordenar pelo Score Elite (limite de 6 profissionais)
-        setTopProfessionals(stats.sort((a, b) => {
+        // Filtrar apenas quem realmente já prestou serviços e ordenar pelo Score Elite
+        const filteredStats = stats.filter(p => p.serviceCount > 0);
+
+        setTopProfessionals(filteredStats.sort((a, b) => {
           if (b.rankingScore !== a.rankingScore) return b.rankingScore - a.rankingScore;
           return b.serviceCount - a.serviceCount;
         }).slice(0, 6));
