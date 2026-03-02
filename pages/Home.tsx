@@ -280,10 +280,8 @@ const Home: React.FC = () => {
           };
         });
 
-        // Filtrar apenas quem realmente já prestou serviços e ordenar pelo Score Elite
-        const filteredStats = stats.filter(p => p.serviceCount > 0);
-
-        setTopProfessionals(filteredStats.sort((a, b) => {
+        // Ordenar pelo Score Elite (limite de 6 profissionais)
+        setTopProfessionals(stats.sort((a, b) => {
           if (b.rankingScore !== a.rankingScore) return b.rankingScore - a.rankingScore;
           return b.serviceCount - a.serviceCount;
         }).slice(0, 6));
