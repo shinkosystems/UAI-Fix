@@ -286,7 +286,7 @@ const Home: React.FC = () => {
         setTopProfessionals(filteredStats.sort((a, b) => {
           if (b.rankingScore !== a.rankingScore) return b.rankingScore - a.rankingScore;
           return b.serviceCount - a.serviceCount;
-        }).slice(0, 5));
+        }).slice(0, 6));
       }
     } catch (error) { console.error("Home Fetch Error:", error); } finally { setLoading(false); }
   };
