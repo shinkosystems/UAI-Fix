@@ -240,7 +240,7 @@ const Home: React.FC = () => {
       setCategories(catData || []);
 
       // 5. PROFISSIONAIS ELITE
-      const { data: topProsData } = await supabase.from('users').select('uuid, nome, fotoperfil').ilike('tipo', 'profissional').eq('ativo', true).limit(30);
+      const { data: topProsData } = await supabase.from('users').select('uuid, nome, fotoperfil').ilike('tipo', 'profissional').eq('ativo', true).limit(100);
 
       if (topProsData && topProsData.length > 0) {
         const proIds = topProsData.map(p => p.uuid);

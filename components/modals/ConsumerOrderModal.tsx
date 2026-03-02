@@ -1,9 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import {
     X, Star, Calendar, Clock, Banknote, AlertCircle, ThumbsUp, ThumbsDown,
-    Smartphone, CreditCard, MessageSquare, Sparkles, Send, Loader2, Ban, Check, UserCheck, Camera, PlayCircle
+    Smartphone, CreditCard, MessageSquare, Sparkles, Send, Loader2, Ban, Check, UserCheck, Camera, PlayCircle, Briefcase
 } from 'lucide-react';
 import ConsumerTab from './ConsumerTab';
 
@@ -31,6 +31,37 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
     const [ratingComment, setRatingComment] = useState(order?.avaliacao?.comentario || '');
     const [hoverRating, setHoverRating] = useState(0);
     const [submittingRating, setSubmittingRating] = useState(false);
+    const [proStats, setProStats] = useState<{ rating: number | null; serviceCount: number }>({
+        rating: null,
+        serviceCount: 0
+    });
+
+    useEffect(() => {
+        const fetchProStats = async () => {
+            const proUuid = typeof order.profissional === 'string' ? order.profissional : order.profissional?.uuid;
+            if (!proUuid) return;
+
+            try {
+                const [{ data: rats }, { data: services }] = await Promise.all([
+                    supabase.from('avaliacoes').select('nota').eq('profissional', proUuid),
+                    supabase.from('agenda').select('id').eq('profissional', proUuid)
+                ]);
+
+                const rating = rats && rats.length > 0
+                    ? rats.reduce((acc, curr) => acc + (curr.nota || 0), 0) / rats.length
+                    : null;
+                const serviceCount = services?.length || 0;
+
+                setProStats({ rating, serviceCount });
+            } catch (error) {
+                console.error("Error fetching pro stats:", error);
+            }
+        };
+
+        if (isOpen && order.profissional) {
+            fetchProStats();
+        }
+    }, [isOpen, order.profissional]);
 
     if (!isOpen || !order) return null;
 
@@ -190,9 +221,19 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                                                 {order.profissional?.nome || 'Aguardando atribuição'}
                                             </h4>
                                             {order.profissional && (
-                                                <div className="flex items-center gap-1 mt-1">
-                                                    <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                                                    <span className="text-xs font-black text-gray-700">{order.profissional.rating?.toFixed(1) || 'N/A'}</span>
+                                                <div className="flex flex-col gap-1 mt-1">
+                                                    <div className="flex items-center gap-1">
+                                                        <Star size={12} className="fill-yellow-400 text-yellow-400" />
+                                                        <span className="text-xs font-black text-gray-700">
+                                                            {proStats.rating ? proStats.rating.toFixed(1) : 'Novo'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 opacity-60">
+                                                        <Briefcase size={10} className="text-gray-500" />
+                                                        <span className="text-[10px] font-bold text-gray-600">
+                                                            {proStats.serviceCount} {proStats.serviceCount === 1 ? 'atendimento' : 'atendimentos'}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
