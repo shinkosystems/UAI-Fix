@@ -20,7 +20,8 @@ interface TopProfessional {
   fotoperfil: string;
   serviceCount: number;
   rating: number;
-  weightedRating: number; // Nova propriedade para o ranking bayesiano
+  weightedRating: number;
+  rankingScore: number; // Nova propriedade para o ranking final
 }
 
 interface NextAppointment {
@@ -264,14 +265,26 @@ const Home: React.FC = () => {
           const R = v > 0 ? pRats.reduce((a, b) => a + b.nota, 0) / v : 0;
           // Se não tem avaliações, WR é 0 para não superar quem já tem histórico.
           const weightedRating = v > 0 ? (v / (v + m)) * R + (m / (v + m)) * globalMeanC : 0;
-          return { uuid: p.uuid, nome: p.nome, fotoperfil: p.fotoperfil, serviceCount: count, rating: R, weightedRating: weightedRating };
+
+          // Score Elite: Peso da nota + Bônus de Volume (0.1 por atendimento)
+          const rankingScore = weightedRating + (count * 0.1);
+
+          return {
+            uuid: p.uuid,
+            nome: p.nome,
+            fotoperfil: p.fotoperfil,
+            serviceCount: count,
+            rating: R,
+            weightedRating: weightedRating,
+            rankingScore: rankingScore
+          };
         });
 
-        // Filtrar apenas quem realmente já prestou serviços e ordenar pela nota ponderada
+        // Filtrar apenas quem realmente já prestou serviços e ordenar pelo Score Elite
         const filteredStats = stats.filter(p => p.serviceCount > 0);
 
         setTopProfessionals(filteredStats.sort((a, b) => {
-          if (b.weightedRating !== a.weightedRating) return b.weightedRating - a.weightedRating;
+          if (b.rankingScore !== a.rankingScore) return b.rankingScore - a.rankingScore;
           return b.serviceCount - a.serviceCount;
         }).slice(0, 5));
       }
