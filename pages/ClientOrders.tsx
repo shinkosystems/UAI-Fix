@@ -6,7 +6,7 @@ import {
     Loader2, X, Star, Calendar, Clock, ChevronRight, Send, Plus, Check, Ban,
     AlertCircle, Camera, Save, Trash2, ThumbsUp, ThumbsDown, Lock, Banknote,
     MapPin, UserCheck, Play, CreditCard, Smartphone, MessageSquare, Sparkles, Tag,
-    Filter, ListChecks, CalendarCheck, Activity, History
+    ListChecks, CalendarCheck, Activity, History, CheckCircle2
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ConsumerTab from '../components/modals/ConsumerTab';
@@ -23,7 +23,7 @@ interface OrderExtended extends Chave {
 }
 
 type ModalTab = 'geral' | 'consumidor' | 'fotos' | 'obs' | 'avaliacao';
-type FilterType = 'todos' | 'aberto' | 'agendados' | 'execucao' | 'reprovados' | 'finalizados';
+type FilterType = 'aberto' | 'agendados' | 'execucao' | 'reprovados' | 'concluidos' | 'finalizados';
 
 const ClientOrders: React.FC = () => {
     const [orders, setOrders] = useState<OrderExtended[]>([]);
@@ -31,7 +31,7 @@ const ClientOrders: React.FC = () => {
     const [selectedOrder, setSelectedOrder] = useState<OrderExtended | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<ModalTab>('geral');
-    const [activeFilter, setActiveFilter] = useState<FilterType>('todos');
+    const [activeFilter, setActiveFilter] = useState<FilterType>('aberto');
     const [userType, setUserType] = useState<string>('');
     const [currentUserId, setCurrentUserId] = useState<string>('');
     const [processingAction, setProcessingAction] = useState(false);
@@ -127,12 +127,12 @@ const ClientOrders: React.FC = () => {
 
     const filteredOrders = useMemo(() => {
         return orders.filter(order => {
-            if (activeFilter === 'todos') return true;
             const status = order.status.toLowerCase();
             if (activeFilter === 'aberto') return ['pendente', 'analise', 'aguardando_aprovacao', 'aguardando_profissional'].includes(status);
             if (activeFilter === 'agendados') return status === 'aprovado';
             if (activeFilter === 'execucao') return status === 'executando';
             if (activeFilter === 'reprovados') return status === 'reprovado';
+            if (activeFilter === 'concluidos') return status === 'concluido';
             if (activeFilter === 'finalizados') return status === 'concluido' || status === 'cancelado';
             return true;
         });
@@ -140,11 +140,11 @@ const ClientOrders: React.FC = () => {
 
     const filterCounts = useMemo(() => {
         return {
-            todos: orders.length,
             aberto: orders.filter(o => ['pendente', 'analise', 'aguardando_aprovacao', 'aguardando_profissional'].includes(o.status.toLowerCase())).length,
             agendados: orders.filter(o => o.status.toLowerCase() === 'aprovado').length,
             execucao: orders.filter(o => o.status.toLowerCase() === 'executando').length,
             reprovados: orders.filter(o => o.status.toLowerCase() === 'reprovado').length,
+            concluidos: orders.filter(o => o.status.toLowerCase() === 'concluido').length,
             finalizados: orders.filter(o => ['concluido', 'cancelado'].includes(o.status.toLowerCase())).length
         };
     }, [orders]);
@@ -182,11 +182,11 @@ const ClientOrders: React.FC = () => {
     }
 
     const filterButtons = [
-        { id: 'todos', label: 'Tudo', icon: Filter },
         { id: 'aberto', label: 'Em Análise', icon: ListChecks },
         { id: 'agendados', label: 'Agendados', icon: CalendarCheck },
         { id: 'execucao', label: 'Em Execução', icon: Activity },
         { id: 'reprovados', label: 'Reprovados', icon: Ban },
+        { id: 'concluidos', label: 'Concluídos', icon: CheckCircle2 },
         { id: 'finalizados', label: 'Histórico', icon: History },
     ];
 
@@ -231,8 +231,8 @@ const ClientOrders: React.FC = () => {
                             <p className="font-black uppercase tracking-widest text-xs">Vazio por aqui</p>
                             <p className="text-[10px] font-bold text-gray-300">Nenhum pedido encontrado nesta categoria.</p>
                         </div>
-                        {activeFilter !== 'todos' && (
-                            <button onClick={() => setActiveFilter('todos')} className="text-ios-blue text-[10px] font-black uppercase tracking-widest hover:underline">Ver todos os pedidos</button>
+                        {activeFilter !== 'aberto' && (
+                            <button onClick={() => setActiveFilter('aberto')} className="text-ios-blue text-[10px] font-black uppercase tracking-widest hover:underline">Ver pedidos em análise</button>
                         )}
                     </div>
                 ) : (

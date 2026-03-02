@@ -141,7 +141,7 @@ const Chamados: React.FC = () => {
     const visibleTabs = useMemo(() => {
         if (isProfessional) {
             return allTabs
-                .filter(tab => ['novos', 'execucao', 'historico'].includes(tab.id))
+                .filter(tab => ['novos', 'execucao', 'concluidos', 'historico'].includes(tab.id))
                 .map(tab => tab.id === 'novos' ? { ...tab, label: 'Pendentes' } : tab);
         }
         return allTabs;
@@ -492,9 +492,11 @@ const Chamados: React.FC = () => {
                                         <div className="flex items-center font-black text-ios-blue text-[10px] uppercase tracking-widest"><Clock size={12} className="mr-1.5 opacity-60" /> {new Date(t.planejamento[0].execucao).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
                                     )}
                                 </div>
-                                {t.orcamentos?.[0]?.preco && (
-                                    <div className="bg-green-50 px-3 py-1.5 rounded-xl border border-green-100">
-                                        <span className="text-[10px] font-black text-green-700">R$ {t.orcamentos[0].preco.toFixed(2)}</span>
+                                {t.orcamentos?.[0] && (
+                                    <div className={`${isProfessional ? 'bg-blue-50 border-blue-100' : 'bg-green-50 border-green-100'} px-3 py-1.5 rounded-xl border flex items-center`}>
+                                        <span className={`text-[10px] font-black ${isProfessional ? 'text-ios-blue' : 'text-green-700'}`}>
+                                            R$ {(isProfessional ? t.orcamentos[0].hh : t.orcamentos[0].preco).toFixed(2)}
+                                        </span>
                                     </div>
                                 )}
                             </div>
