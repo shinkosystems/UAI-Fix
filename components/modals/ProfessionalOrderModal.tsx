@@ -340,7 +340,9 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             }
 
             if ((isGestor || isOrcamentista) && formData.status === 'reprovado') {
-                finalStatus = 'aguardando_aprovacao';
+                const originalHH = order.orcamentoData?.hh || order.orcamentos?.[0]?.hh || 0;
+                const hasHHChanged = Math.abs(originalHH - formData.orcamentoHH) > 0.01;
+                finalStatus = hasHHChanged ? 'aguardando_profissional' : 'aguardando_aprovacao';
             }
 
             const updatesChave: any = { status: finalStatus };
