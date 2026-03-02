@@ -61,7 +61,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         planejamentoVisita: '',
         fotoantes: [] as string[],
         fotodepois: [] as string[],
-        agendaObs: ''
+        agendaObs: '',
+        motivo_recusa: ''
     });
 
     const isProfessional = userRole === 'profissional';
@@ -164,7 +165,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             planejamentoVisita: initialVisita,
             fotoantes: ticket.fotoantes || ticket.chaveData?.fotoantes || [],
             fotodepois: ticket.fotodepois || ticket.chaveData?.fotodepois || [],
-            agendaObs: ticket.agendaObs || ticket.agenda?.[0]?.observacoes || ticket.observacoes || ''
+            agendaObs: ticket.agendaObs || ticket.agenda?.[0]?.observacoes || ticket.observacoes || '',
+            motivo_recusa: ticket.motivo_recusa || ticket.chaveData?.motivo_recusa || ''
         });
     };
 
@@ -230,7 +232,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         try {
             const ticketId = order.id || order.chaveData?.id;
             await supabase.from('chaves').update({
-                status: 'analise',
+                status: 'pendente',
                 motivo_recusa: reason
             }).eq('id', ticketId);
             await onUpdate();
