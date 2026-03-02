@@ -262,10 +262,15 @@ const Home: React.FC = () => {
           const pRats = rats?.filter(r => r.profissional === p.uuid) || [];
           const v = pRats.length;
           const R = v > 0 ? pRats.reduce((a, b) => a + b.nota, 0) / v : 0;
-          const weightedRating = (v / (v + m)) * R + (m / (v + m)) * globalMeanC;
+          // Se não tem avaliações, WR é 0 para não superar quem já tem histórico.
+          const weightedRating = v > 0 ? (v / (v + m)) * R + (m / (v + m)) * globalMeanC : 0;
           return { uuid: p.uuid, nome: p.nome, fotoperfil: p.fotoperfil, serviceCount: count, rating: R, weightedRating: weightedRating };
         });
-        setTopProfessionals(stats.sort((a, b) => {
+
+        // Filtrar apenas quem realmente já prestou serviços e ordenar pela nota ponderada
+        const filteredStats = stats.filter(p => p.serviceCount > 0);
+
+        setTopProfessionals(filteredStats.sort((a, b) => {
           if (b.weightedRating !== a.weightedRating) return b.weightedRating - a.weightedRating;
           return b.serviceCount - a.serviceCount;
         }).slice(0, 5));
