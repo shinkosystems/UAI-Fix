@@ -175,6 +175,31 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-4 block">Status do Pedido</label>
                                 <div className={`inline-flex px-5 py-2 rounded-xl text-xs font-black border uppercase mb-6 ${getStatusColor(order.status)}`}>{getStatusLabel(order.status)}</div>
 
+                                <div className="mt-4 p-5 bg-white rounded-3xl border border-gray-100 shadow-sm flex items-center justify-between">
+                                    <div className="flex items-center gap-4 min-w-0">
+                                        <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 overflow-hidden shadow-inner flex-shrink-0">
+                                            <img
+                                                src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`}
+                                                className="w-full h-full object-cover"
+                                                alt={order.profissional?.nome}
+                                            />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Profissional Responsável</p>
+                                            <h4 className="text-sm font-bold text-gray-900 truncate">
+                                                {order.profissional?.nome || 'Aguardando atribuição'}
+                                            </h4>
+                                            {order.profissional && (
+                                                <div className="flex items-center gap-1 mt-1">
+                                                    <Star size={12} className="fill-yellow-400 text-yellow-400" />
+                                                    <span className="text-xs font-black text-gray-700">{order.profissional.rating?.toFixed(1) || 'N/A'}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {!order.profissional && <div className="p-2 bg-blue-50 text-ios-blue rounded-xl"><UserCheck size={20} /></div>}
+                                </div>
+
                                 <div className="grid grid-cols-1 gap-6 mt-6">
                                     <div className="flex items-start gap-4">
                                         <div className="p-3 bg-blue-50 rounded-2xl text-ios-blue shadow-sm border border-blue-100"><Calendar size={20} /></div>
