@@ -85,7 +85,11 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                         <select
                             className="w-full bg-white border border-gray-100 rounded-2xl p-3 text-sm font-bold text-gray-900 outline-none disabled:opacity-50"
                             value={formData.orcamentoTipoPgtoSugerido}
-                            onChange={e => setFormData({ ...formData, orcamentoTipoPgtoSugerido: e.target.value })}
+                            onChange={e => setFormData({
+                                ...formData,
+                                orcamentoTipoPgtoSugerido: e.target.value,
+                                orcamentoParcelasSugerido: 1
+                            })}
                             disabled={isReadOnly}
                         >
                             <option value="">Nenhuma sugestão</option>
