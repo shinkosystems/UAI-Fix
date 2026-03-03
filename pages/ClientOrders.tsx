@@ -133,7 +133,7 @@ const ClientOrders: React.FC = () => {
             if (activeFilter === 'execucao') return status === 'executando';
             if (activeFilter === 'reprovados') return status === 'reprovado';
             if (activeFilter === 'concluidos') return status === 'concluido';
-            if (activeFilter === 'finalizados') return status === 'concluido' || status === 'cancelado';
+            if (activeFilter === 'finalizados') return true;
             return true;
         });
     }, [orders, activeFilter]);
@@ -145,7 +145,7 @@ const ClientOrders: React.FC = () => {
             execucao: orders.filter(o => o.status.toLowerCase() === 'executando').length,
             reprovados: orders.filter(o => o.status.toLowerCase() === 'reprovado').length,
             concluidos: orders.filter(o => o.status.toLowerCase() === 'concluido').length,
-            finalizados: orders.filter(o => ['concluido', 'cancelado'].includes(o.status.toLowerCase())).length
+            finalizados: orders.length
         };
     }, [orders]);
 

@@ -133,6 +133,7 @@ export interface Planejamento {
   chave: number;
   tempoprevisto: number;
   imagem_pedido?: string | null; // Added field for request image
+  audio_pedido?: string | null; // Added field for audio file
   // Nested relation from JOIN
   chaves?: Chave;
 }

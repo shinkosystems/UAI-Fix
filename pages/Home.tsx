@@ -131,21 +131,27 @@ const Home: React.FC = () => {
           }
 
           const range = getTimeRange(timeFilter);
-          const isStaff = ['gestor', 'planejista', 'orcamentista'].includes(normType);
+          const isStaff = ['gestor', 'planejista', 'orcamentista', 'gerente'].includes(normType);
 
           // 1. REGRA AGENDAMENTOS
           let agQuery = supabase.from('chaves').select('*', { count: 'exact', head: true });
           if (range) agQuery = agQuery.gte('created_at', range.start).lte('created_at', range.end);
-          if (normType === 'profissional') agQuery = agQuery.eq('profissional', userUuid);
-          else if (normType === 'consumidor') agQuery = agQuery.eq('cliente', userUuid);
+          if (normType === 'profissional') {
+            agQuery = agQuery.eq('profissional', userUuid);
+          } else if (normType === 'consumidor') {
+            agQuery = agQuery.eq('cliente', userUuid);
+          }
           const { count: agCount } = await agQuery;
           setAgendamentosCount(agCount || 0);
 
           // 2. REGRA SERVIÇOS ATIVOS
           let activeQuery = supabase.from('chaves').select('*', { count: 'exact', head: true }).not('status', 'in', '("concluido","cancelado")');
           if (range) activeQuery = activeQuery.gte('created_at', range.start).lte('created_at', range.end);
-          if (normType === 'profissional') activeQuery = activeQuery.eq('profissional', userUuid);
-          else if (normType === 'consumidor') activeQuery = activeQuery.eq('cliente', userUuid);
+          if (normType === 'profissional') {
+            activeQuery = activeQuery.eq('profissional', userUuid);
+          } else if (normType === 'consumidor') {
+            activeQuery = activeQuery.eq('cliente', userUuid);
+          }
           const { count: activeCount } = await activeQuery;
           setServicosAtivosCount(activeCount || 0);
 
@@ -342,7 +348,7 @@ const Home: React.FC = () => {
     const normRole = role.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     let notifs: NotificationItem[] = [];
     try {
-      if (['planejista', 'orcamentista', 'gestor'].includes(normRole)) {
+      if (['planejista', 'orcamentista', 'gestor', 'gerente'].includes(normRole)) {
         const { data } = await supabase.from('chaves').select(`id, created_at, status, geral (nome)`).in('status', ['pendente', 'analise']).order('created_at', { ascending: false }).limit(5);
         if (data) notifs = data.map((i: any) => ({ id: i.id, title: 'Chamado Pendente', description: i.geral?.nome || 'Novo chamado', date: new Date(i.created_at).toLocaleDateString('pt-BR'), type: 'planning', read: false }));
       } else {
@@ -356,7 +362,7 @@ const Home: React.FC = () => {
   const handleNotificationClick = (notif: NotificationItem) => {
     setShowNotifications(false);
     const normType = userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (['planejista', 'orcamentista', 'gestor', 'profissional'].includes(normType)) navigate('/chamados');
+    if (['planejista', 'orcamentista', 'gestor', 'gerente', 'profissional'].includes(normType)) navigate('/chamados');
     else if (notif.type === 'approval') navigate('/orders');
     else navigate('/calendar');
   };

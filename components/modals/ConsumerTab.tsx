@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AlertCircle, Box } from 'lucide-react';
+import { AlertCircle, Box, Mic } from 'lucide-react';
 
 interface ConsumerTabProps {
     editingItem: any;
@@ -8,10 +8,10 @@ interface ConsumerTabProps {
     isMediaVideo: (url: string) => boolean;
 }
 
-const ConsumerTab: React.FC<ConsumerTabProps> = ({ 
-    editingItem, 
-    extractOriginalDesc, 
-    isMediaVideo 
+const ConsumerTab: React.FC<ConsumerTabProps> = ({
+    editingItem,
+    extractOriginalDesc,
+    isMediaVideo
 }) => {
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -23,7 +23,17 @@ const ConsumerTab: React.FC<ConsumerTabProps> = ({
                 <p className="text-sm font-bold text-gray-800 leading-relaxed italic mb-6">
                     "{extractOriginalDesc(editingItem.planejamento?.[0]?.descricao) || "Nenhuma descrição detalhada."}"
                 </p>
-                
+
+                {editingItem.planejamento?.[0]?.audio_pedido && (
+                    <div className="mb-6 bg-white/60 p-4 rounded-2xl border border-yellow-200 shadow-sm animate-in zoom-in duration-300">
+                        <div className="flex items-center gap-2 text-yellow-700 mb-2">
+                            <Mic size={14} />
+                            <h5 className="text-[9px] font-black uppercase tracking-widest">Áudio em Anexo</h5>
+                        </div>
+                        <audio src={editingItem.planejamento[0].audio_pedido} controls className="w-full h-10" />
+                    </div>
+                )}
+
                 {editingItem.planejamento?.[0]?.recursos && editingItem.planejamento[0].recursos.length > 0 && (
                     <div className="mb-6">
                         <div className="flex items-center gap-2 text-yellow-700 mb-3">

@@ -15,8 +15,8 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Chamados from './pages/Chamados';
 import ClientOrders from './pages/ClientOrders';
-import CalendarPage from './pages/Calendar'; 
-import Execution from './pages/Execution'; 
+import CalendarPage from './pages/Calendar';
+import Execution from './pages/Execution';
 import LandingPage from './pages/LandingPage';
 import { Loader2 } from 'lucide-react';
 
@@ -25,17 +25,40 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    const checkInactivity = async () => {
+      const lastAccess = localStorage.getItem('last_access');
+      if (lastAccess) {
+        const lastAccessTime = parseInt(lastAccess);
+        const twentyFourHours = 24 * 60 * 60 * 1000;
 
-    // 2. Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (Date.now() - lastAccessTime > twentyFourHours) {
+          await supabase.auth.signOut();
+          localStorage.removeItem('last_access');
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const initAuth = async () => {
+      const loggedOut = await checkInactivity();
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+
+      if (!loggedOut && currentSession) {
+        localStorage.setItem('last_access', Date.now().toString());
+      }
+
+      setSession(currentSession);
+      setLoading(false);
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) {
+        localStorage.setItem('last_access', Date.now().toString());
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -53,13 +76,13 @@ const App: React.FC = () => {
     <HashRouter>
       <Routes>
         {/* Public Routes */}
-        <Route 
-          path="/" 
-          element={!session ? <LandingPage /> : <Navigate to="/home" replace />} 
+        <Route
+          path="/"
+          element={!session ? <LandingPage /> : <Navigate to="/home" replace />}
         />
-        <Route 
-          path="/login" 
-          element={!session ? <Login /> : <Navigate to="/home" replace />} 
+        <Route
+          path="/login"
+          element={!session ? <Login /> : <Navigate to="/home" replace />}
         />
 
         {/* Protected Routes: Require Session */}
@@ -71,7 +94,7 @@ const App: React.FC = () => {
                 <Routes>
                   {/* Internal Dashboard Home */}
                   <Route path="/home" element={<Home />} />
-                  
+
                   <Route path="/search" element={<Search />} />
                   <Route path="/category/:id" element={<SubCategory />} />
                   <Route path="/professionals/:serviceId" element={<ProfessionalList />} />
@@ -83,7 +106,7 @@ const App: React.FC = () => {
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/chamados" element={<Chamados />} />
                   <Route path="/orders" element={<ClientOrders />} />
-                  
+
                   {/* Redirect catch-all for authenticated users */}
                   <Route path="*" element={<Navigate to="/home" replace />} />
                 </Routes>
