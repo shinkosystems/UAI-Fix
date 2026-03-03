@@ -331,15 +331,11 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     setSaving(false);
                     return;
                 }
-            }
-
-            if ((isGestor || isOrcamentista) && finalStatus === 'analise') {
+            } else if ((isGestor || isOrcamentista) && formData.status === 'analise') {
                 if (formData.orcamentoPreco > 0) {
                     finalStatus = 'aguardando_profissional';
                 }
-            }
-
-            if ((isGestor || isOrcamentista) && formData.status === 'reprovado') {
+            } else if ((isGestor || isOrcamentista) && formData.status === 'reprovado') {
                 const originalHH = order.orcamentoData?.hh || order.orcamentos?.[0]?.hh || 0;
                 const hasHHChanged = Math.abs(originalHH - formData.orcamentoHH) > 0.01;
                 finalStatus = hasHHChanged ? 'aguardando_profissional' : 'aguardando_aprovacao';
