@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText, ShoppingBag, PlayCircle, CalendarCheck } from 'lucide-react';
+import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText, ShoppingBag, PlayCircle, CalendarCheck, MessageSquare } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface LayoutProps {
@@ -202,6 +202,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             >
               <FileText size={20} />
               <span>Chamados</span>
+            </button>
+          )}
+
+          {isManager && (
+            <button
+              onClick={() => navigate('/whatsapp')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/whatsapp')}`}
+            >
+              <MessageSquare size={20} />
+              <span>Whatsapp</span>
             </button>
           )}
 

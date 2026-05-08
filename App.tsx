@@ -18,6 +18,7 @@ import ClientOrders from './pages/ClientOrders';
 import CalendarPage from './pages/Calendar';
 import Execution from './pages/Execution';
 import LandingPage from './pages/LandingPage';
+import Whatsapp from './pages/Whatsapp';
 import { Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -93,19 +94,20 @@ const App: React.FC = () => {
               <Layout>
                 <Routes>
                   {/* Internal Dashboard Home */}
-                  <Route path="/home" element={<Home />} />
+                  <Route path="whatsapp" element={<Whatsapp />} />
+                  <Route path="home" element={<Home />} />
 
-                  <Route path="/search" element={<Search />} />
-                  <Route path="/category/:id" element={<SubCategory />} />
-                  <Route path="/professionals/:serviceId" element={<ProfessionalList />} />
-                  <Route path="/professional/:uuid" element={<ProfessionalProfile />} />
-                  <Route path="/request/:serviceId" element={<Planning />} />
-                  <Route path="/calendar" element={<CalendarPage />} />
-                  <Route path="/execution" element={<Execution />} />
-                  <Route path="/profile" element={<Profile />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/chamados" element={<Chamados />} />
-                  <Route path="/orders" element={<ClientOrders />} />
+                  <Route path="search" element={<Search />} />
+                  <Route path="category/:id" element={<SubCategory />} />
+                  <Route path="professionals/:serviceId" element={<ProfessionalList />} />
+                  <Route path="professional/:uuid" element={<ProfessionalProfile />} />
+                  <Route path="request/:serviceId" element={<Planning />} />
+                  <Route path="calendar" element={<CalendarPage />} />
+                  <Route path="execution" element={<Execution />} />
+                  <Route path="profile" element={<Profile />} />
+                  <Route path="settings" element={<Settings />} />
+                  <Route path="chamados" element={<Chamados />} />
+                  <Route path="orders" element={<ClientOrders />} />
 
                   {/* Redirect catch-all for authenticated users */}
                   <Route path="*" element={<Navigate to="/home" replace />} />

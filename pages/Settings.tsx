@@ -2,14 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { createClient } from '@supabase/supabase-js';
 import { Geral, User, City, Estado } from '../types';
-import { Loader2, Plus, Edit2, Trash2, X, Save, CheckCircle, AlertTriangle, Layers, Users, Image as ImageIcon, FolderTree, LayoutGrid, Box, CloudUpload, Search, MapPin, Briefcase, Home, Navigation, FileText, Lock, AlertCircle } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, X, Save, CheckCircle, AlertTriangle, Layers, Users, Image as ImageIcon, FolderTree, LayoutGrid, Box, CloudUpload, Search, MapPin, Briefcase, Home, Navigation, FileText, Lock, AlertCircle, MessageSquare, ChevronLeft, ExternalLink } from 'lucide-react';
 
 // Hardcoded keys for temp client
-const SUPABASE_URL = 'https://uehyjyyvkrlggwmfdhgh.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlaHlqeXl2a3JsZ2d3bWZkaGdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0MDEzNzUsImV4cCI6MjA1Nzk3NzM3NX0.3CKTTryjia-5nXQYk1jJxPYryDmF1hTKpHrJkVKqRJY';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const Settings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'services' | 'users'>('services');
+  const [activeTab, setActiveTab] = useState<'services' | 'users' | 'whatsapp'>('services');
   const [serviceSubTab, setServiceSubTab] = useState<'primary' | 'secondary'>('primary');
   const [loading, setLoading] = useState(true);
   
@@ -59,6 +59,47 @@ const Settings: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [cepAlert, setCepAlert] = useState<string | null>(null);
 
+  // WhatsApp Config State
+  const [whatsappConfig, setWhatsappConfig] = useState({
+    instanceId: '',
+    token: '',
+    status: 'Aguardando Configuração',
+    webhook: `${SUPABASE_URL}/functions/v1/zapi-webhook`
+  });
+
+  const handleSaveWhatsappConfig = async () => {
+    setSaving(true);
+    try {
+      // We'll use a simple upsert logic. Since we only have one config, 
+      // we check if one exists and update it, or insert a new one.
+      const { data: existing } = await supabase.from('whatsapp_config').select('id').limit(1).maybeSingle();
+      
+      const payload = {
+        instance_id: whatsappConfig.instanceId,
+        token: whatsappConfig.token,
+        webhook_url: whatsappConfig.webhook,
+        active: true
+      };
+
+      let error;
+      if (existing) {
+        const { error: updateError } = await supabase.from('whatsapp_config').update(payload).eq('id', existing.id);
+        error = updateError;
+      } else {
+        const { error: insertError } = await supabase.from('whatsapp_config').insert(payload);
+        error = insertError;
+      }
+
+      if (error) throw error;
+      alert('Configurações do WhatsApp salvas com sucesso!');
+    } catch (error: any) {
+      console.error('Error saving WhatsApp config:', error);
+      alert('Erro ao salvar configurações: ' + error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [activeTab]);
@@ -96,6 +137,18 @@ const Settings: React.FC = () => {
             
         if (error) throw error;
         setUsers(data || []);
+      }
+
+      if (activeTab === 'whatsapp') {
+        const { data, error } = await supabase.from('whatsapp_config').select('*').limit(1).maybeSingle();
+        if (data) {
+          setWhatsappConfig({
+            ...whatsappConfig,
+            instanceId: data.instance_id,
+            token: data.token,
+            webhook: data.webhook_url || whatsappConfig.webhook
+          });
+        }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -553,6 +606,13 @@ const Settings: React.FC = () => {
                 <Users size={18} />
                 <span>Usuários</span>
             </button>
+            <button 
+                onClick={() => setActiveTab('whatsapp')}
+                className={`flex-1 py-3 px-4 rounded-xl text-sm font-bold transition-all flex items-center justify-center space-x-2 ${activeTab === 'whatsapp' ? 'bg-white shadow-md text-gray-900' : 'text-gray-500 hover:text-gray-700 hover:bg-white/30'}`}
+            >
+                <MessageSquare size={18} />
+                <span>Whatsapp</span>
+            </button>
         </div>
 
         {activeTab === 'users' && (
@@ -626,7 +686,115 @@ const Settings: React.FC = () => {
             </div>
         )}
 
-        <div className="bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-vitrified border border-white overflow-hidden relative min-h-[400px]">
+        {activeTab === 'whatsapp' ? (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+            <div className="flex items-center space-x-2 text-gray-600 mb-6">
+              <MessageSquare size={20} />
+              <span className="font-bold">WhatsApp Business (Z-API)</span>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Main Config Card */}
+              <div className="lg:col-span-2 space-y-6">
+                <div className="bg-white rounded-[2.5rem] p-8 shadow-vitrified border border-white relative overflow-hidden">
+                  <div className="flex items-start space-x-6 mb-8">
+                    <div className="w-16 h-16 bg-orange-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-200 shrink-0">
+                      <MessageSquare size={32} className="text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-black text-gray-900">Conectar WhatsApp</h3>
+                      <p className="text-gray-500 font-medium">Habilite o chat bidirecional sincronizado.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Instance ID</label>
+                      <div className="relative">
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 font-bold">#</div>
+                        <input 
+                          type="text"
+                          className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 pl-8 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-orange-100 transition-all"
+                          value={whatsappConfig.instanceId}
+                          onChange={(e) => setWhatsappConfig({...whatsappConfig, instanceId: e.target.value})}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Token de Acesso</label>
+                      <div className="relative">
+                        <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500" />
+                        <input 
+                          type="password"
+                          className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 pl-12 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-orange-100 transition-all"
+                          value={whatsappConfig.token}
+                          onChange={(e) => setWhatsappConfig({...whatsappConfig, token: e.target.value})}
+                        />
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleSaveWhatsappConfig}
+                      disabled={saving}
+                      className="w-full bg-orange-500 text-white py-5 rounded-2xl font-black text-lg shadow-lg shadow-orange-200 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    >
+                      {saving ? <Loader2 className="animate-spin mr-2" /> : null}
+                      Salvar Configurações
+                    </button>
+                  </div>
+                </div>
+
+                {/* Webhook Card */}
+                <div className="bg-orange-50/50 border border-orange-100 border-dashed rounded-[1.5rem] p-6 space-y-3">
+                  <div className="flex items-center space-x-2 text-orange-700">
+                    <Navigation size={18} />
+                    <h4 className="font-bold text-sm">Configuração do Webhook</h4>
+                  </div>
+                  <p className="text-xs text-orange-600 font-medium">
+                    Para receber mensagens, configure a URL abaixo no painel da Z-API:
+                  </p>
+                  <div className="bg-white border border-orange-100 rounded-xl p-3 flex items-center justify-between group">
+                    <code className="text-[10px] font-bold text-gray-400 truncate mr-4">
+                      {whatsappConfig.webhook}
+                    </code>
+                    <button className="text-orange-500 hover:text-orange-700 p-1 rounded-md transition-colors">
+                      <ExternalLink size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sidebar Info Cards */}
+              <div className="space-y-6">
+                <div className="bg-gray-50 rounded-[2rem] p-6 border border-gray-100 space-y-4">
+                  <div className="flex items-center space-x-2 text-orange-500">
+                    <Plus size={20} className="rotate-45" />
+                    <h4 className="font-black text-gray-900">Por que Z-API?</h4>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed font-medium">
+                    A Z-API permite conectar um número comum de WhatsApp sem a burocracia da API oficial da Meta.
+                  </p>
+                  <div className="bg-white rounded-xl p-3 border border-gray-100 text-center">
+                    <span className="text-[10px] font-bold text-gray-400">Conexão estável via QR Code</span>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-[2rem] p-6 border border-gray-100 space-y-4">
+                  <div className="flex items-center space-x-2 text-gray-900">
+                    <div className="w-2 h-2 rounded-full bg-black"></div>
+                    <h4 className="font-black">Status da Conexão</h4>
+                  </div>
+                  <div className="bg-white rounded-xl p-3 border border-gray-100 flex items-center space-x-3">
+                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
+                    <span className="text-xs font-bold text-gray-700">{whatsappConfig.status}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white/70 backdrop-blur-xl rounded-[2.5rem] shadow-vitrified border border-white overflow-hidden relative min-h-[400px]">
             <div className="p-6 flex justify-between items-center bg-white/50 border-b border-gray-100/50">
                  <div>
                     <h2 className="text-xl font-bold text-gray-900">{activeTab === 'services' ? (serviceSubTab === 'primary' ? 'Categorias' : 'Serviços') : 'Gerenciar Usuários'}</h2>
@@ -692,7 +860,8 @@ const Settings: React.FC = () => {
                     </table>
                 </div>
             )}
-        </div>
+          </div>
+        )}
       </div>
 
       {isModalOpen && (
