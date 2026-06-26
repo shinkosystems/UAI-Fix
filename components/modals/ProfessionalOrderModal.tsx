@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
+import { sendWhatsappText, sendWhatsappButtons, sendWhatsappOptionList } from '../../utils/whatsapp';
 import {
     X, Save, Hash, Loader2, ThumbsUp, ThumbsDown,
     Play, CheckCircle2, Star
@@ -82,6 +83,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     }, [order, isOpen]);
 
     useEffect(() => {
+        if (['aprovado', 'executando', 'concluido'].includes(formData.status)) return;
         const custoFixo = parseFloat(formData.orcamentoCusto.toString()) || 0;
         const hh = parseFloat(formData.orcamentoHH.toString()) || 0;
         const lucro = parseFloat(formData.orcamentoLucro.toString()) || 0;
@@ -209,11 +211,75 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         return index !== -1 ? desc.substring(0, index).trim() : desc.trim();
     };
 
+    const sendBudgetButtons = async (phone: string, data: any, ticketId: string) => {
+        const precoStr = data.orcamentoPreco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        
+        let paymentInfo = `Forma de Pagamento: ${data.orcamentoTipoPgto || 'Dinheiro'}`;
+        let hasSuggested = false;
+        let suggestedVal = data.orcamentoPreco;
+        let suggestedMethod = data.orcamentoTipoPgto;
+
+        if (data.orcamentoTipoPgtoSugerido) {
+             paymentInfo = `Forma de Pagamento Sugerida: ${data.orcamentoTipoPgtoSugerido}`;
+             suggestedMethod = data.orcamentoTipoPgtoSugerido;
+             if (data.orcamentoTipoPgtoSugerido !== data.orcamentoTipoPgto) hasSuggested = true;
+        }
+        
+        let descText = "";
+        if (data.orcamentoDescontoSugerido > 0) {
+            hasSuggested = true;
+            const pct = data.orcamentoDescontoSugerido;
+            const discountAmount = data.orcamentoPreco * (pct / 100);
+            suggestedVal = data.orcamentoPreco - discountAmount;
+            const val = suggestedVal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            descText = `\nDesconto Sugerido: ${pct}%\nValor Atualizado: ${val}`;
+        }
+
+        let justText = "";
+        if (data.orcamentoJustificativaSugerido) {
+            justText = `\nJustificativa da Sugestão: ${data.orcamentoJustificativaSugerido}`;
+        }
+
+        const text = `Seu orçamento está pronto!\n\nValor Original: ${precoStr}\n${paymentInfo}${descText}${justText}\n\nVocê aceita o orçamento?`;
+        
+        const getButtonText = (method: string, val: number) => {
+            let abbrev = (method || '').replace('Cartão de ', '').replace('Dinheiro', 'Dinh');
+            if (abbrev.length > 7) abbrev = abbrev.substring(0, 7);
+            const valStr = val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            let btn = `${abbrev}(${valStr})`;
+            if (btn.length > 20) btn = `${abbrev.substring(0,3)}(${valStr})`;
+            return btn.substring(0, 20);
+        };
+
+        const buttons = [];
+        if (hasSuggested) {
+            buttons.push({ id: `ACEITAR_SUG_${ticketId}`, label: getButtonText(suggestedMethod, suggestedVal) });
+            buttons.push({ id: `ACEITAR_ORIG_${ticketId}`, label: getButtonText(data.orcamentoTipoPgto, data.orcamentoPreco) });
+        } else {
+            buttons.push({ id: `ACEITAR_ORIG_${ticketId}`, label: getButtonText(data.orcamentoTipoPgto, data.orcamentoPreco) });
+        }
+        buttons.push({ id: `RECUSAR_${ticketId}`, label: "Recusar" });
+
+        await sendWhatsappButtons(
+            phone,
+            text,
+            "Orçamento - UaiFix",
+            "Responda nos botões abaixo",
+            buttons
+        );
+    };
+
     const handleAccept = async () => {
         setSaving(true);
         try {
             const ticketId = order.id || order.chaveData?.id;
             await supabase.from('chaves').update({ status: 'aguardando_aprovacao' }).eq('id', ticketId);
+            
+            const clientPhone = normalizedItem.clienteData?.whatsapp;
+            if (clientPhone) {
+                await sendBudgetButtons(clientPhone, formData, ticketId);
+            }
+            
             await onUpdate();
             onClose();
             alert('Tarefa aceita com sucesso! Aguardando aprovação do cliente.');
@@ -305,6 +371,30 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 }
             }
 
+            // WhatsApp Notification for Conclusion
+            const clientPhone = normalizedItem.clienteData?.whatsapp;
+            const isWhatsappOS = normalizedItem.planejamento?.some((p: any) => p.descricao?.includes('WHATSAPP'));
+            
+            if (clientPhone) {
+                if (isWhatsappOS) {
+                    const title = `Serviço Concluído! ✅`;
+                    const text = `Como você avalia o serviço prestado pelo nosso profissional?\n\nSua opinião é muito importante para mantermos a qualidade do nosso atendimento!`;
+                    const btnLabel = "Avaliar Serviço";
+                    const options = [
+                        { id: `AVALIAR_5_${ticketId}`, title: "5 Estrelas", description: "Excelente" },
+                        { id: `AVALIAR_4_${ticketId}`, title: "4 Estrelas", description: "Muito Bom" },
+                        { id: `AVALIAR_3_${ticketId}`, title: "3 Estrelas", description: "Bom" },
+                        { id: `AVALIAR_2_${ticketId}`, title: "2 Estrelas", description: "Ruim" },
+                        { id: `AVALIAR_1_${ticketId}`, title: "1 Estrela", description: "Péssimo" },
+                        { id: `AVALIAR_0_${ticketId}`, title: "0 Estrelas", description: "Inaceitável" }
+                    ];
+                    await sendWhatsappOptionList(clientPhone, text, title, btnLabel, options);
+                } else {
+                    const msg = `Seu serviço foi concluído com sucesso! ✅\n\nGostaríamos muito de saber como foi sua experiência. Por favor, acesse a plataforma UaiFix para avaliar o serviço prestado pelo profissional.\n\nSua opinião é muito importante para mantermos a qualidade do nosso atendimento!`;
+                    await sendWhatsappText(clientPhone, msg);
+                }
+            }
+
             await onUpdate();
             onClose();
             alert('Tarefa concluída com sucesso!');
@@ -321,6 +411,17 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         setSaving(true);
         try {
             const ticketId = order.id || order.chaveData?.id;
+
+            if (formData.planejamentoVisita && formData.planejamentoData) {
+                const v = new Date(formData.planejamentoVisita);
+                const e = new Date(formData.planejamentoData);
+                if (v > e) {
+                    alert("A data da Visita Técnica não pode ser posterior à data de Execução Prevista.");
+                    setSaving(false);
+                    return;
+                }
+            }
+
             let finalStatus = formData.status;
 
             if ((isGestor || isPlanejista) && formData.status === 'pendente') {
@@ -399,6 +500,26 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     await supabase.from('planejamento').update(p).eq('id', planId);
                 } else {
                     await supabase.from('planejamento').insert(p);
+                }
+            }
+
+            // WhatsApp Notifications
+            const clientPhone = normalizedItem.clienteData?.whatsapp;
+            const formatBRDate = (d: string) => {
+                if (!d) return '';
+                return new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            };
+
+            if (clientPhone) {
+                if (formData.status === 'pendente' && finalStatus === 'analise') {
+                    const profName = availableProfessionals.find(prof => prof.uuid === formData.profissionalUuid)?.nome || 'um de nossos profissionais';
+                    const msg = `Olá, seu chamado foi planejado!\n\nProfissional Alocado: ${profName}\nVisita Técnica: ${formatBRDate(formData.planejamentoVisita)}\nExecução Prevista: ${formatBRDate(formData.planejamentoData)}\n\nO seu chamado agora foi enviado para o setor de orçamento. Em breve você receberá os valores.`;
+                    await sendWhatsappText(clientPhone, msg);
+                } else if (formData.status === 'reprovado' && finalStatus === 'aguardando_aprovacao') {
+                    await sendBudgetButtons(clientPhone, formData, ticketId);
+                } else if (formData.status !== 'concluido' && finalStatus === 'concluido') {
+                    const msg = `Seu serviço foi concluído com sucesso! ✅\n\nGostaríamos muito de saber como foi sua experiência. Por favor, acesse a plataforma UaiFix para avaliar o serviço prestado pelo profissional.\n\nSua opinião é muito importante para mantermos a qualidade do nosso atendimento!`;
+                    await sendWhatsappText(clientPhone, msg);
                 }
             }
 
@@ -544,7 +665,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto flex gap-3">
                     <button onClick={onClose} className="flex-1 bg-white border border-gray-200 text-gray-500 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95">Voltar</button>
 
-                    {isProfessional && formData.status === 'aguardando_profissional' ? (
+                    {isProfessional && (formData.status === 'aguardando_profissional' || formData.status === 'aguardando_aprovacao') ? (
                         <>
                             <button
                                 onClick={handleReject}
@@ -584,7 +705,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                     {(isGestor || isPlanejista) && formData.status === 'pendente'
                                         ? 'Enviar para Orçamento'
                                         : (isOrcamentista || (isGestor && formData.status !== 'pendente'))
-                                            ? 'Salvar Orçamento'
+                                            ? (formData.status === 'reprovado' ? 'Reenviar Orçamento' : 'Salvar Orçamento')
                                             : 'Salvar Alterações'}
                                 </span>
                             )}

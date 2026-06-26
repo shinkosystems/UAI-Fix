@@ -10,17 +10,21 @@ const PaymentInfoSection: React.FC<PaymentInfoSectionProps> = ({ editingItem, in
     if (!editingItem.planejamento?.[0]) return null;
 
     const displayInstallments = installments || editingItem.planejamento[0].qtd || 1;
+    const paymentMethod = editingItem.planejamento[0].pagamento || 'Não informado';
+    const isCreditCard = paymentMethod.toLowerCase() === 'cartão de crédito';
 
     return (
         <div className="bg-orange-50/30 p-5 rounded-[2rem] border border-orange-100 flex items-center justify-between shadow-sm">
             <div className="space-y-1">
                 <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest leading-none">Forma de Pagamento Sugerida pelo Consumidor</p>
-                <p className="text-xs font-black text-orange-900 uppercase">{editingItem.planejamento[0].pagamento || 'Não informado'}</p>
+                <p className="text-xs font-black text-orange-900 uppercase">{paymentMethod}</p>
             </div>
-            <div className="text-right space-y-1">
-                <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest leading-none">Parcelas</p>
-                <p className="text-xs font-black text-orange-900">{displayInstallments}x</p>
-            </div>
+            {isCreditCard && (
+                <div className="text-right space-y-1">
+                    <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest leading-none">Parcelas</p>
+                    <p className="text-xs font-black text-orange-900">{displayInstallments}x</p>
+                </div>
+            )}
         </div>
     );
 };

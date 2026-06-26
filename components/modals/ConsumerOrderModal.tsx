@@ -31,13 +31,26 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
     const [ratingComment, setRatingComment] = useState(order?.avaliacao?.comentario || '');
     const [hoverRating, setHoverRating] = useState(0);
     const [submittingRating, setSubmittingRating] = useState(false);
+    const [discoverySource, setDiscoverySource] = useState('');
+    const [discoveryOther, setDiscoveryOther] = useState('');
     const [proStats, setProStats] = useState<{ rating: number | null; serviceCount: number }>({
         rating: null,
         serviceCount: 0
     });
 
+    const [userOrigin, setUserOrigin] = useState<string | null>(null);
+
     useEffect(() => {
-        const fetchProStats = async () => {
+        const fetchProStatsAndUser = async () => {
+            if (userUuid) {
+                try {
+                    const { data } = await supabase.from('users').select('origem').eq('uuid', userUuid).maybeSingle();
+                    if (data) setUserOrigin(data.origem);
+                } catch (error) {
+                    console.error("Error fetching user origin:", error);
+                }
+            }
+
             const proUuid = typeof order.profissional === 'string' ? order.profissional : order.profissional?.uuid;
             if (!proUuid) return;
 
@@ -58,10 +71,10 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
             }
         };
 
-        if (isOpen && order.profissional) {
-            fetchProStats();
+        if (isOpen) {
+            fetchProStatsAndUser();
         }
-    }, [isOpen, order.profissional]);
+    }, [isOpen, order.profissional, userUuid]);
 
     if (!isOpen || !order) return null;
 
@@ -152,6 +165,17 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                 comentario: ratingComment
             });
             if (error) throw error;
+
+            if (discoverySource) {
+                let finalSource = discoverySource;
+                if (discoverySource === 'Outro') finalSource = discoveryOther;
+                else if (discoverySource === 'Indicação') finalSource = discoveryOther ? `Indicação: ${discoveryOther}` : 'Indicação';
+
+                if (finalSource) {
+                   await supabase.from('users').update({ origem: finalSource }).eq('uuid', userUuid);
+                }
+            }
+
             alert("Avaliação enviada!");
             await onUpdate();
             onClose();
@@ -379,6 +403,33 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                                 <div className="space-y-8">
                                     <div className="text-center space-y-2 mt-4"><h4 className="text-xl font-black text-gray-900">Como foi o serviço?</h4><p className="text-xs text-gray-500 font-medium">Sua avaliação ajuda a manter a qualidade.</p></div>
                                     <div className="flex justify-center space-x-3">{[1, 2, 3, 4, 5].map((star) => (<button key={star} type="button" onClick={() => setRatingScore(star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="transition-all active:scale-90"><Star size={44} className={`${(hoverRating || ratingScore) >= star ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`} /></button>))}</div>
+                                    
+                                    {(!userOrigin || userOrigin === 'site') && (
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.1em] ml-1">Por onde conheceu a UAI Fix?</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {['Instagram', 'Indicação', 'YouTube', 'Outro'].map(src => (
+                                                    <button 
+                                                        key={src} 
+                                                        onClick={() => setDiscoverySource(src)}
+                                                        className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border ${discoverySource === src ? 'bg-ios-blue text-white border-ios-blue shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                                                    >
+                                                        {src}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {(discoverySource === 'Outro' || discoverySource === 'Indicação') && (
+                                                <input 
+                                                    type="text" 
+                                                    placeholder={discoverySource === 'Indicação' ? "Nome, WhatsApp ou Email de quem te indicou..." : "Especifique..."}
+                                                    value={discoveryOther} 
+                                                    onChange={(e) => setDiscoveryOther(e.target.value)} 
+                                                    className="w-full mt-2 bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-ios-blue/30"
+                                                />
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.1em] ml-1">Comentário Adicional</label><textarea value={ratingComment} onChange={(e) => setRatingComment(e.target.value)} placeholder="Descreva sua experiência..." className="w-full bg-gray-50 border border-gray-200 rounded-[1.5rem] p-5 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[120px] resize-none" /></div>
                                     <button onClick={handleSubmitRating} disabled={submittingRating || !ratingScore} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center space-x-2 disabled:opacity-50">{submittingRating ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar Avaliação</span></>}</button>
                                 </div>

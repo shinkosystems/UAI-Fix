@@ -134,18 +134,22 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                 <option value="aprovado">Aprovado (Agendado)</option>
                 <option value="executando">Em Execução</option>
                 <option value="concluido">Concluído</option>
-                <option value="reprovado">Reprovado</option>
+                <option value="reprovado">Orçamento Negado</option>
                 <option value="cancelado">Cancelado</option>
             </select>
 
-            {formData.status === 'reprovado' && editingItem.motivo_recusa && (
+            {formData.status === 'reprovado' && (
                 <div className="bg-red-50 p-5 rounded-3xl border border-red-100 flex gap-4 animate-in slide-in-from-top-2 mt-2">
                     <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
                         <AlertCircle size={20} />
                     </div>
                     <div>
                         <p className="text-[9px] font-black text-red-700 uppercase tracking-widest leading-none mb-1">Justificativa do Consumidor</p>
-                        <p className="text-sm font-medium text-red-900 leading-relaxed">"{editingItem.motivo_recusa}"</p>
+                        {formData.motivo_recusa ? (
+                            <p className="text-sm font-medium text-red-900 leading-relaxed">"{formData.motivo_recusa}"</p>
+                        ) : (
+                            <p className="text-sm font-medium text-red-600/70 leading-relaxed italic animate-pulse">Aguardando o cliente digitar o motivo no WhatsApp...</p>
+                        )}
                     </div>
                 </div>
             )}
