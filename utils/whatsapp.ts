@@ -25,11 +25,16 @@ export async function sendWhatsappText(phone: string, text: string) {
     // Clean phone number
     const cleanPhone = phone.replace(/\D/g, '');
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (config.client_token) {
+      headers['client-token'] = config.client_token;
+    }
+
     const response = await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-text`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         phone: cleanPhone,
         message: text
@@ -58,11 +63,16 @@ export async function sendWhatsappButtons(phone: string, text: string, buttons: 
 
     const cleanPhone = phone.replace(/\D/g, '');
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (config.client_token) {
+      headers['client-token'] = config.client_token;
+    }
+
     const response = await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-button`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         phone: cleanPhone,
         message: text,
@@ -92,11 +102,16 @@ export async function sendWhatsappOptionList(phone: string, title: string, text:
 
     const cleanPhone = phone.replace(/\D/g, '');
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (config.client_token) {
+      headers['client-token'] = config.client_token;
+    }
+
     const response = await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-option-list`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         phone: cleanPhone,
         title: title,

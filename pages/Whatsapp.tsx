@@ -1,4 +1,4 @@
-
+// @sos-edit: false
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, 
@@ -92,6 +92,11 @@ const Whatsapp: React.FC = () => {
   const [isQuickTicketModalOpen, setIsQuickTicketModalOpen] = useState(false);
   const [gestorUuid, setGestorUuid] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const selectedChatRef = useRef<Chat | null>(null);
+
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -182,13 +187,15 @@ const Whatsapp: React.FC = () => {
         fetchInitialData();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' }, (payload) => {
-        if (selectedChat && payload.new.chat_id === selectedChat.id) {
-          fetchMessages(selectedChat.id);
+        const activeChat = selectedChatRef.current;
+        if (activeChat && payload.new.chat_id === activeChat.id) {
+          fetchMessages(activeChat.id);
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'whatsapp_messages' }, (payload) => {
-        if (selectedChat && payload.new.chat_id === selectedChat.id) {
-          fetchMessages(selectedChat.id);
+        const activeChat = selectedChatRef.current;
+        if (activeChat && payload.new.chat_id === activeChat.id) {
+          fetchMessages(activeChat.id);
         }
       })
       .subscribe();
@@ -207,11 +214,16 @@ const Whatsapp: React.FC = () => {
 
     try {
       // 1. Send to Z-API
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (config.client_token) {
+        headers['client-token'] = config.client_token;
+      }
+
       const response = await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-text`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           phone: selectedChat.phone,
           message: messageText

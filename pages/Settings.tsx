@@ -1,3 +1,4 @@
+// @sos-edit: false
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { createClient } from '@supabase/supabase-js';
@@ -63,6 +64,7 @@ const Settings: React.FC = () => {
   const [whatsappConfig, setWhatsappConfig] = useState({
     instanceId: '',
     token: '',
+    clientToken: '',
     status: 'Aguardando Configuração',
     webhook: `${SUPABASE_URL}/functions/v1/zapi-webhook`
   });
@@ -77,6 +79,7 @@ const Settings: React.FC = () => {
       const payload = {
         instance_id: whatsappConfig.instanceId,
         token: whatsappConfig.token,
+        client_token: whatsappConfig.clientToken,
         webhook_url: whatsappConfig.webhook,
         active: true
       };
@@ -146,6 +149,7 @@ const Settings: React.FC = () => {
             ...whatsappConfig,
             instanceId: data.instance_id,
             token: data.token,
+            clientToken: data.client_token || '',
             webhook: data.webhook_url || whatsappConfig.webhook
           });
         }
@@ -730,6 +734,19 @@ const Settings: React.FC = () => {
                           className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 pl-12 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-orange-100 transition-all"
                           value={whatsappConfig.token}
                           onChange={(e) => setWhatsappConfig({...whatsappConfig, token: e.target.value})}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Client Token (Z-API)</label>
+                      <div className="relative">
+                        <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500" />
+                        <input 
+                          type="password"
+                          className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 pl-12 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-orange-100 transition-all"
+                          value={whatsappConfig.clientToken}
+                          onChange={(e) => setWhatsappConfig({...whatsappConfig, clientToken: e.target.value})}
                         />
                       </div>
                     </div>
