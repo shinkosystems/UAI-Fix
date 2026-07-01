@@ -68,12 +68,21 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
   const [useChatAudio, setUseChatAudio] = useState(false);
   const [audioChatUrl, setAudioChatUrl] = useState<string | null>(null);
   const [clientName, setClientName] = useState('');
+  const [clientCpf, setClientCpf] = useState('');
   const [clientCep, setClientCep] = useState('');
   const [clientStreet, setClientStreet] = useState('');
   const [clientNumber, setClientNumber] = useState('');
   const [clientComplement, setClientComplement] = useState('');
   const [clientNeighborhood, setClientNeighborhood] = useState('');
   const [searchingCep, setSearchingCep] = useState(false);
+
+  const formatCpf = (v: string) => {
+    return v.replace(/\D/g, '')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+      .slice(0, 14);
+  };
 
   // Service Address State
   const [useDifferentAddress, setUseDifferentAddress] = useState(false);
@@ -223,7 +232,7 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
 
       const { data: existingUsers } = await supabase
         .from('users')
-        .select('uuid, nome, rua, numero, complemento, bairro, cep, cidade, estado')
+        .select('uuid, nome, rua, numero, complemento, bairro, cep, cidade, estado, cpf')
         .in('whatsapp', searchPhones)
         .limit(1);
 
@@ -235,6 +244,7 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
         if (existingUser.numero) setClientNumber(existingUser.numero);
         if (existingUser.complemento) setClientComplement(existingUser.complemento);
         if (existingUser.bairro) setClientNeighborhood(existingUser.bairro);
+        if (existingUser.cpf) setClientCpf(existingUser.cpf);
 
         if (existingUser.cidade) {
           const { data: cityData } = await supabase
@@ -255,6 +265,7 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
 
   const resetForm = () => {
     setClientName('');
+    setClientCpf('');
     setClientCep('');
     setClientStreet('');
     setClientNumber('');
@@ -467,6 +478,15 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
       setErrorMsg('Selecione uma cidade válida.');
       return;
     }
+    const cleanCpf = clientCpf.replace(/\D/g, '');
+    if (!cleanCpf) {
+      setErrorMsg('Por favor, preencha o CPF do cliente.');
+      return;
+    }
+    if (cleanCpf.length !== 11) {
+      setErrorMsg('CPF inválido. O CPF deve conter 11 dígitos.');
+      return;
+    }
     if (!date) {
       setErrorMsg('Por favor, preencha a data e hora preferencial.');
       return;
@@ -545,15 +565,24 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
 
       const { data: existingUsers } = await supabase
         .from('users')
-        .select('uuid')
+        .select('uuid, email, origem')
         .in('whatsapp', searchPhones)
         .limit(1);
 
+      let isShadowUser = true;
+
       if (existingUsers && existingUsers.length > 0) {
         clientUuid = existingUsers[0].uuid;
-        // Update name and address if provided
+        const email = existingUsers[0].email;
+        const origem = existingUsers[0].origem;
+        if (email && !email.startsWith('whatsapp_') && origem !== 'whatsapp') {
+          isShadowUser = false;
+        }
+
+        // Update name, address and CPF if provided
         await supabase.from('users').update({
           nome: clientName,
+          cpf: cleanCpf,
           rua: clientStreet || '',
           numero: clientNumber || '',
           complemento: clientComplement || '',
@@ -585,6 +614,7 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
           uuid: clientUuid,
           nome: clientName,
           email: fakeEmail,
+          cpf: cleanCpf,
           whatsapp: selectedChat.phone,
           tipo: 'consumidor',
           ativo: true,
@@ -600,6 +630,23 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
           fotoperfil: ''
         });
         if (userError) throw new Error(`Erro ao criar perfil do cliente: ${userError.message}`);
+      }
+
+      // Upsert lead in whatsapp_leads table if it's a shadow user (or new)
+      if (isShadowUser) {
+        const { error: leadError } = await supabase
+          .from('whatsapp_leads')
+          .upsert({
+            cpf: cleanCpf,
+            nome: clientName,
+            telefone: rawPhone,
+            chat_id: selectedChat.id,
+            user_uuid: clientUuid,
+            vinculado: false,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'cpf' });
+
+        if (leadError) throw new Error(`Erro ao registrar lead do WhatsApp: ${leadError.message}`);
       }
 
       // 2. Upload Audio if exists
@@ -626,7 +673,9 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
           atividade: selectedService.id,
           cidade: selectedCity.id,
           fotoantes: [],
-          fotodepois: []
+          fotodepois: [],
+          whatsapp_chat_id: selectedChat.id,
+          whatsapp_lead_cpf: cleanCpf
         })
         .select()
         .single();
@@ -720,6 +769,21 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
                     placeholder="Nome do Cliente"
+                    className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 pl-4 pr-10 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30"
+                  />
+                </div>
+
+                {/* CPF do Cliente */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 flex items-center">
+                    <FileText size={12} className="mr-1" /> CPF do Cliente
+                  </label>
+                  <input
+                    type="text"
+                    value={clientCpf}
+                    onChange={(e) => setClientCpf(formatCpf(e.target.value))}
+                    maxLength={14}
+                    placeholder="000.000.000-00"
                     className="w-full bg-gray-50 border border-gray-100 rounded-2xl py-4 pl-4 pr-10 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30"
                   />
                 </div>

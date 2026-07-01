@@ -241,6 +241,54 @@ const Login: React.FC = () => {
             if (profileError) {
                 throw new Error(`Erro ao salvar dados do perfil: ${profileError.message}`);
             }
+
+            // Linkage logic for WhatsApp leads
+            try {
+              const cleanCpf = cpf.replace(/\D/g, '');
+              const { data: leads } = await supabase
+                .from('whatsapp_leads')
+                .select('id, user_uuid')
+                .eq('cpf', cleanCpf)
+                .eq('vinculado', false);
+
+              if (leads && leads.length > 0) {
+                for (const lead of leads) {
+                  const shadowUserUuid = lead.user_uuid;
+                  if (shadowUserUuid) {
+                    // Update chaves (tickets)
+                    await supabase
+                      .from('chaves')
+                      .update({ cliente: authData.user.id })
+                      .eq('cliente', shadowUserUuid);
+
+                    // Update agenda items
+                    await supabase
+                      .from('agenda')
+                      .update({ cliente: authData.user.id })
+                      .eq('cliente', shadowUserUuid);
+                  }
+
+                  // Mark lead as linked
+                  await supabase
+                    .from('whatsapp_leads')
+                    .update({
+                      vinculado: true,
+                      user_uuid: authData.user.id,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', lead.id);
+                }
+              }
+
+              // Also update any chaves directly by CPF
+              await supabase
+                .from('chaves')
+                .update({ cliente: authData.user.id })
+                .eq('whatsapp_lead_cpf', cleanCpf);
+                
+            } catch (linkError) {
+              console.error('Error linking WhatsApp leads on signup:', linkError);
+            }
         }
 
         alert('Cadastro realizado com sucesso! Você já pode entrar.');

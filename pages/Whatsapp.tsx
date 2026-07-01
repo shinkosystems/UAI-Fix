@@ -17,6 +17,7 @@ import {
   Video
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
+import ManagerQuickTicketModal from '../components/modals/ManagerQuickTicketModal';
 
 interface Message {
   id: string;
@@ -88,6 +89,8 @@ const Whatsapp: React.FC = () => {
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [config, setConfig] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isQuickTicketModalOpen, setIsQuickTicketModalOpen] = useState(false);
+  const [gestorUuid, setGestorUuid] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -114,6 +117,10 @@ const Whatsapp: React.FC = () => {
   const fetchInitialData = async () => {
     setLoading(true);
     try {
+      // Fetch Logged-in Gestor UUID
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) setGestorUuid(user.id);
+
       // Fetch Config
       const { data: configData } = await supabase.from('whatsapp_config').select('*').limit(1).maybeSingle();
       if (configData) setConfig(configData);
@@ -246,7 +253,7 @@ const Whatsapp: React.FC = () => {
 
   const openTicket = () => {
     if (!selectedChat) return;
-    alert(`Abrindo chamado para: ${selectedChat.name}\n(Funcionalidade a ser integrada com o sistema de chamados)`);
+    setIsQuickTicketModalOpen(true);
   };
 
   const filteredChats = chats.filter(chat => 
@@ -430,6 +437,23 @@ const Whatsapp: React.FC = () => {
           </div>
         )}
       </div>
+
+      {selectedChat && (
+        <ManagerQuickTicketModal
+          isOpen={isQuickTicketModalOpen}
+          onClose={() => setIsQuickTicketModalOpen(false)}
+          selectedChat={{
+            id: selectedChat.id,
+            name: selectedChat.name,
+            phone: selectedChat.phone
+          }}
+          gestorUuid={gestorUuid}
+          onSuccess={() => {
+            // success feedback
+          }}
+          chatMessages={messages}
+        />
+      )}
     </div>
   );
 };

@@ -107,6 +107,20 @@ export interface Chave {
   // cliente object might be injected manually or via join
   clienteData?: User;
   profissional?: string | User | null; // Depending on how we map it
+  whatsapp_chat_id?: string | null;
+  whatsapp_lead_cpf?: string | null;
+}
+
+export interface WhatsappLead {
+  id: string;
+  cpf: string;
+  nome: string | null;
+  telefone: string | null;
+  chat_id: string | null;
+  user_uuid: string | null;
+  vinculado: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ChamadoExtended extends Chave {
