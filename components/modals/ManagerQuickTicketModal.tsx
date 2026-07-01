@@ -1,11 +1,21 @@
+// @sos-edit: false
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X, Loader2, Search, Briefcase, MapPin, CheckCircle, AlertTriangle,
   Calendar, Clock, Banknote, CreditCard, Smartphone, Package, Plus, Camera, Play,
   FileText, Trash2 as Trash, Square, Mic, User, Hash
 } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../../supabaseClient';
 import { Geral, City } from '../../types';
+
+/** Cria um client Supabase temporário sem persistência de sessão para criação de shadow users */
+const createTempSupabaseClient = () =>
+  createClient(
+    import.meta.env.VITE_SUPABASE_URL,
+    import.meta.env.VITE_SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+  );
 
 interface ManagerQuickTicketModalProps {
   isOpen: boolean;
@@ -594,11 +604,7 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
       } else {
         const fakeEmail = `whatsapp_${selectedChat.phone.replace(/\D/g, '')}@uaifix.com`;
 
-        // Import createClient dynamically to avoid top-level issues if not imported
-        const { createClient } = await import('@supabase/supabase-js');
-        const tempClient = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY, {
-          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-        });
+        const tempClient = createTempSupabaseClient();
 
         const { data: authData, error: authError } = await tempClient.auth.signUp({
           email: fakeEmail,
