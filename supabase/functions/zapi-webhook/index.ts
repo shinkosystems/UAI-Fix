@@ -1,3 +1,4 @@
+// @sos-edit: false
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
@@ -33,6 +34,19 @@ serve(async (req) => {
       const content = body.text?.message || "[Arquivo/Mídia]";
       const messageId = body.messageId;
 
+      // Verificar se o chat já existe para saber se é o primeiro contato ou se está inativo
+      const { data: existingChat } = await supabase
+        .from('whatsapp_chats')
+        .select('id, last_message_time')
+        .eq('phone', phone)
+        .maybeSingle();
+
+      const isNewChat = !existingChat;
+      const isInactive = existingChat?.last_message_time 
+        ? (new Date().getTime() - new Date(existingChat.last_message_time).getTime()) > 24 * 60 * 60 * 1000 
+        : true;
+      const shouldSendWelcome = isNewChat || isInactive;
+
       // A. Garantir que o Chat existe
       const { data: chat, error: chatError } = await supabase
         .from('whatsapp_chats')
@@ -67,6 +81,68 @@ serve(async (req) => {
       if (msgError) {
         console.error("Erro ao salvar mensagem:", msgError);
         throw msgError;
+      }
+
+      // C. Enviar mensagem de boas-vindas se necessário
+      if (shouldSendWelcome) {
+        const { data: config } = await supabase
+          .from('whatsapp_config')
+          .select('instance_id, token, client_token, welcome_active, welcome_message')
+          .limit(1)
+          .maybeSingle();
+
+        if (config?.welcome_active && config.instance_id && config.token) {
+          const welcomeText = config.welcome_message || "Olá! Obrigado por entrar em contato. Em breve responderemos.";
+          
+          try {
+            const headers: Record<string, string> = {
+              'Content-Type': 'application/json',
+            };
+            if (config.client_token) {
+              headers['client-token'] = config.client_token;
+            }
+
+            const response = await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-text`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                phone,
+                message: welcomeText
+              })
+            });
+
+            if (response.ok) {
+              const zapiData = await response.json();
+              
+              // Salva a mensagem de boas-vindas enviada no banco
+              await supabase
+                .from('whatsapp_messages')
+                .insert({
+                  chat_id: chat.id,
+                  message_id: zapiData.messageId,
+                  content: welcomeText,
+                  type: 'text',
+                  sender: 'manager',
+                  status: 'sent',
+                  metadata: zapiData
+                });
+
+              // Atualiza o último status do chat com a mensagem de boas-vindas
+              await supabase
+                .from('whatsapp_chats')
+                .update({
+                  last_message: welcomeText,
+                  last_message_time: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', chat.id);
+            } else {
+              console.error("Erro ao enviar boas-vindas via Z-API:", await response.text());
+            }
+          } catch (zapiErr) {
+            console.error("Erro na comunicação Z-API para boas-vindas:", zapiErr);
+          }
+        }
       }
     }
 

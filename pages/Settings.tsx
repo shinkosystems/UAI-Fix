@@ -65,6 +65,8 @@ const Settings: React.FC = () => {
     instanceId: '',
     token: '',
     clientToken: '',
+    welcomeActive: false,
+    welcomeMessage: '',
     status: 'Aguardando Configuração',
     webhook: `${SUPABASE_URL}/functions/v1/zapi-webhook`
   });
@@ -80,6 +82,8 @@ const Settings: React.FC = () => {
         instance_id: whatsappConfig.instanceId,
         token: whatsappConfig.token,
         client_token: whatsappConfig.clientToken,
+        welcome_active: whatsappConfig.welcomeActive,
+        welcome_message: whatsappConfig.welcomeMessage,
         webhook_url: whatsappConfig.webhook,
         active: true
       };
@@ -150,6 +154,8 @@ const Settings: React.FC = () => {
             instanceId: data.instance_id,
             token: data.token,
             clientToken: data.client_token || '',
+            welcomeActive: data.welcome_active || false,
+            welcomeMessage: data.welcome_message || '',
             webhook: data.webhook_url || whatsappConfig.webhook
           });
         }
@@ -749,6 +755,37 @@ const Settings: React.FC = () => {
                           onChange={(e) => setWhatsappConfig({...whatsappConfig, clientToken: e.target.value})}
                         />
                       </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-100 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-bold text-gray-900">Mensagem de Boas-Vindas</h4>
+                          <p className="text-xs text-gray-500">Responder automaticamente a novos contatos.</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            className="sr-only peer"
+                            checked={whatsappConfig.welcomeActive}
+                            onChange={(e) => setWhatsappConfig({...whatsappConfig, welcomeActive: e.target.checked})}
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                        </label>
+                      </div>
+
+                      {whatsappConfig.welcomeActive && (
+                        <div className="space-y-2 animate-in fade-in duration-200">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Mensagem</label>
+                          <textarea
+                            rows={3}
+                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-gray-900 outline-none focus:ring-2 focus:ring-orange-100 transition-all resize-none"
+                            placeholder="Olá! Como posso ajudar você hoje?"
+                            value={whatsappConfig.welcomeMessage}
+                            onChange={(e) => setWhatsappConfig({...whatsappConfig, welcomeMessage: e.target.value})}
+                          />
+                        </div>
+                      )}
                     </div>
 
                     <button 
