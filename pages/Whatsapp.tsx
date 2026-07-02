@@ -14,7 +14,10 @@ import {
   Clock,
   ExternalLink,
   Phone,
-  Video
+  Video,
+  Trash2,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import ManagerQuickTicketModal from '../components/modals/ManagerQuickTicketModal';
@@ -93,6 +96,9 @@ const Whatsapp: React.FC = () => {
   const [gestorUuid, setGestorUuid] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const selectedChatRef = useRef<Chat | null>(null);
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingChat, setDeletingChat] = useState(false);
 
   useEffect(() => {
     selectedChatRef.current = selectedChat;
@@ -268,6 +274,41 @@ const Whatsapp: React.FC = () => {
     setIsQuickTicketModalOpen(true);
   };
 
+  const handleDeleteChat = async () => {
+    if (!selectedChat) return;
+    setDeletingChat(true);
+    try {
+      // 1. Apagar todas as mensagens do chat
+      const { error: msgError } = await supabase
+        .from('whatsapp_messages')
+        .delete()
+        .eq('chat_id', selectedChat.id);
+
+      if (msgError) throw msgError;
+
+      // 2. Apagar o chat
+      const { error: chatError } = await supabase
+        .from('whatsapp_chats')
+        .delete()
+        .eq('id', selectedChat.id);
+
+      if (chatError) throw chatError;
+
+      // 3. Atualizar a UI localmente
+      setChats(prev => prev.filter(c => c.id !== selectedChat.id));
+      setSelectedChat(null);
+      setMessages([]);
+      setIsMobileChatOpen(false);
+      setShowDeleteConfirm(false);
+      setShowChatMenu(false);
+    } catch (error) {
+      console.error('Erro ao apagar conversa:', error);
+      alert('Erro ao apagar a conversa. Tente novamente.');
+    } finally {
+      setDeletingChat(false);
+    }
+  };
+
   const filteredChats = chats.filter(chat => 
     chat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
@@ -364,7 +405,33 @@ const Whatsapp: React.FC = () => {
                 <div className="flex items-center space-x-4 text-gray-500">
                   <button className="hover:text-ios-blue transition-colors sm:hidden"><UserPlus size={20} /></button>
                   <button className="hover:text-ios-blue transition-colors"><Search size={20} /></button>
-                  <button className="hover:text-ios-blue transition-colors"><MoreVertical size={20} /></button>
+                  {/* Menu de opções (3 pontos) */}
+                  <div className="relative">
+                    <button 
+                      onClick={() => setShowChatMenu(prev => !prev)}
+                      className="hover:text-ios-blue transition-colors"
+                    >
+                      <MoreVertical size={20} />
+                    </button>
+                    {showChatMenu && (
+                      <>
+                        {/* Overlay para fechar o menu ao clicar fora */}
+                        <div 
+                          className="fixed inset-0 z-10" 
+                          onClick={() => setShowChatMenu(false)} 
+                        />
+                        <div className="absolute right-0 top-8 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-20 min-w-[180px] overflow-hidden">
+                          <button
+                            onClick={() => { setShowDeleteConfirm(true); setShowChatMenu(false); }}
+                            className="w-full flex items-center space-x-3 px-4 py-3 text-sm text-red-500 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 size={16} />
+                            <span>Apagar conversa</span>
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -465,6 +532,61 @@ const Whatsapp: React.FC = () => {
           }}
           chatMessages={messages}
         />
+      )}
+
+      {/* Modal de Confirmação de Exclusão */}
+      {showDeleteConfirm && selectedChat && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-end mb-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+                <Trash2 size={28} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Apagar conversa?</h3>
+              <p className="text-sm text-gray-500 mb-1">
+                Você está prestes a apagar a conversa com
+              </p>
+              <p className="text-sm font-bold text-gray-800 mb-4">{selectedChat.name}</p>
+              <div className="flex items-start space-x-2 bg-amber-50 border border-amber-200 rounded-2xl p-3 mb-6 text-left">
+                <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700">
+                  Todas as mensagens desta conversa serão permanentemente removidas do banco de dados. Esta ação <strong>não pode ser desfeita</strong>.
+                </p>
+              </div>
+              <div className="flex space-x-3 w-full">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deletingChat}
+                  className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteChat}
+                  disabled={deletingChat}
+                  className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-semibold text-sm hover:bg-red-600 transition-colors shadow-lg shadow-red-200 disabled:opacity-50 flex items-center justify-center space-x-2"
+                >
+                  {deletingChat ? (
+                    <span>Apagando...</span>
+                  ) : (
+                    <>
+                      <Trash2 size={15} />
+                      <span>Apagar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
