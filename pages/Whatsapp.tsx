@@ -17,7 +17,8 @@ import {
   Video,
   Trash2,
   AlertTriangle,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import ManagerQuickTicketModal from '../components/modals/ManagerQuickTicketModal';
@@ -27,7 +28,7 @@ interface Message {
   text: string;
   sender: 'me' | 'contact';
   timestamp: string;
-  status: 'sent' | 'delivered' | 'read' | 'received' | 'sending';
+  status: 'sent' | 'delivered' | 'read' | 'received' | 'sending' | 'error';
 }
 
 interface Chat {
@@ -94,6 +95,7 @@ const Whatsapp: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isQuickTicketModalOpen, setIsQuickTicketModalOpen] = useState(false);
   const [gestorUuid, setGestorUuid] = useState('');
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const selectedChatRef = useRef<Chat | null>(null);
   const [showChatMenu, setShowChatMenu] = useState(false);
@@ -111,6 +113,17 @@ const Whatsapp: React.FC = () => {
   useEffect(() => {
     fetchInitialData();
     subscribeToChanges();
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   useEffect(() => {
@@ -181,7 +194,11 @@ const Whatsapp: React.FC = () => {
         status: m.status as any
       }));
 
-      setMessages(formattedMsgs);
+      setMessages(prev => {
+        const pending = prev.filter(m => m.id.startsWith('temp-') && (m.status === 'sending' || m.status === 'error'));
+        const filteredPending = pending.filter(p => !formattedMsgs.some(f => f.text === p.text && f.sender === 'me'));
+        return [...formattedMsgs, ...filteredPending];
+      });
     } catch (error) {
       console.error('Error fetching messages:', error);
     }
@@ -211,15 +228,45 @@ const Whatsapp: React.FC = () => {
     };
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !selectedChat || !config) return;
+  const handleSendMessage = async (e?: React.FormEvent, messageToRetry?: Message) => {
+    if (e) e.preventDefault();
+    
+    const messageText = messageToRetry ? messageToRetry.text : newMessage;
+    if (!messageText.trim() || !selectedChat || !config) return;
 
-    const messageText = newMessage;
-    setNewMessage('');
+    if (!messageToRetry) {
+      setNewMessage('');
+    }
+
+    const tempId = messageToRetry ? messageToRetry.id : `temp-${Date.now()}`;
+    const tempMsg: Message = {
+      id: tempId,
+      text: messageText,
+      sender: 'me',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'sending'
+    };
+
+    setMessages(prev => {
+      const exists = prev.some(m => m.id === tempId);
+      if (exists) {
+        return prev.map(m => m.id === tempId ? tempMsg : m);
+      }
+      return [...prev, tempMsg];
+    });
+
+    const markAsError = () => {
+      setMessages(prev => 
+        prev.map(m => m.id === tempId ? { ...m, status: 'error' } : m)
+      );
+    };
+
+    if (!navigator.onLine) {
+      markAsError();
+      return;
+    }
 
     try {
-      // 1. Send to Z-API
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
@@ -236,9 +283,12 @@ const Whatsapp: React.FC = () => {
         })
       });
 
+      if (!response.ok) {
+        throw new Error(`Z-API returned status ${response.status}`);
+      }
+
       const zapiData = await response.json();
 
-      // 2. Save to our database
       const { error } = await supabase
         .from('whatsapp_messages')
         .insert({
@@ -253,7 +303,6 @@ const Whatsapp: React.FC = () => {
 
       if (error) throw error;
       
-      // Update last message in chat
       await supabase
         .from('whatsapp_chats')
         .update({
@@ -263,9 +312,11 @@ const Whatsapp: React.FC = () => {
         })
         .eq('id', selectedChat.id);
 
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Erro ao enviar mensagem. Verifique a conexão com a Z-API.');
+      markAsError();
     }
   };
 
@@ -436,6 +487,14 @@ const Whatsapp: React.FC = () => {
               </div>
             </div>
 
+            {/* Offline Alert Banner */}
+            {!isOnline && (
+              <div className="bg-red-500 text-white text-xs px-4 py-2 flex items-center justify-center space-x-2 z-10 shadow-md">
+                <AlertTriangle size={14} className="animate-bounce" />
+                <span className="font-medium">Você está offline. As mensagens que falharem podem ser reenviadas clicando no ícone de aviso.</span>
+              </div>
+            )}
+
             {/* Messages Background (Doodle Pattern) */}
             <div 
               className="absolute inset-0 opacity-[0.06] pointer-events-none"
@@ -465,7 +524,16 @@ const Whatsapp: React.FC = () => {
                       {msg.sender === 'me' && (
                         msg.status === 'read' ? <CheckCheck size={14} className="text-ios-blue" /> : 
                         msg.status === 'delivered' ? <CheckCheck size={14} className="text-gray-400" /> : 
-                        msg.status === 'sending' ? <Clock size={14} className="text-gray-400" /> :
+                        msg.status === 'sending' ? <Loader2 size={14} className="text-gray-400 animate-spin" /> :
+                        msg.status === 'error' ? (
+                          <button 
+                            onClick={() => handleSendMessage(undefined, msg)}
+                            className="text-red-500 hover:text-red-700 transition-colors flex items-center justify-center p-0.5 rounded-full hover:bg-red-50"
+                            title="Erro ao enviar. Clique para tentar novamente."
+                          >
+                            <AlertTriangle size={14} />
+                          </button>
+                        ) :
                         <CheckCheck size={14} className="opacity-50" />
                       )}
                     </div>
@@ -489,7 +557,7 @@ const Whatsapp: React.FC = () => {
                 />
               </form>
               <button 
-                onClick={handleSendMessage}
+                onClick={(e) => handleSendMessage(e)}
                 disabled={!newMessage.trim()}
                 className={`
                   p-2 rounded-full transition-all
