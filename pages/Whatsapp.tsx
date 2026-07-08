@@ -28,6 +28,7 @@ interface Message {
   text: string;
   sender: 'me' | 'contact';
   timestamp: string;
+  dateStr: string;
   status: 'sent' | 'delivered' | 'read' | 'received' | 'sending' | 'error';
 }
 
@@ -40,6 +41,7 @@ interface Chat {
   time: string;
   unread: number;
   online: boolean;
+  messages?: Message[];
 }
 
 const MOCK_CHATS: Chat[] = [
@@ -52,9 +54,9 @@ const MOCK_CHATS: Chat[] = [
     unread: 2,
     online: true,
     messages: [
-      { id: '1-1', text: 'Bom dia!', sender: 'contact', timestamp: '10:40', status: 'read' },
-      { id: '1-2', text: 'Bom dia, João! Como posso ajudar?', sender: 'me', timestamp: '10:42', status: 'read' },
-      { id: '1-3', text: 'Olá, gostaria de saber o status do meu pedido.', sender: 'contact', timestamp: '10:45', status: 'read' },
+      { id: '1-1', text: 'Bom dia!', sender: 'contact', timestamp: '10:40', dateStr: '2023-10-10', status: 'read' },
+      { id: '1-2', text: 'Bom dia, João! Como posso ajudar?', sender: 'me', timestamp: '10:42', dateStr: '2023-10-10', status: 'read' },
+      { id: '1-3', text: 'Olá, gostaria de saber o status do meu pedido.', sender: 'contact', timestamp: '10:45', dateStr: '2023-10-10', status: 'read' },
     ]
   },
   {
@@ -66,8 +68,8 @@ const MOCK_CHATS: Chat[] = [
     unread: 0,
     online: false,
     messages: [
-      { id: '2-1', text: 'Seu serviço foi concluído com sucesso.', sender: 'me', timestamp: '09:25', status: 'read' },
-      { id: '2-2', text: 'Obrigada pelo atendimento!', sender: 'contact', timestamp: '09:30', status: 'read' },
+      { id: '2-1', text: 'Seu serviço foi concluído com sucesso.', sender: 'me', timestamp: '09:25', dateStr: '2023-10-10', status: 'read' },
+      { id: '2-2', text: 'Obrigada pelo atendimento!', sender: 'contact', timestamp: '09:30', dateStr: '2023-10-10', status: 'read' },
     ]
   },
   {
@@ -79,7 +81,7 @@ const MOCK_CHATS: Chat[] = [
     unread: 0,
     online: false,
     messages: [
-      { id: '3-1', text: 'Pode me enviar o orçamento?', sender: 'contact', timestamp: 'Ontem', status: 'read' },
+      { id: '3-1', text: 'Pode me enviar o orçamento?', sender: 'contact', timestamp: 'Ontem', dateStr: '2023-10-09', status: 'read' },
     ]
   }
 ];
@@ -101,6 +103,22 @@ const Whatsapp: React.FC = () => {
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingChat, setDeletingChat] = useState(false);
+
+  const getDateLabel = (dateStr: string) => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-');
+    if (!year || !month || !day) return dateStr;
+    const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (dateObj.getTime() === today.getTime()) return 'Hoje';
+    if (dateObj.getTime() === yesterday.getTime()) return 'Ontem';
+    return dateObj.toLocaleDateString('pt-BR');
+  };
 
   useEffect(() => {
     selectedChatRef.current = selectedChat;
@@ -164,7 +182,7 @@ const Whatsapp: React.FC = () => {
         avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name || c.phone)}&background=random`,
         lastMessage: c.last_message || '',
         time: c.last_message_time ? new Date(c.last_message_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
-        unread: c.unread_count || 0,
+        unread: selectedChatRef.current?.id === c.id ? 0 : (c.unread_count || 0),
         online: false
       }));
 
@@ -186,13 +204,17 @@ const Whatsapp: React.FC = () => {
 
       if (error) throw error;
 
-      const formattedMsgs: Message[] = (data || []).map(m => ({
-        id: m.id,
-        text: m.content || '',
-        sender: m.sender === 'manager' ? 'me' : 'contact',
-        timestamp: new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        status: m.status as any
-      }));
+      const formattedMsgs: Message[] = (data || []).map(m => {
+        const msgDate = new Date(m.timestamp);
+        return {
+          id: m.id,
+          text: m.content || '',
+          sender: m.sender === 'manager' ? 'me' : 'contact',
+          timestamp: msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          dateStr: msgDate.toISOString().split('T')[0],
+          status: m.status as any
+        };
+      });
 
       setMessages(prev => {
         const pending = prev.filter(m => m.id.startsWith('temp-') && (m.status === 'sending' || m.status === 'error'));
@@ -239,11 +261,13 @@ const Whatsapp: React.FC = () => {
     }
 
     const tempId = messageToRetry ? messageToRetry.id : `temp-${Date.now()}`;
+    const now = new Date();
     const tempMsg: Message = {
       id: tempId,
       text: messageText,
       sender: 'me',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      dateStr: now.toISOString().split('T')[0],
       status: 'sending'
     };
 
@@ -360,6 +384,23 @@ const Whatsapp: React.FC = () => {
     }
   };
 
+  const handleSelectChat = async (chat: Chat) => {
+    setSelectedChat(chat);
+    setIsMobileChatOpen(true);
+
+    if (chat.unread > 0) {
+      setChats(prev => prev.map(c => c.id === chat.id ? { ...c, unread: 0 } : c));
+      try {
+        await supabase
+          .from('whatsapp_chats')
+          .update({ unread_count: 0 })
+          .eq('id', chat.id);
+      } catch (error) {
+        console.error('Erro ao resetar mensagens não lidas:', error);
+      }
+    }
+  };
+
   const filteredChats = chats.filter(chat => 
     chat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
@@ -370,7 +411,7 @@ const Whatsapp: React.FC = () => {
       {/* Sidebar - Chat List */}
       <div className={`
         ${isMobileChatOpen ? 'hidden' : 'flex'} 
-        md:flex flex-col w-full md:w-[350px] lg:w-[400px] border-r border-gray-200 bg-white
+        md:flex flex-col w-full md:w-[350px] lg:w-[400px] shrink-0 border-r border-gray-200 bg-white
       `}>
         {/* Search */}
         <div className="p-2 bg-white">
@@ -391,10 +432,7 @@ const Whatsapp: React.FC = () => {
           {filteredChats.map(chat => (
             <div 
               key={chat.id}
-              onClick={() => {
-                setSelectedChat(chat);
-                setIsMobileChatOpen(true);
-              }}
+              onClick={() => handleSelectChat(chat)}
               className={`
                 flex items-center p-3 cursor-pointer border-b border-gray-50 transition-colors
                 ${selectedChat?.id === chat.id ? 'bg-[#F0F2F5]' : 'hover:bg-gray-50'}
@@ -426,7 +464,7 @@ const Whatsapp: React.FC = () => {
       {/* Main Chat Area */}
       <div className={`
         ${isMobileChatOpen ? 'flex' : 'hidden'} 
-        md:flex flex-col flex-1 bg-[#E5DDD5] relative
+        md:flex flex-col flex-1 min-w-0 bg-[#E5DDD5] relative
       `}>
         {selectedChat ? (
           <>
@@ -503,43 +541,46 @@ const Whatsapp: React.FC = () => {
 
             {/* Messages Container */}
             <div className="flex-1 overflow-y-auto p-4 space-y-2 relative no-scrollbar">
-              <div className="flex justify-center mb-4">
-                <span className="bg-white/80 backdrop-blur-sm text-gray-500 text-[11px] px-3 py-1 rounded-lg shadow-sm font-medium uppercase tracking-wider">
-                  Hoje
-                </span>
-              </div>
-
-              {messages.map((msg) => (
-                <div 
-                  key={msg.id}
-                  className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`
-                    max-w-[75%] px-3 py-2 rounded-xl shadow-sm relative group
-                    ${msg.sender === 'me' ? 'bg-[#DCF8C6] rounded-tr-none' : 'bg-white rounded-tl-none'}
-                  `}>
-                    <p className="text-sm text-gray-800 break-words leading-relaxed">{msg.text}</p>
-                    <div className="flex items-center justify-end space-x-1 mt-1">
-                      <span className="text-[10px] text-gray-400">{msg.timestamp}</span>
-                      {msg.sender === 'me' && (
-                        msg.status === 'read' ? <CheckCheck size={14} className="text-ios-blue" /> : 
-                        msg.status === 'delivered' ? <CheckCheck size={14} className="text-gray-400" /> : 
-                        msg.status === 'sending' ? <Loader2 size={14} className="text-gray-400 animate-spin" /> :
-                        msg.status === 'error' ? (
-                          <button 
-                            onClick={() => handleSendMessage(undefined, msg)}
-                            className="text-red-500 hover:text-red-700 transition-colors flex items-center justify-center p-0.5 rounded-full hover:bg-red-50"
-                            title="Erro ao enviar. Clique para tentar novamente."
-                          >
-                            <AlertTriangle size={14} />
-                          </button>
-                        ) :
-                        <CheckCheck size={14} className="opacity-50" />
-                      )}
+              {messages.map((msg, index) => {
+                const showDateSeparator = index === 0 || msg.dateStr !== messages[index - 1].dateStr;
+                return (
+                  <React.Fragment key={msg.id}>
+                    {showDateSeparator && (
+                      <div className="flex justify-center my-4">
+                        <span className="bg-white/80 backdrop-blur-sm text-gray-500 text-[11px] px-3 py-1 rounded-lg shadow-sm font-medium uppercase tracking-wider">
+                          {getDateLabel(msg.dateStr)}
+                        </span>
+                      </div>
+                    )}
+                    <div className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`
+                        max-w-[75%] px-3 py-2 rounded-xl shadow-sm relative group
+                        ${msg.sender === 'me' ? 'bg-[#DCF8C6] rounded-tr-none' : 'bg-white rounded-tl-none'}
+                      `}>
+                        <p className="text-sm text-gray-800 break-words leading-relaxed">{msg.text}</p>
+                        <div className="flex items-center justify-end space-x-1 mt-1">
+                          <span className="text-[10px] text-gray-400">{msg.timestamp}</span>
+                          {msg.sender === 'me' && (
+                            msg.status === 'read' ? <CheckCheck size={14} className="text-ios-blue" /> : 
+                            msg.status === 'delivered' ? <CheckCheck size={14} className="text-gray-400" /> : 
+                            msg.status === 'sending' ? <Loader2 size={14} className="text-gray-400 animate-spin" /> :
+                            msg.status === 'error' ? (
+                              <button 
+                                onClick={() => handleSendMessage(undefined, msg)}
+                                className="text-red-500 hover:text-red-700 transition-colors flex items-center justify-center p-0.5 rounded-full hover:bg-red-50"
+                                title="Erro ao enviar. Clique para tentar novamente."
+                              >
+                                <AlertTriangle size={14} />
+                              </button>
+                            ) :
+                            <CheckCheck size={14} className="opacity-50" />
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  </React.Fragment>
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
 
