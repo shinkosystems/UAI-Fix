@@ -227,23 +227,35 @@ const Whatsapp: React.FC = () => {
   };
 
   const subscribeToChanges = () => {
-    const chatChannel = supabase.channel('whatsapp_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_chats' }, () => {
+    console.log("Subscribing to Realtime changes...");
+    const channelId = `whatsapp_changes_${Date.now()}`;
+    const chatChannel = supabase.channel(channelId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whatsapp_chats' }, (payload) => {
+        console.log("Realtime CHAT update received:", payload);
         fetchInitialData();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' }, (payload) => {
+        console.log("Realtime MESSAGE INSERT received:", payload);
         const activeChat = selectedChatRef.current;
+        console.log("Active Chat ID:", activeChat?.id, "Payload Chat ID:", payload.new?.chat_id);
         if (activeChat && payload.new.chat_id === activeChat.id) {
+          console.log("Chat matches, fetching messages...");
           fetchMessages(activeChat.id);
+        } else {
+          console.log("Chat does NOT match or no active chat.");
+          fetchInitialData(); // Atualizar a lista de chats para mostrar que tem mensagem nova
         }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'whatsapp_messages' }, (payload) => {
+        console.log("Realtime MESSAGE UPDATE received:", payload);
         const activeChat = selectedChatRef.current;
         if (activeChat && payload.new.chat_id === activeChat.id) {
           fetchMessages(activeChat.id);
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime Subscription Status:", status);
+      });
 
     return () => {
       supabase.removeChannel(chatChannel);
@@ -335,6 +347,13 @@ const Whatsapp: React.FC = () => {
           updated_at: new Date().toISOString()
         })
         .eq('id', selectedChat.id);
+
+      // Sempre buscar as mensagens diretamente após enviar,
+      // para garantir que a UI atualize mesmo se o Realtime falhar ou atrasar.
+      fetchMessages(selectedChat.id);
+
+      // Atualiza a lista de chats para refletir a última mensagem e hora
+      fetchInitialData();
 
       setMessages(prev => prev.filter(m => m.id !== tempId));
 

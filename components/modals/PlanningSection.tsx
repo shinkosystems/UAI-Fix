@@ -70,6 +70,15 @@ const PlanningSection: React.FC<PlanningSectionProps> = ({
                     />
                 </div>
             </div>
+            <div className="space-y-2 pt-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Justificativa de Data Diferente (Opcional)</label>
+                <textarea
+                    className="w-full bg-white border border-gray-100 rounded-2xl p-4 text-sm font-medium text-gray-900 outline-none resize-none min-h-[80px]"
+                    value={formData.planejamentoJustificativaData || ''}
+                    onChange={e => setFormData({ ...formData, planejamentoJustificativaData: e.target.value })}
+                    placeholder="Se a data agendada for diferente da solicitada pelo cliente, justifique o motivo..."
+                />
+            </div>
         </div>
     );
 };

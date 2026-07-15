@@ -146,11 +146,14 @@ const CalendarPage: React.FC = () => {
             case 'analise': return 'Aguardando Orçamento';
             case 'aguardando_profissional': return 'Aguardando Profissional';
             case 'aguardando_aprovacao': return 'Orçamento Pronto';
-            case 'aprovado': return 'Serviço Agendado';
+            case 'aprovado': return 'Aprovado (Agendado)';
             case 'executando': return 'Em Execução';
             case 'concluido': return 'Serviço Concluído';
+            case 'aguardando_gestor': return 'Aguardando Gestor';
+            case 'erro': return 'ERRO!';
             case 'cancelado': return 'Serviço Cancelado';
-            case 'reprovado': return 'Orçamento Recusado';
+            case 'recusado':
+            case 'reprovado': return 'Recusado';
             default: return s || 'Status Desconhecido';
         }
     };
@@ -164,7 +167,10 @@ const CalendarPage: React.FC = () => {
             case 'aprovado': return 'bg-green-100 text-green-900 border-green-200';
             case 'executando': return 'bg-purple-100 text-purple-900 border-purple-200';
             case 'concluido': return 'bg-gray-100 text-gray-900 border-gray-200';
+            case 'aguardando_gestor': return 'bg-purple-100 text-purple-900 border-purple-200';
+            case 'erro': return 'bg-red-100 text-red-900 border-red-200';
             case 'cancelado': return 'bg-red-100 text-red-900 border-red-200';
+            case 'recusado':
             case 'reprovado': return 'bg-red-50 text-red-700 border-red-100';
             default: return 'bg-gray-50 text-gray-400 border-gray-100';
         }
@@ -391,7 +397,7 @@ const CalendarPage: React.FC = () => {
                                     className={`flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-full border shadow-sm transition-all active:scale-95 ${statusFilter === 'aprovado' ? 'border-green-500 ring-2 ring-green-100 scale-105' : 'border-green-100 opacity-60 hover:opacity-100'}`}
                                 >
                                     <div className="w-2.5 h-2.5 rounded-full bg-green-500"></div>
-                                    <span className="text-[9px] font-black uppercase text-green-800 tracking-tight">Serviço Agendado</span>
+                                    <span className="text-[9px] font-black uppercase text-green-800 tracking-tight">Aprovado (Agendado)</span>
                                 </button>
                                 <button
                                     onClick={() => toggleFilter('executando')}

@@ -99,6 +99,9 @@ export interface Chave {
   created_at: string;
   // New field for rejection reason
   motivo_recusa?: string | null;
+  // Campos para o fluxo de revisão do gestor
+  relato_problema?: string | null;
+  solucao_problema?: string | null;
   // Execution Photos
   fotoantes?: string[];
   fotodepois?: string[];
@@ -148,6 +151,7 @@ export interface Planejamento {
   tempoprevisto: number;
   imagem_pedido?: string | null; // Added field for request image
   audio_pedido?: string | null; // Added field for audio file
+  justificativa_data_diferente?: string | null;
   // Nested relation from JOIN
   chaves?: Chave;
 }

@@ -23,7 +23,7 @@ interface OrderExtended extends Chave {
 }
 
 type ModalTab = 'geral' | 'consumidor' | 'fotos' | 'obs' | 'avaliacao';
-type FilterType = 'aberto' | 'agendados' | 'execucao' | 'reprovados' | 'concluidos' | 'finalizados';
+type FilterType = 'aberto' | 'agendados' | 'execucao' | 'recusados' | 'concluidos' | 'finalizados';
 
 const ClientOrders: React.FC = () => {
     const [orders, setOrders] = useState<OrderExtended[]>([]);
@@ -131,8 +131,8 @@ const ClientOrders: React.FC = () => {
             if (activeFilter === 'aberto') return ['pendente', 'analise', 'aguardando_aprovacao', 'aguardando_profissional'].includes(status);
             if (activeFilter === 'agendados') return status === 'aprovado';
             if (activeFilter === 'execucao') return status === 'executando';
-            if (activeFilter === 'reprovados') return status === 'reprovado';
-            if (activeFilter === 'concluidos') return status === 'concluido';
+            if (activeFilter === 'recusados') return status === 'recusado' || status === 'reprovado';
+            if (activeFilter === 'concluidos') return ['concluido', 'aguardando_gestor', 'erro'].includes(status);
             if (activeFilter === 'finalizados') return true;
             return true;
         });
@@ -143,8 +143,8 @@ const ClientOrders: React.FC = () => {
             aberto: orders.filter(o => ['pendente', 'analise', 'aguardando_aprovacao', 'aguardando_profissional'].includes(o.status.toLowerCase())).length,
             agendados: orders.filter(o => o.status.toLowerCase() === 'aprovado').length,
             execucao: orders.filter(o => o.status.toLowerCase() === 'executando').length,
-            reprovados: orders.filter(o => o.status.toLowerCase() === 'reprovado').length,
-            concluidos: orders.filter(o => o.status.toLowerCase() === 'concluido').length,
+            recusados: orders.filter(o => ['recusado', 'reprovado'].includes(o.status.toLowerCase())).length,
+            concluidos: orders.filter(o => ['concluido', 'aguardando_gestor', 'erro'].includes(o.status.toLowerCase())).length,
             finalizados: orders.length
         };
     }, [orders]);
@@ -160,12 +160,15 @@ const ClientOrders: React.FC = () => {
 
     const getStatusColor = (s: string | undefined) => {
         switch (s?.toLowerCase()) {
-            case 'concluido': return 'bg-green-100 text-green-900 border-green-200';
+            case 'concluido':
+            case 'aguardando_gestor':
+            case 'erro': return 'bg-green-100 text-green-900 border-green-200';
             case 'executando': return 'bg-purple-100 text-purple-900 border-purple-200';
             case 'aguardando_aprovacao': return 'bg-orange-100 text-orange-900 border-orange-200';
             case 'aguardando_profissional': return 'bg-cyan-100 text-cyan-900 border-cyan-200';
             case 'cancelado': return 'bg-red-100 text-red-900 border-red-200';
             case 'aprovado': return 'bg-green-50 text-green-700 border-green-100';
+            case 'recusado':
             case 'reprovado': return 'bg-red-50 text-red-700 border-red-100';
             default: return 'bg-blue-100 text-blue-900 border-blue-200';
         }
@@ -175,8 +178,10 @@ const ClientOrders: React.FC = () => {
         switch (s?.toLowerCase()) {
             case 'aguardando_aprovacao': return 'Proposta Recebida';
             case 'aguardando_profissional': return 'Aguardando Profissional';
-            case 'aprovado': return 'Agendado';
-            case 'reprovado': return 'Proposta Negada';
+            case 'aprovado': return 'Aprovado (Agendado)';
+            case 'recusado':
+            case 'reprovado': return 'Recusado';
+            case 'aguardando_gestor': return 'Concluído';
             default: return s.replace('_', ' ');
         }
     }
@@ -185,7 +190,7 @@ const ClientOrders: React.FC = () => {
         { id: 'aberto', label: 'Em Análise', icon: ListChecks },
         { id: 'agendados', label: 'Agendados', icon: CalendarCheck },
         { id: 'execucao', label: 'Em Execução', icon: Activity },
-        { id: 'reprovados', label: 'Reprovados', icon: Ban },
+        { id: 'recusados', label: 'Recusados', icon: Ban },
         { id: 'concluidos', label: 'Concluídos', icon: CheckCircle2 },
         { id: 'finalizados', label: 'Histórico', icon: History },
     ];

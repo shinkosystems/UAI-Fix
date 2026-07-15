@@ -23,7 +23,10 @@ export async function sendWhatsappText(phone: string, text: string) {
     }
 
     // Clean phone number
-    const cleanPhone = phone.replace(/\D/g, '');
+    let cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+      cleanPhone = `55${cleanPhone}`;
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -53,7 +56,7 @@ export async function sendWhatsappText(phone: string, text: string) {
   }
 }
 
-export async function sendWhatsappButtons(phone: string, text: string, buttons: any[]) {
+export async function sendWhatsappButtons(phone: string, text: string, title: string, footer: string, buttons: any[]) {
   try {
     const config = await getWhatsappConfig();
     if (!config || !config.instance_id || !config.token) {
@@ -61,7 +64,10 @@ export async function sendWhatsappButtons(phone: string, text: string, buttons: 
       return null;
     }
 
-    const cleanPhone = phone.replace(/\D/g, '');
+    let cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+      cleanPhone = `55${cleanPhone}`;
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -70,13 +76,17 @@ export async function sendWhatsappButtons(phone: string, text: string, buttons: 
       headers['client-token'] = config.client_token;
     }
 
-    const response = await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-button`, {
+    const response = await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-button-list`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         phone: cleanPhone,
         message: text,
-        buttons: buttons
+        title: title,
+        footer: footer,
+        buttonList: {
+          buttons: buttons
+        }
       })
     });
 
@@ -100,7 +110,10 @@ export async function sendWhatsappOptionList(phone: string, title: string, text:
       return null;
     }
 
-    const cleanPhone = phone.replace(/\D/g, '');
+    let cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+      cleanPhone = `55${cleanPhone}`;
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',

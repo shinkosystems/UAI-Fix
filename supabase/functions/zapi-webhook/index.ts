@@ -22,22 +22,73 @@ serve(async (req) => {
     const body = await req.json()
     console.log("Recebido da Z-API:", body)
 
+    const sendZApiMessage = async (phone: string, text: string) => {
+      try {
+        const { data: config } = await supabase
+          .from('whatsapp_config')
+          .select('instance_id, token, client_token')
+          .limit(1)
+          .maybeSingle();
+
+        if (config?.instance_id && config?.token) {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (config.client_token) headers['client-token'] = config.client_token;
+          
+          await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-text`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ phone, message: text })
+          });
+        }
+      } catch (err) {
+        console.error("Erro ao enviar msg Z-API:", err);
+      }
+    };
+
+
     // 1. Identificar o tipo de evento
     // Z-API envia o tipo no corpo ou podemos inferir pelos campos
-    const isMessage = body.text || body.image || body.audio || body.video;
+    const isMessage = body.text || body.image || body.audio || body.video || body.buttonResponseMessage || body.buttonsResponseMessage || body.listResponseMessage || body.buttonReply || body.listResponse || body.type === 'button_reply' || body.type === 'BUTTONS_RESPONSE';
     const isStatusUpdate = body.status && body.messageId;
 
     // --- LOGICA PARA NOVA MENSAGEM RECEBIDA ---
     if (isMessage) {
-      const phone = body.phone;
-      const name = body.senderName || "Cliente WhatsApp";
-      const content = body.text?.message || "[Arquivo/Mídia]";
-      const messageId = body.messageId;
+      let phone = String(body.phone || '');
+      // Limpar o telefone se vier com sufixos
+      if (phone.includes('@')) {
+        phone = phone.split('@')[0];
+      }
+      const name = body.senderName || body.chatName || "Cliente WhatsApp";
+      
+      // Extrair conteúdo de forma mais segura (Z-API envia as vezes em body.text.message ou só como string)
+      let content = "[Arquivo/Mídia]";
+      if (body.text) {
+        content = typeof body.text === 'object' ? body.text.message : body.text;
+      } else if (body.image) {
+        content = "[Imagem] " + (body.image.caption || "");
+      } else if (body.audio) {
+        content = "[Áudio]";
+      } else if (body.video) {
+        content = "[Vídeo] " + (body.video.caption || "");
+      } else if (body.document) {
+        content = "[Documento] " + (body.document.fileName || "");
+      } else if (body.buttonResponseMessage) {
+        content = "[Botão] " + (body.buttonResponseMessage.selectedDisplayText || body.buttonResponseMessage.message || "");
+      } else if (body.buttonsResponseMessage) {
+        content = "[Botão] " + (body.buttonsResponseMessage.selectedDisplayText || body.buttonsResponseMessage.message || "");
+      } else if (body.listResponseMessage) {
+        content = "[Opção] " + (body.listResponseMessage.title || "");
+      } else if (body.message) {
+         content = body.message; // fallback
+      }
 
-      // Verificar se o chat já existe para saber se é o primeiro contato ou se está inativo
+      const messageId = body.messageId || `msg_${Date.now()}`;
+      const isFromMe = body.fromMe === true || body.fromMe === 'true';
+
+      // Verificar se o chat já existe
       const { data: existingChat } = await supabase
         .from('whatsapp_chats')
-        .select('id, last_message_time')
+        .select('id, last_message_time, unread_count')
         .eq('phone', phone)
         .maybeSingle();
 
@@ -47,6 +98,9 @@ serve(async (req) => {
         : true;
       const shouldSendWelcome = isNewChat || isInactive;
 
+      // Incrementar contador apenas se a mensagem for recebida (não for fromMe)
+      const newUnreadCount = isFromMe ? 0 : ((existingChat?.unread_count || 0) + 1);
+
       // A. Garantir que o Chat existe
       const { data: chat, error: chatError } = await supabase
         .from('whatsapp_chats')
@@ -55,6 +109,7 @@ serve(async (req) => {
           name: name,
           last_message: content,
           last_message_time: new Date().toISOString(),
+          unread_count: newUnreadCount,
           updated_at: new Date().toISOString()
         }, { onConflict: 'phone' })
         .select()
@@ -65,26 +120,35 @@ serve(async (req) => {
         throw chatError;
       }
 
-      // B. Salvar a Mensagem
-      const { error: msgError } = await supabase
+      // Evitar duplicação de mensagens lendo message_id
+      const { data: existingMsg } = await supabase
         .from('whatsapp_messages')
-        .insert({
-          chat_id: chat.id,
-          message_id: messageId,
-          content: content,
-          type: body.type || 'text',
-          sender: 'client',
-          status: 'received',
-          metadata: body
-        })
+        .select('id')
+        .eq('message_id', messageId)
+        .maybeSingle();
 
-      if (msgError) {
-        console.error("Erro ao salvar mensagem:", msgError);
-        throw msgError;
+      if (!existingMsg) {
+        // B. Salvar a Mensagem
+        const { error: msgError } = await supabase
+          .from('whatsapp_messages')
+          .insert({
+            chat_id: chat.id,
+            message_id: messageId,
+            content: content,
+            type: body.type || 'text',
+            sender: isFromMe ? 'manager' : 'client',
+            status: isFromMe ? 'sent' : 'received',
+            metadata: body
+          })
+
+        if (msgError) {
+          console.error("Erro ao salvar mensagem:", msgError);
+          throw msgError;
+        }
       }
 
-      // C. Enviar mensagem de boas-vindas se necessário
-      if (shouldSendWelcome) {
+      // C. Enviar mensagem de boas-vindas se necessário e se a msg NÃO for fromMe
+      if (shouldSendWelcome && !isFromMe) {
         const { data: config } = await supabase
           .from('whatsapp_config')
           .select('instance_id, token, client_token, welcome_active, welcome_message')
@@ -142,6 +206,127 @@ serve(async (req) => {
           } catch (zapiErr) {
             console.error("Erro na comunicação Z-API para boas-vindas:", zapiErr);
           }
+        }
+      }
+      // D. Lógica de Atualização de Status via Botões (Orçamento / Avaliação)
+      const btnId = body.buttonResponseMessage?.selectedButtonId || 
+                    body.buttonResponseMessage?.buttonId ||
+                    body.buttonsResponseMessage?.selectedButtonId ||
+                    body.buttonsResponseMessage?.buttonId ||
+                    body.listResponseMessage?.selectedRowId ||
+                    body.listResponseMessage?.listItemId ||
+                    body.buttonReply?.id ||
+                    body.listResponse?.id ||
+                    body.button?.id;
+      
+      if (btnId) {
+        if (btnId.startsWith('ACEITAR_SUG_') || btnId.startsWith('ACEITAR_ORIG_')) {
+          const isSuggested = btnId.startsWith('ACEITAR_SUG_');
+          const ticketId = btnId.replace('ACEITAR_SUG_', '').replace('ACEITAR_ORIG_', '');
+          
+          try {
+            const { data: ticketInfo } = await supabase
+              .from('chaves')
+              .select(`
+                  cliente,
+                  profissional,
+                  orcamentos (*),
+                  planejamento (*)
+              `)
+              .eq('id', ticketId)
+              .maybeSingle();
+
+            if (ticketInfo) {
+                const budget = Array.isArray(ticketInfo.orcamentos) ? ticketInfo.orcamentos[0] : ticketInfo.orcamentos;
+                const plan = Array.isArray(ticketInfo.planejamento) ? ticketInfo.planejamento[0] : ticketInfo.planejamento;
+                const profId = ticketInfo.profissional;
+                
+                if (budget) {
+                    const finalType = isSuggested ? budget.tipopagmto_sugerido : budget.tipopagmto;
+                    const finalParcelas = isSuggested ? budget.parcelas_sugerido : budget.parcelas;
+                    let finalPrice = budget.preco;
+                    if (isSuggested && (budget.desconto_sugerido || 0) > 0) {
+                        finalPrice = budget.preco * (1 - (budget.desconto_sugerido || 0) / 100);
+                    }
+                    await supabase.from('orcamentos').update({
+                        tipopagmto: finalType,
+                        parcelas: finalParcelas,
+                        preco: finalPrice
+                    }).eq('id', budget.id);
+                }
+
+                if (plan && profId) {
+                    const { data: existingAgenda } = await supabase.from('agenda').select('id').eq('chave', ticketId).maybeSingle();
+                    const agendaPayload = {
+                        chave: ticketId,
+                        cliente: ticketInfo.cliente,
+                        profissional: profId,
+                        execucao: plan.execucao,
+                        observacoes: ''
+                    };
+                    if (existingAgenda) await supabase.from('agenda').update(agendaPayload).eq('id', existingAgenda.id);
+                    else await supabase.from('agenda').insert(agendaPayload);
+                }
+            }
+          } catch (err) {
+            console.error("Erro ao atualizar orcamento/agenda via botão:", err);
+          }
+
+          const { error: chavesError } = await supabase
+            .from('chaves')
+            .update({ status: 'aprovado' })
+            .eq('id', ticketId);
+            
+          if (chavesError) {
+            console.error("Erro ao aprovar chave via botão:", chavesError);
+          } else {
+            let phoneStr = String(body.phone || '');
+            if (phoneStr.includes('@')) phoneStr = phoneStr.split('@')[0];
+            await sendZApiMessage(phoneStr, "✅ Orçamento aceito com sucesso! Em breve o profissional iniciará a execução do serviço.");
+          }
+        } else if (btnId.startsWith('RECUSAR_')) {
+          const ticketId = btnId.replace('RECUSAR_', '');
+          const { error: chavesError } = await supabase
+            .from('chaves')
+            .update({ 
+                status: 'recusado',
+                whatsapp_chat_id: chat.id 
+            })
+            .eq('id', ticketId);
+            
+          if (chavesError) {
+            console.error("Erro ao recusar chave via botão:", chavesError);
+          } else {
+            let phoneStr = String(body.phone || '');
+            if (phoneStr.includes('@')) phoneStr = phoneStr.split('@')[0];
+            await sendZApiMessage(phoneStr, "❌ O orçamento foi recusado.\n\nPor favor, digite o motivo da recusa para que nosso gestor possa avaliar uma renegociação:");
+          }
+          // Lógica de avaliação pode ser implementada aqui se necessário
+        }
+      } else if (!isFromMe) {
+        // E. Lógica para salvar motivo de recusa (texto livre)
+        let msgText = "";
+        if (body.text) msgText = typeof body.text === 'object' ? body.text.message : body.text;
+        else if (body.message) msgText = body.message;
+
+        if (msgText && chat.id) {
+            const { data: rejectedTickets } = await supabase
+              .from('chaves')
+              .select('id, motivo_recusa')
+              .eq('status', 'recusado')
+              .eq('whatsapp_chat_id', chat.id)
+              .is('motivo_recusa', null)
+              .order('created_at', { ascending: false })
+              .limit(1);
+
+            if (rejectedTickets && rejectedTickets.length > 0) {
+               const tk = rejectedTickets[0];
+               await supabase.from('chaves').update({ motivo_recusa: msgText }).eq('id', tk.id);
+               
+               let phoneStr = String(body.phone || '');
+               if (phoneStr.includes('@')) phoneStr = phoneStr.split('@')[0];
+               await sendZApiMessage(phoneStr, "✅ Obrigado! Sua justificativa foi salva e enviada ao nosso gestor para reavaliação.");
+            }
         }
       }
     }

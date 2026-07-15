@@ -219,6 +219,8 @@ const Execution: React.FC = () => {
 
     const getStatusColor = (s: string | undefined) => {
         switch (s?.toLowerCase()) {
+            case 'aguardando_gestor': return 'bg-purple-100 text-purple-900 border-purple-200';
+            case 'erro': return 'bg-red-100 text-red-900 border-red-200';
             case 'concluido': return 'bg-green-100 text-green-900 border-green-200';
             case 'executando': return 'bg-purple-100 text-purple-900 border-purple-200';
             case 'aprovado': return 'bg-green-50 text-green-700 border-green-100';

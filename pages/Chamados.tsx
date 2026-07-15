@@ -29,7 +29,7 @@ interface NotificationItem {
     read: boolean;
 }
 
-type TabType = 'novos' | 'orcamento' | 'execucao' | 'concluidos' | 'reprovados' | 'historico';
+type TabType = 'novos' | 'orcamento' | 'execucao' | 'concluidos' | 'recusados' | 'historico';
 type ModalTab = 'status' | 'consumidor' | 'profissional';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -92,7 +92,7 @@ const Chamados: React.FC = () => {
         { id: 'orcamento', label: 'Em Orçamento', icon: DollarSign, color: 'text-blue-500' },
         { id: 'execucao', label: 'Em Execução', icon: Activity, color: 'text-purple-500' },
         { id: 'concluidos', label: 'Concluídos', icon: CheckCircle2, color: 'text-green-500' },
-        { id: 'reprovados', label: 'Reprovados', icon: Ban, color: 'text-red-500' },
+        { id: 'recusados', label: 'Recusados', icon: Ban, color: 'text-red-500' },
         { id: 'historico', label: 'Histórico', icon: History, color: 'text-gray-500' }
     ];
 
@@ -295,10 +295,10 @@ const Chamados: React.FC = () => {
                 filtered = filtered.filter(t => t.status === 'aprovado' || t.status === 'executando');
                 break;
             case 'concluidos':
-                filtered = filtered.filter(t => t.status === 'concluido');
+                filtered = filtered.filter(t => ['concluido', 'aguardando_gestor', 'erro'].includes(t.status));
                 break;
-            case 'reprovados':
-                filtered = filtered.filter(t => t.status === 'reprovado');
+            case 'recusados':
+                filtered = filtered.filter(t => t.status === 'recusado' || t.status === 'reprovado');
                 break;
             case 'historico':
                 // Mostra todos, sem filtro extra além do de busca
@@ -317,7 +317,7 @@ const Chamados: React.FC = () => {
     };
 
     const filterCounts = useMemo(() => {
-        const counts = { novos: 0, orcamento: 0, execucao: 0, concluidos: 0, reprovados: 0, historico: 0 };
+        const counts = { novos: 0, orcamento: 0, execucao: 0, concluidos: 0, recusados: 0, historico: 0 };
         tickets.forEach(t => {
             const roleFiltered = isProfessional ? t.profissional === currentUserId : true;
             if (!roleFiltered) return;
@@ -326,8 +326,8 @@ const Chamados: React.FC = () => {
             if (isProfessional ? t.status === 'aguardando_profissional' : t.status === 'pendente') counts.novos++;
             if (t.status === 'analise' || t.status === 'aguardando_profissional' || t.status === 'aguardando_aprovacao') counts.orcamento++;
             if (t.status === 'aprovado' || t.status === 'executando') counts.execucao++;
-            if (t.status === 'concluido') counts.concluidos++;
-            if (t.status === 'reprovado') counts.reprovados++;
+            if (['concluido', 'aguardando_gestor', 'erro'].includes(t.status)) counts.concluidos++;
+            if (t.status === 'recusado' || t.status === 'reprovado') counts.recusados++;
         });
         return counts;
     }, [tickets, isProfessional, currentUserId]);
@@ -389,8 +389,11 @@ const Chamados: React.FC = () => {
             case 'aguardando_profissional': return 'bg-cyan-100 text-cyan-900 border-cyan-200';
             case 'aprovado': return 'bg-green-100 text-green-900 border-green-200';
             case 'executando': return 'bg-purple-100 text-purple-900 border-purple-200';
+            case 'aguardando_gestor': return 'bg-purple-100 text-purple-900 border-purple-200';
+            case 'erro': return 'bg-red-100 text-red-900 border-red-200';
             case 'concluido': return 'bg-gray-100 text-gray-700 border-gray-200';
             case 'cancelado': return 'bg-red-100 text-red-900 border-red-200';
+            case 'recusado':
             case 'reprovado': return 'bg-red-50 text-red-700 border-red-100';
             default: return 'bg-gray-100 text-gray-900 border-gray-200';
         }

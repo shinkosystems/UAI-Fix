@@ -60,10 +60,13 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         planejamentoRecursos: [] as string[],
         planejamentoPagamento: '',
         planejamentoVisita: '',
+        planejamentoJustificativaData: '',
         fotoantes: [] as string[],
         fotodepois: [] as string[],
         agendaObs: '',
-        motivo_recusa: ''
+        motivo_recusa: '',
+        relato_problema: '',
+        solucao_problema: ''
     });
 
     const isProfessional = userRole === 'profissional';
@@ -165,10 +168,13 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             planejamentoRecursos: plan?.recursos || [],
             planejamentoPagamento: plan?.pagamento || 'Dinheiro',
             planejamentoVisita: initialVisita,
+            planejamentoJustificativaData: plan?.justificativa_data_diferente || '',
             fotoantes: ticket.fotoantes || ticket.chaveData?.fotoantes || [],
             fotodepois: ticket.fotodepois || ticket.chaveData?.fotodepois || [],
             agendaObs: ticket.agendaObs || ticket.agenda?.[0]?.observacoes || ticket.observacoes || '',
-            motivo_recusa: ticket.motivo_recusa || ticket.chaveData?.motivo_recusa || ''
+            motivo_recusa: ticket.motivo_recusa || ticket.chaveData?.motivo_recusa || '',
+            relato_problema: ticket.relato_problema || ticket.chaveData?.relato_problema || '',
+            solucao_problema: ticket.solucao_problema || ticket.chaveData?.solucao_problema || ''
         });
     };
 
@@ -316,6 +322,13 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         try {
             const ticketId = order.id || order.chaveData?.id;
             await supabase.from('chaves').update({ status: 'executando' }).eq('id', ticketId);
+            
+            const clientPhone = normalizedItem?.clienteData?.whatsapp;
+            if (clientPhone) {
+                const msg = `O profissional responsável pelo seu chamado acaba de iniciar a execução do serviço! 🚀\n\nQualquer dúvida, estamos à disposição.`;
+                await sendWhatsappText(clientPhone, msg);
+            }
+
             await onUpdate();
             onClose();
             alert('Execução iniciada com sucesso!');
@@ -344,7 +357,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         try {
             const ticketId = order.id || order.chaveData?.id;
             const updatesChave: any = {
-                status: 'concluido',
+                status: 'aguardando_gestor',
                 fotoantes: formData.fotoantes,
                 fotodepois: formData.fotodepois
             };
@@ -405,7 +418,79 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         }
     };
 
-    const isBudgetReadOnly = ['aprovado', 'executando', 'concluido'].includes(formData.status);
+    const handleRelatarProblema = async () => {
+        const relato = prompt("Descreva o problema encontrado:");
+        if (!relato || relato.trim() === '') return;
+
+        setSaving(true);
+        try {
+            const ticketId = order.id || order.chaveData?.id;
+            await supabase.from('chaves').update({
+                status: 'erro',
+                relato_problema: relato.trim()
+            }).eq('id', ticketId);
+            
+            await onUpdate();
+            onClose();
+            alert('Problema relatado com sucesso! O status foi alterado para ERRO!');
+        } catch (error: any) {
+            alert(error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleGestorFinalize = async (actionType: 'concluido' | 'concluido_from_erro') => {
+        if (actionType === 'concluido_from_erro' && (!formData.solucao_problema || formData.solucao_problema.trim().length < 5)) {
+            alert("É obrigatório preencher a solução do problema antes de concluir.");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const ticketId = order.id || order.chaveData?.id;
+            const updates: any = { status: 'concluido' };
+            if (actionType === 'concluido_from_erro') {
+                updates.solucao_problema = formData.solucao_problema.trim();
+            }
+
+            await supabase.from('chaves').update(updates).eq('id', ticketId);
+            
+            // Enviar notificação de conclusão para o cliente
+            const clientPhone = normalizedItem.clienteData?.whatsapp;
+            const isWhatsappOS = normalizedItem.planejamento?.some((p: any) => p.descricao?.includes('WHATSAPP'));
+            
+            if (clientPhone) {
+                if (isWhatsappOS) {
+                    const title = `Serviço Concluído! ✅`;
+                    const text = `Como você avalia o serviço prestado pelo nosso profissional?\n\nSua opinião é muito importante para mantermos a qualidade do nosso atendimento!`;
+                    const btnLabel = "Avaliar Serviço";
+                    const options = [
+                        { id: `AVALIAR_5_${ticketId}`, title: "5 Estrelas", description: "Excelente" },
+                        { id: `AVALIAR_4_${ticketId}`, title: "4 Estrelas", description: "Muito Bom" },
+                        { id: `AVALIAR_3_${ticketId}`, title: "3 Estrelas", description: "Bom" },
+                        { id: `AVALIAR_2_${ticketId}`, title: "2 Estrelas", description: "Ruim" },
+                        { id: `AVALIAR_1_${ticketId}`, title: "1 Estrela", description: "Péssimo" },
+                        { id: `AVALIAR_0_${ticketId}`, title: "0 Estrelas", description: "Inaceitável" }
+                    ];
+                    await sendWhatsappOptionList(clientPhone, text, title, btnLabel, options);
+                } else {
+                    const msg = `Seu serviço foi concluído com sucesso! ✅\n\nGostaríamos muito de saber como foi sua experiência. Por favor, acesse a plataforma UaiFix para avaliar o serviço prestado pelo profissional.\n\nSua opinião é muito importante para mantermos a qualidade do nosso atendimento!`;
+                    await sendWhatsappText(clientPhone, msg);
+                }
+            }
+
+            await onUpdate();
+            onClose();
+            alert('Serviço concluído com sucesso!');
+        } catch (error: any) {
+            alert(error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const isBudgetReadOnly = ['aprovado', 'executando', 'concluido', 'aguardando_gestor', 'erro'].includes(formData.status);
 
     const handleSave = async () => {
         setSaving(true);
@@ -436,7 +521,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 if (formData.orcamentoPreco > 0) {
                     finalStatus = 'aguardando_profissional';
                 }
-            } else if ((isGestor || isOrcamentista) && formData.status === 'reprovado') {
+            } else if ((isGestor || isOrcamentista) && (formData.status === 'recusado' || formData.status === 'reprovado')) {
                 const originalHH = order.orcamentoData?.hh || order.orcamentos?.[0]?.hh || 0;
                 const hasHHChanged = Math.abs(originalHH - formData.orcamentoHH) > 0.01;
                 finalStatus = hasHHChanged ? 'aguardando_profissional' : 'aguardando_aprovacao';
@@ -494,6 +579,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 };
                 if (formData.planejamentoData) p.execucao = new Date(formData.planejamentoData).toISOString();
                 if (formData.planejamentoVisita) p.visita = new Date(formData.planejamentoVisita).toISOString(); else p.visita = null;
+                p.justificativa_data_diferente = formData.planejamentoJustificativaData || null;
 
                 const planId = order.planejamentoData?.id || order.planejamento?.[0]?.id;
                 if (planId) {
@@ -513,13 +599,25 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             if (clientPhone) {
                 if (formData.status === 'pendente' && finalStatus === 'analise') {
                     const profName = availableProfessionals.find(prof => prof.uuid === formData.profissionalUuid)?.nome || 'um de nossos profissionais';
-                    const msg = `Olá, seu chamado foi planejado!\n\nProfissional Alocado: ${profName}\nVisita Técnica: ${formatBRDate(formData.planejamentoVisita)}\nExecução Prevista: ${formatBRDate(formData.planejamentoData)}\n\nO seu chamado agora foi enviado para o setor de orçamento. Em breve você receberá os valores.`;
+                    let justText = '';
+                    if (formData.planejamentoJustificativaData) {
+                        justText = `\nJustificativa de Agendamento: ${formData.planejamentoJustificativaData}\n`;
+                    }
+                    const msg = `Olá, seu chamado foi planejado!\n\nProfissional Alocado: ${profName}\nVisita Técnica: ${formatBRDate(formData.planejamentoVisita)}\nExecução Prevista: ${formatBRDate(formData.planejamentoData)}\n${justText}\nO seu chamado agora foi enviado para o setor de orçamento. Em breve você receberá os valores.`;
                     await sendWhatsappText(clientPhone, msg);
-                } else if (formData.status === 'reprovado' && finalStatus === 'aguardando_aprovacao') {
+                } else if ((formData.status === 'recusado' || formData.status === 'reprovado') && finalStatus === 'aguardando_aprovacao') {
                     await sendBudgetButtons(clientPhone, formData, ticketId);
                 } else if (formData.status !== 'concluido' && finalStatus === 'concluido') {
                     const msg = `Seu serviço foi concluído com sucesso! ✅\n\nGostaríamos muito de saber como foi sua experiência. Por favor, acesse a plataforma UaiFix para avaliar o serviço prestado pelo profissional.\n\nSua opinião é muito importante para mantermos a qualidade do nosso atendimento!`;
                     await sendWhatsappText(clientPhone, msg);
+                }
+            }
+
+            if (finalStatus === 'aguardando_profissional' && formData.status !== 'aguardando_profissional') {
+                const prof = availableProfessionals.find(p => p.uuid === formData.profissionalUuid);
+                if (prof?.whatsapp) {
+                    const msgProf = `Olá, ${prof.nome || 'Profissional'}! 🔧\n\nVocê tem um novo serviço com ACEITE PENDENTE no sistema da UaiFix.\n\nAcesse a plataforma para visualizar os detalhes e confirmar a sua disponibilidade.`;
+                    await sendWhatsappText(prof.whatsapp, msgProf);
                 }
             }
 
@@ -665,7 +763,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto flex gap-3">
                     <button onClick={onClose} className="flex-1 bg-white border border-gray-200 text-gray-500 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95">Voltar</button>
 
-                    {isProfessional && (formData.status === 'aguardando_profissional' || formData.status === 'aguardando_aprovacao') ? (
+                    {isProfessional && formData.status === 'aguardando_profissional' ? (
                         <>
                             <button
                                 onClick={handleReject}
@@ -682,6 +780,13 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 {saving ? <Loader2 className="animate-spin" size={18} /> : <span>Aceitar Tarefa</span>}
                             </button>
                         </>
+                    ) : isProfessional && formData.status === 'aguardando_aprovacao' ? (
+                        <button
+                            disabled
+                            className="flex-[2] bg-[#D4E2DC] text-[#4B685A] py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed shadow-none"
+                        >
+                            <CheckCircle2 size={18} /><span>Aceito</span>
+                        </button>
                     ) : isProfessional && formData.status === 'aprovado' ? (
                         <button
                             onClick={handleStartExecution}
@@ -698,6 +803,39 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                         >
                             {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Finalizar Tarefa</span></>}
                         </button>
+                    ) : isGestor && formData.status === 'aguardando_gestor' ? (
+                        <>
+                            <button
+                                onClick={handleRelatarProblema}
+                                disabled={saving}
+                                className="flex-1 bg-red-50 text-red-600 border border-red-100 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <span>Relatar Problema</span>}
+                            </button>
+                            <button
+                                onClick={() => handleGestorFinalize('concluido')}
+                                disabled={saving}
+                                className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <span>Concluir Revisão</span>}
+                            </button>
+                        </>
+                    ) : isGestor && formData.status === 'erro' ? (
+                        <button
+                            onClick={() => handleGestorFinalize('concluido_from_erro')}
+                            disabled={saving || !formData.solucao_problema || formData.solucao_problema.trim().length < 5}
+                            className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
+                        >
+                            {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Concluir Serviço</span></>}
+                        </button>
+                    ) : formData.status === 'concluido' ? (
+                        <button disabled className="flex-[2] bg-gray-200 text-gray-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed">
+                            <CheckCircle2 size={18} /><span>Concluído</span>
+                        </button>
+                    ) : formData.status === 'aprovado' ? (
+                        <button disabled className="flex-[2] bg-gray-200 text-gray-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed">
+                            <CheckCircle2 size={18} /><span>Aguardando Execução</span>
+                        </button>
                     ) : (
                         <button onClick={handleSave} disabled={saving} className="flex-[2] bg-black text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50">
                             {saving ? <Loader2 className="animate-spin" size={18} /> : (
@@ -705,7 +843,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                     {(isGestor || isPlanejista) && formData.status === 'pendente'
                                         ? 'Enviar para Orçamento'
                                         : (isOrcamentista || (isGestor && formData.status !== 'pendente'))
-                                            ? (formData.status === 'reprovado' ? 'Reenviar Orçamento' : 'Salvar Orçamento')
+                                            ? ((formData.status === 'recusado' || formData.status === 'reprovado') ? 'Reenviar Orçamento' : 'Salvar Orçamento')
                                             : 'Salvar Alterações'}
                                 </span>
                             )}

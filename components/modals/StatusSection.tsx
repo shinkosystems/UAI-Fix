@@ -40,7 +40,7 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                     </span>
                 </div>
 
-                {formData.status === 'reprovado' && editingItem.motivo_recusa && (
+                {(formData.status === 'recusado' || formData.status === 'reprovado') && editingItem.motivo_recusa && (
                     <div className="bg-red-50 p-5 rounded-3xl border border-red-100 flex gap-4 animate-in slide-in-from-top-2">
                         <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
                             <Ban size={20} />
@@ -134,11 +134,13 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                 <option value="aprovado">Aprovado (Agendado)</option>
                 <option value="executando">Em Execução</option>
                 <option value="concluido">Concluído</option>
-                <option value="reprovado">Orçamento Negado</option>
+                <option value="aguardando_gestor">Aguardando Gestor</option>
+                <option value="erro">ERRO!</option>
+                <option value="recusado">Recusado</option>
                 <option value="cancelado">Cancelado</option>
             </select>
 
-            {formData.status === 'reprovado' && (
+            {(formData.status === 'recusado' || formData.status === 'reprovado') && (
                 <div className="bg-red-50 p-5 rounded-3xl border border-red-100 flex gap-4 animate-in slide-in-from-top-2 mt-2">
                     <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
                         <AlertCircle size={20} />
@@ -150,6 +152,37 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                         ) : (
                             <p className="text-sm font-medium text-red-600/70 leading-relaxed italic animate-pulse">Aguardando o cliente digitar o motivo no WhatsApp...</p>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {isGestor && formData.status === 'aguardando_gestor' && editingItem.relato_problema && (
+                <div className="bg-red-50 p-5 rounded-3xl border border-red-100 mt-2">
+                    <p className="text-[9px] font-black text-red-700 uppercase tracking-widest leading-none mb-2">Problema Relatado</p>
+                    <p className="text-sm font-medium text-red-900 leading-relaxed italic">"{editingItem.relato_problema}"</p>
+                </div>
+            )}
+
+            {isGestor && formData.status === 'erro' && (
+                <div className="bg-red-50 p-5 rounded-3xl border border-red-200 mt-2 space-y-3">
+                    <div className="flex items-center gap-2 text-red-700">
+                        <AlertCircle size={16} />
+                        <h4 className="text-[10px] font-black uppercase tracking-widest">Problema Relatado</h4>
+                    </div>
+                    <p className="text-sm font-medium text-red-900 leading-relaxed italic bg-white/50 p-3 rounded-xl border border-red-100">
+                        "{formData.relato_problema || editingItem.relato_problema || 'Nenhum relato informado.'}"
+                    </p>
+                    
+                    <div className="pt-2">
+                        <label className="text-[10px] font-black text-red-700 uppercase tracking-widest block mb-2">
+                            Solução Adotada (Obrigatório para concluir)
+                        </label>
+                        <textarea
+                            value={formData.solucao_problema || ''}
+                            onChange={(e) => setFormData({ ...formData, solucao_problema: e.target.value })}
+                            className="w-full bg-white border border-red-200 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 min-h-[80px] resize-none placeholder-red-300"
+                            placeholder="Descreva a solução aplicada para resolver este problema..."
+                        />
                     </div>
                 </div>
             )}

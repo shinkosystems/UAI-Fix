@@ -119,7 +119,7 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                 }).eq('id', budget.id);
             }
 
-            const newStatus = approved ? 'aprovado' : 'reprovado';
+            const newStatus = approved ? 'aprovado' : 'recusado';
             const updatePayload: any = { status: newStatus };
             if (!approved && reason) updatePayload.motivo_recusa = reason;
 
@@ -184,12 +184,15 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
 
     const getStatusColor = (s: string | undefined) => {
         switch (s?.toLowerCase()) {
-            case 'concluido': return 'bg-green-100 text-green-900 border-green-200';
+            case 'concluido':
+            case 'aguardando_gestor':
+            case 'erro': return 'bg-green-100 text-green-900 border-green-200';
             case 'executando': return 'bg-purple-100 text-purple-900 border-purple-200';
             case 'aguardando_aprovacao': return 'bg-orange-100 text-orange-900 border-orange-200';
             case 'aguardando_profissional': return 'bg-cyan-100 text-cyan-900 border-cyan-200';
             case 'cancelado': return 'bg-red-100 text-red-900 border-red-200';
             case 'aprovado': return 'bg-green-50 text-green-700 border-green-100';
+            case 'recusado':
             case 'reprovado': return 'bg-red-50 text-red-700 border-red-100';
             default: return 'bg-blue-100 text-blue-900 border-blue-200';
         }
@@ -199,8 +202,10 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
         switch (s?.toLowerCase()) {
             case 'aguardando_aprovacao': return 'Proposta Recebida';
             case 'aguardando_profissional': return 'Aguardando Profissional';
-            case 'aprovado': return 'Agendado';
-            case 'reprovado': return 'Proposta Negada';
+            case 'aprovado': return 'Aprovado (Agendado)';
+            case 'recusado':
+            case 'reprovado': return 'Recusado';
+            case 'aguardando_gestor': return 'Concluído';
             default: return s?.replace('_', ' ') || '';
         }
     };
@@ -220,7 +225,7 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                     <button onClick={() => setActiveTab('geral')} className={`flex-1 min-w-[100px] h-full flex flex-col items-center justify-center transition-all relative group`}><span className={`text-xs font-black uppercase tracking-widest leading-none ${activeTab === 'geral' ? 'text-ios-blue' : 'text-gray-400'}`}>Informações</span>{activeTab === 'geral' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
                     <button onClick={() => setActiveTab('consumidor')} className={`flex-1 min-w-[100px] h-full flex flex-col items-center justify-center transition-all relative group`}><span className={`text-xs font-black uppercase tracking-widest leading-none ${activeTab === 'consumidor' ? 'text-ios-blue' : 'text-gray-400'}`}>Consumidor</span>{activeTab === 'consumidor' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
                     <button onClick={() => setActiveTab('fotos')} className={`flex-1 min-w-[100px] h-full flex flex-col items-center justify-center transition-all relative group`}><span className={`text-xs font-black uppercase tracking-widest leading-none ${activeTab === 'fotos' ? 'text-ios-blue' : 'text-gray-400'}`}>Mídia</span>{activeTab === 'fotos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>
-                    {order.status === 'concluido' && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] h-full flex flex-col items-center justify-center transition-all relative group`}><span className={`text-xs font-black uppercase tracking-widest leading-none ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação</span>{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
+                    {['concluido', 'aguardando_gestor', 'erro'].includes(order.status) && (<button onClick={() => setActiveTab('avaliacao')} className={`flex-1 min-w-[100px] h-full flex flex-col items-center justify-center transition-all relative group`}><span className={`text-xs font-black uppercase tracking-widest leading-none ${activeTab === 'avaliacao' ? 'text-ios-blue' : 'text-gray-400'}`}>Avaliação</span>{activeTab === 'avaliacao' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-ios-blue rounded-t-full" />}</button>)}
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-white no-scrollbar">
