@@ -30,6 +30,8 @@ interface Message {
   timestamp: string;
   dateStr: string;
   status: 'sent' | 'delivered' | 'read' | 'received' | 'sending' | 'error';
+  type?: string;
+  metadata?: any;
 }
 
 interface Chat {
@@ -103,6 +105,7 @@ const Whatsapp: React.FC = () => {
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingChat, setDeletingChat] = useState(false);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const getDateLabel = (dateStr: string) => {
     if (!dateStr) return '';
@@ -212,7 +215,9 @@ const Whatsapp: React.FC = () => {
           sender: m.sender === 'manager' ? 'me' : 'contact',
           timestamp: msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           dateStr: msgDate.toISOString().split('T')[0],
-          status: m.status as any
+          status: m.status as any,
+          type: m.type,
+          metadata: m.metadata
         };
       });
 
@@ -562,6 +567,21 @@ const Whatsapp: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-4 space-y-2 relative no-scrollbar">
               {messages.map((msg, index) => {
                 const showDateSeparator = index === 0 || msg.dateStr !== messages[index - 1].dateStr;
+                
+                const renderMessageText = (msg: Message) => {
+                  if (!msg.text) return null;
+                  let text = msg.text;
+                  
+                  if (msg.metadata?.image) text = text.replace(/^\[Imagem\]\s*/, '');
+                  if (msg.metadata?.audio) text = text.replace(/^\[Áudio\]\s*/, '');
+                  if (msg.metadata?.video) text = text.replace(/^\[Vídeo\]\s*/, '');
+                  if (msg.metadata?.document) text = text.replace(/^\[Documento\]\s*/, '');
+
+                  if (!text.trim()) return null;
+
+                  return <p className="text-sm text-gray-800 break-words leading-relaxed">{text}</p>;
+                };
+
                 return (
                   <React.Fragment key={msg.id}>
                     {showDateSeparator && (
@@ -576,7 +596,42 @@ const Whatsapp: React.FC = () => {
                         max-w-[75%] px-3 py-2 rounded-xl shadow-sm relative group
                         ${msg.sender === 'me' ? 'bg-[#DCF8C6] rounded-tr-none' : 'bg-white rounded-tl-none'}
                       `}>
-                        <p className="text-sm text-gray-800 break-words leading-relaxed">{msg.text}</p>
+                        {msg.metadata?.image?.imageUrl && (
+                          <div className="mb-2">
+                            <img 
+                              src={msg.metadata.image.imageUrl} 
+                              alt="Imagem" 
+                              className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity" 
+                              style={{ maxHeight: '250px', minWidth: '150px' }} 
+                              onClick={() => setExpandedImage(msg.metadata.image.imageUrl)}
+                            />
+                          </div>
+                        )}
+                        {msg.metadata?.audio?.audioUrl && (
+                          <div className="mb-2">
+                            <audio controls className="max-w-[220px] sm:max-w-[300px]">
+                              <source src={msg.metadata.audio.audioUrl} />
+                              Seu navegador não suporta o elemento de áudio.
+                            </audio>
+                          </div>
+                        )}
+                        {msg.metadata?.video?.videoUrl && (
+                          <div className="mb-2">
+                            <video controls className="rounded-lg max-w-full h-auto" style={{ maxHeight: '250px' }}>
+                              <source src={msg.metadata.video.videoUrl} />
+                              Seu navegador não suporta o elemento de vídeo.
+                            </video>
+                          </div>
+                        )}
+                        {msg.metadata?.document?.documentUrl && (
+                          <div className="mb-2">
+                            <a href={msg.metadata.document.documentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-ios-blue hover:underline bg-black/5 p-2 rounded-lg">
+                              <Paperclip size={16} />
+                              <span className="text-sm truncate max-w-[200px]">{msg.metadata.document.fileName || 'Documento'}</span>
+                            </a>
+                          </div>
+                        )}
+                        {renderMessageText(msg)}
                         <div className="flex items-center justify-end space-x-1 mt-1">
                           <span className="text-[10px] text-gray-400">{msg.timestamp}</span>
                           {msg.sender === 'me' && (
@@ -713,6 +768,33 @@ const Whatsapp: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Expanded Modal */}
+      {expandedImage && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          onClick={() => setExpandedImage(null)}
+        >
+          <div className="relative max-w-4xl w-full h-full flex items-center justify-center">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedImage(null);
+              }}
+              className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/80 rounded-full p-2 transition-colors z-10"
+              title="Fechar (Esc)"
+            >
+              <X size={24} />
+            </button>
+            <img 
+              src={expandedImage} 
+              alt="Imagem ampliada" 
+              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
           </div>
         </div>
       )}

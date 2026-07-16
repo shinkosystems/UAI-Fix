@@ -724,8 +724,8 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
     }
   };
 
-  const mediaMessages = (chatMessages || []).filter(m => m.type === 'image' || m.type === 'video');
-  const audioMessages = (chatMessages || []).filter(m => m.type === 'audio');
+  const mediaMessages = (chatMessages || []).filter(m => m.metadata?.image || m.metadata?.video);
+  const audioMessages = (chatMessages || []).filter(m => m.metadata?.audio);
 
   if (!isOpen) return null;
 
@@ -1226,24 +1226,28 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
                     </div>
                   ) : useChatMedia && mediaMessages.length > 0 ? (
                     <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1 no-scrollbar animate-in fade-in">
-                      {mediaMessages.map((msg, idx) => (
-                        <div
-                          key={idx}
-                          onClick={() => setImagePedido(msg.text)}
-                          className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative cursor-pointer border-2 border-transparent hover:border-ios-blue transition-all group"
-                        >
-                          {msg.type === 'video' ? (
-                            <video src={msg.text} className="w-full h-full object-cover" />
-                          ) : (
-                            <img src={msg.text} className="w-full h-full object-cover" />
-                          )}
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 flex items-center justify-center transition-all">
-                            <div className="bg-ios-blue text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 scale-50 group-hover:scale-100 transition-all shadow-md">
-                              <Plus size={16} />
+                      {mediaMessages.map((msg, idx) => {
+                        const isVideo = !!msg.metadata?.video;
+                        const url = isVideo ? msg.metadata?.video?.videoUrl : msg.metadata?.image?.imageUrl;
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => setImagePedido(url)}
+                            className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative cursor-pointer border-2 border-transparent hover:border-ios-blue transition-all group"
+                          >
+                            {isVideo ? (
+                              <video src={url} className="w-full h-full object-cover" />
+                            ) : (
+                              <img src={url} className="w-full h-full object-cover" />
+                            )}
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 flex items-center justify-center transition-all">
+                              <div className="bg-ios-blue text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 scale-50 group-hover:scale-100 transition-all shadow-md">
+                                <Plus size={16} />
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <label className={`w-full h-24 bg-gray-50 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors border-gray-200 animate-in fade-in`}>
@@ -1298,26 +1302,29 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
                         </div>
                       ) : (
                         <div className="space-y-2 max-h-48 overflow-y-auto pr-2 no-scrollbar">
-                          {audioMessages.length > 0 ? audioMessages.map((msg, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl p-3 hover:border-ios-blue transition-all"
-                            >
-                              <div className="flex-1 overflow-hidden flex flex-col gap-1.5">
-                                <div className="flex items-center gap-2">
-                                  <Mic size={12} className="text-blue-500" />
-                                  <p className="text-xs font-bold text-gray-900 truncate">Áudio Recebido ({msg.timestamp})</p>
-                                </div>
-                                <audio src={msg.text} controls className="h-8 w-full max-w-[220px]" />
-                              </div>
-                              <button
-                                onClick={() => setAudioChatUrl(msg.text)}
-                                className="bg-gray-100 text-gray-600 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-ios-blue hover:text-white transition-all shrink-0"
+                          {audioMessages.length > 0 ? audioMessages.map((msg, idx) => {
+                            const url = msg.metadata?.audio?.audioUrl;
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-center gap-3 bg-white border border-gray-100 rounded-xl p-3 hover:border-ios-blue transition-all"
                               >
-                                Selecionar
-                              </button>
-                            </div>
-                          )) : (
+                                <div className="flex-1 overflow-hidden flex flex-col gap-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <Mic size={12} className="text-blue-500" />
+                                    <p className="text-xs font-bold text-gray-900 truncate">Áudio Recebido ({msg.timestamp})</p>
+                                  </div>
+                                  <audio src={url} controls className="h-8 w-full max-w-[220px]" />
+                                </div>
+                                <button
+                                  onClick={() => setAudioChatUrl(url)}
+                                  className="bg-gray-100 text-gray-600 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-ios-blue hover:text-white transition-all shrink-0"
+                                >
+                                  Selecionar
+                                </button>
+                              </div>
+                            );
+                          }) : (
                             <p className="text-xs text-gray-500 text-center py-4 font-bold">Nenhum áudio encontrado neste chat.</p>
                           )}
                         </div>
