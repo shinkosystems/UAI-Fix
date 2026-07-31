@@ -102,6 +102,10 @@ export interface Chave {
   // Campos para o fluxo de revisão do gestor
   relato_problema?: string | null;
   solucao_problema?: string | null;
+  foto_problema?: string | null; // Added field for problem photo
+  gestor_responsavel?: string | null; // Gestor responsável pela OS
+  chave_vinculada_id?: number | null; // ID da OS vinculada
+  chave_vinculada_codigo?: string | null; // Código único da OS vinculada
   // Execution Photos
   fotoantes?: string[];
   fotodepois?: string[];
@@ -109,6 +113,8 @@ export interface Chave {
   geral?: { nome: string; imagem?: string };
   // cliente object might be injected manually or via join
   clienteData?: User;
+  profissionalData?: User;
+  gestorData?: User;
   profissional?: string | User | null; // Depending on how we map it
   whatsapp_chat_id?: string | null;
   whatsapp_lead_cpf?: string | null;

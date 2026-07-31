@@ -12,6 +12,7 @@ interface StatusSectionProps {
     isProfessional: boolean;
     editingItem: ChamadoExtended;
     setShowBudgetForm: (show: boolean) => void;
+    onStatusChange?: (status: string) => void;
 }
 
 const StatusSection: React.FC<StatusSectionProps> = ({
@@ -22,7 +23,8 @@ const StatusSection: React.FC<StatusSectionProps> = ({
     isPlanejista,
     isProfessional,
     editingItem,
-    setShowBudgetForm
+    setShowBudgetForm,
+    onStatusChange
 }) => {
     const budget = editingItem.orcamentos?.[0];
     const plan = editingItem.planejamento?.[0];
@@ -125,6 +127,9 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                     if (isGestor || isOrcamentista) {
                         setShowBudgetForm(newStatus !== 'pendente');
                     }
+                    if (onStatusChange) {
+                        onStatusChange(newStatus);
+                    }
                 }}
             >
                 <option value="pendente">Pendente</option>
@@ -159,6 +164,13 @@ const StatusSection: React.FC<StatusSectionProps> = ({
             {isGestor && formData.status === 'aguardando_gestor' && editingItem.relato_problema && (
                 <div className="bg-red-50 p-5 rounded-3xl border border-red-100 mt-2">
                     <p className="text-[9px] font-black text-red-700 uppercase tracking-widest leading-none mb-2">Problema Relatado</p>
+                    
+                    {editingItem.foto_problema && (
+                        <div className="aspect-video rounded-xl overflow-hidden border border-red-200 shadow-sm mt-2 mb-3">
+                            <img src={editingItem.foto_problema} alt="Problema relatado" className="w-full h-full object-cover" />
+                        </div>
+                    )}
+                    
                     <p className="text-sm font-medium text-red-900 leading-relaxed italic">"{editingItem.relato_problema}"</p>
                 </div>
             )}
@@ -169,6 +181,13 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                         <AlertCircle size={16} />
                         <h4 className="text-[10px] font-black uppercase tracking-widest">Problema Relatado</h4>
                     </div>
+                    
+                    {editingItem.foto_problema && (
+                        <div className="aspect-video rounded-xl overflow-hidden border border-red-200 shadow-sm mt-2 mb-3">
+                            <img src={editingItem.foto_problema} alt="Problema relatado" className="w-full h-full object-cover" />
+                        </div>
+                    )}
+                    
                     <p className="text-sm font-medium text-red-900 leading-relaxed italic bg-white/50 p-3 rounded-xl border border-red-100">
                         "{formData.relato_problema || editingItem.relato_problema || 'Nenhum relato informado.'}"
                     </p>
@@ -183,6 +202,20 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                             className="w-full bg-white border border-red-200 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 min-h-[80px] resize-none placeholder-red-300"
                             placeholder="Descreva a solução aplicada para resolver este problema..."
                         />
+                    </div>
+                </div>
+            )}
+
+            {editingItem.chave_vinculada_codigo && (
+                <div className="bg-blue-50/80 p-5 rounded-3xl border border-blue-100 flex items-center justify-between mt-2 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-sm">
+                            <Sparkles size={18} />
+                        </div>
+                        <div>
+                            <p className="text-[9px] font-black uppercase tracking-widest text-blue-700 leading-none mb-1">Serviço Vinculado</p>
+                            <p className="text-sm font-mono font-black text-blue-950">#{editingItem.chave_vinculada_codigo}</p>
+                        </div>
                     </div>
                 </div>
             )}

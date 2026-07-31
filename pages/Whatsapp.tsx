@@ -568,18 +568,31 @@ const Whatsapp: React.FC = () => {
               {messages.map((msg, index) => {
                 const showDateSeparator = index === 0 || msg.dateStr !== messages[index - 1].dateStr;
                 
-                const renderMessageText = (msg: Message) => {
-                  if (!msg.text) return null;
-                  let text = msg.text;
+                const getMediaInfo = (m: Message) => {
+                  const meta = m.metadata || {};
+                  const img = meta.image?.imageUrl || meta.imageUrl || (typeof meta.image === 'string' && meta.image.startsWith('http') ? meta.image : (m.type === 'image' && m.text?.startsWith('http') ? m.text : null));
+                  const audio = meta.audio?.audioUrl || meta.audioUrl || (typeof meta.audio === 'string' && meta.audio.startsWith('http') ? meta.audio : (m.type === 'audio' && m.text?.startsWith('http') ? m.text : null));
+                  const video = meta.video?.videoUrl || meta.videoUrl || (typeof meta.video === 'string' && meta.video.startsWith('http') ? meta.video : (m.type === 'video' && m.text?.startsWith('http') ? m.text : null));
+                  const doc = meta.document?.documentUrl || meta.documentUrl || (typeof meta.document === 'string' && meta.document.startsWith('http') ? meta.document : (m.type === 'document' && m.text?.startsWith('http') ? m.text : null));
+                  const docName = meta.document?.fileName || meta.fileName || 'Documento';
+
+                  return { img, audio, video, doc, docName };
+                };
+
+                const media = getMediaInfo(msg);
+
+                const renderMessageText = (m: Message) => {
+                  if (!m.text) return null;
+                  let text = m.text;
                   
-                  if (msg.metadata?.image) text = text.replace(/^\[Imagem\]\s*/, '');
-                  if (msg.metadata?.audio) text = text.replace(/^\[Áudio\]\s*/, '');
-                  if (msg.metadata?.video) text = text.replace(/^\[Vídeo\]\s*/, '');
-                  if (msg.metadata?.document) text = text.replace(/^\[Documento\]\s*/, '');
+                  if (media.img) text = text.replace(/^\[Imagem\]\s*/, '');
+                  if (media.audio) text = text.replace(/^\[Áudio\]\s*/, '');
+                  if (media.video) text = text.replace(/^\[Vídeo\]\s*/, '');
+                  if (media.doc) text = text.replace(/^\[Documento\]\s*/, '');
 
                   if (!text.trim()) return null;
 
-                  return <p className="text-sm text-gray-800 break-words leading-relaxed">{text}</p>;
+                  return <p className="text-sm text-gray-800 break-words leading-relaxed whitespace-pre-wrap">{text}</p>;
                 };
 
                 return (
@@ -596,38 +609,38 @@ const Whatsapp: React.FC = () => {
                         max-w-[75%] px-3 py-2 rounded-xl shadow-sm relative group
                         ${msg.sender === 'me' ? 'bg-[#DCF8C6] rounded-tr-none' : 'bg-white rounded-tl-none'}
                       `}>
-                        {msg.metadata?.image?.imageUrl && (
+                        {media.img && (
                           <div className="mb-2">
                             <img 
-                              src={msg.metadata.image.imageUrl} 
+                              src={media.img} 
                               alt="Imagem" 
                               className="rounded-lg max-w-full h-auto cursor-pointer hover:opacity-90 transition-opacity" 
                               style={{ maxHeight: '250px', minWidth: '150px' }} 
-                              onClick={() => setExpandedImage(msg.metadata.image.imageUrl)}
+                              onClick={() => setExpandedImage(media.img!)}
                             />
                           </div>
                         )}
-                        {msg.metadata?.audio?.audioUrl && (
+                        {media.audio && (
                           <div className="mb-2">
                             <audio controls className="max-w-[220px] sm:max-w-[300px]">
-                              <source src={msg.metadata.audio.audioUrl} />
+                              <source src={media.audio} />
                               Seu navegador não suporta o elemento de áudio.
                             </audio>
                           </div>
                         )}
-                        {msg.metadata?.video?.videoUrl && (
+                        {media.video && (
                           <div className="mb-2">
                             <video controls className="rounded-lg max-w-full h-auto" style={{ maxHeight: '250px' }}>
-                              <source src={msg.metadata.video.videoUrl} />
+                              <source src={media.video} />
                               Seu navegador não suporta o elemento de vídeo.
                             </video>
                           </div>
                         )}
-                        {msg.metadata?.document?.documentUrl && (
+                        {media.doc && (
                           <div className="mb-2">
-                            <a href={msg.metadata.document.documentUrl} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-ios-blue hover:underline bg-black/5 p-2 rounded-lg">
+                            <a href={media.doc} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-ios-blue hover:underline bg-black/5 p-2 rounded-lg">
                               <Paperclip size={16} />
-                              <span className="text-sm truncate max-w-[200px]">{msg.metadata.document.fileName || 'Documento'}</span>
+                              <span className="text-sm truncate max-w-[200px]">{media.docName}</span>
                             </a>
                           </div>
                         )}

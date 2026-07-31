@@ -4,7 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { sendWhatsappText, sendWhatsappButtons, sendWhatsappOptionList } from '../../utils/whatsapp';
 import {
     X, Save, Hash, Loader2, ThumbsUp, ThumbsDown,
-    Play, CheckCircle2, Star
+    Play, CheckCircle2, Star, Camera, Copy, Check, Link2
 } from 'lucide-react';
 import StatusSection from './StatusSection';
 import PlanningSection from './PlanningSection';
@@ -13,7 +13,7 @@ import ConsumerTab from './ConsumerTab';
 import ProfessionalTab from './ProfessionalTab';
 import PaymentInfoSection from './PaymentInfoSection';
 import FlexibilitySection from './FlexibilitySection';
-import { User, ChamadoExtended } from '../../types';
+import { User, ChamadoExtended, Geral, City } from '../../types';
 
 interface ProfessionalOrderModalProps {
     order: any;
@@ -38,8 +38,26 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const [modalSubTab, setModalSubTab] = useState<ModalTab>('status');
     const [showBudgetForm, setShowBudgetForm] = useState(false);
     const [availableProfessionals, setAvailableProfessionals] = useState<User[]>([]);
+    const [allServices, setAllServices] = useState<Geral[]>([]);
+    const [allCities, setAllCities] = useState<City[]>([]);
+
+    const [isProblemModalOpen, setIsProblemModalOpen] = useState(false);
+    const [problemDesc, setProblemDesc] = useState('');
+    const [problemPhotoUrl, setProblemPhotoUrl] = useState<string | null>(null);
+    const [problemUploading, setProblemUploading] = useState(false);
+
+    const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+    const [cancelInputCode, setCancelInputCode] = useState('');
+    const [codeCopied, setCodeCopied] = useState(false);
 
     const [formData, setFormData] = useState({
+        atividade: 0 as number | string,
+        cidade: 0 as number | string,
+        clienteRua: '',
+        clienteNumero: '',
+        clienteBairro: '',
+        clienteComplemento: '',
+        clienteCep: '',
         profissionalUuid: '',
         status: '',
         orcamentoPreco: 0,
@@ -75,12 +93,152 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const isOrcamentista = userRole === 'orcamentista';
 
     useEffect(() => {
+        if (isOpen) {
+            fetchServicesAndCities();
+        }
+    }, [isOpen]);
+
+    const fetchServicesAndCities = async () => {
+        try {
+            const [servRes, cityRes] = await Promise.all([
+                supabase.from('geral').select('*').order('nome'),
+                supabase.from('cidades').select('*').order('cidade')
+            ]);
+            if (servRes.data) setAllServices(servRes.data);
+            if (cityRes.data) setAllCities(cityRes.data);
+        } catch (err) {
+            console.error('Erro ao buscar serviços/cidades:', err);
+        }
+    };
+
+    const handleAtividadeCidadeChange = (newAtividade?: number | string, newCidade?: number | string) => {
+        const ativ = newAtividade !== undefined ? newAtividade : formData.atividade;
+        const cid = newCidade !== undefined ? newCidade : formData.cidade;
+        setFormData(prev => ({
+            ...prev,
+            atividade: ativ,
+            cidade: cid
+        }));
+        fetchProfessionals(ativ, cid);
+    };
+
+    const normalizeStr = (str: string) =>
+        str ? str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
+
+    const fetchCepData = async (cepValue: string, currentAtividade?: number | string) => {
+        const cleanCep = cepValue ? cepValue.replace(/\D/g, '') : '';
+        if (cleanCep.length !== 8) return;
+
+        try {
+            const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+            const data = await response.json();
+            if (!data.erro && data.localidade) {
+                const rawLoc = data.localidade.trim();
+                const normLoc = normalizeStr(rawLoc);
+
+                let matchedCity: City | null = null;
+
+                // 1. Tenta buscar no banco de dados via ilike primeiro
+                const { data: dbExact } = await supabase
+                    .from('cidades')
+                    .select('*')
+                    .ilike('cidade', `%${rawLoc}%`)
+                    .limit(1);
+
+                if (dbExact && dbExact.length > 0) {
+                    matchedCity = dbExact[0];
+                } else {
+                    // Tenta fuzzy pelas palavras
+                    const words = rawLoc.split(' ').filter(w => w.length > 3);
+                    for (const w of words) {
+                        const { data: dbFuzzy } = await supabase
+                            .from('cidades')
+                            .select('*')
+                            .ilike('cidade', `%${w}%`)
+                            .limit(1);
+                        if (dbFuzzy && dbFuzzy.length > 0) {
+                            matchedCity = dbFuzzy[0];
+                            break;
+                        }
+                    }
+                }
+
+                // 2. Se não achou por ilike, tenta no array local
+                if (!matchedCity && allCities.length > 0) {
+                    matchedCity = allCities.find(c => {
+                        const normC = normalizeStr(c.cidade);
+                        return normC === normLoc || normC.includes(normLoc) || normLoc.includes(normC);
+                    }) || null;
+                }
+
+                if (matchedCity) {
+                    const foundCity = matchedCity;
+
+                    // CRUCIAL: Garante que a cidade encontrada esteja presente no array allCities
+                    // para que o elemento <select> consiga renderizar a <option> correspondente!
+                    setAllCities(prev => {
+                        if (!prev.some(c => c.id === foundCity.id)) {
+                            return [...prev, foundCity].sort((a, b) => a.cidade.localeCompare(b.cidade));
+                        }
+                        return prev;
+                    });
+
+                    setFormData(prev => ({
+                        ...prev,
+                        cidade: foundCity.id,
+                        clienteRua: data.logradouro || prev.clienteRua,
+                        clienteBairro: data.bairro || prev.clienteBairro
+                    }));
+
+                    const ativ = currentAtividade !== undefined ? currentAtividade : formData.atividade;
+                    fetchProfessionals(ativ, foundCity.id);
+                } else {
+                    setFormData(prev => ({
+                        ...prev,
+                        clienteRua: data.logradouro || prev.clienteRua,
+                        clienteBairro: data.bairro || prev.clienteBairro
+                    }));
+                }
+            }
+        } catch (err) {
+            console.error("Erro ao buscar CEP:", err);
+        }
+    };
+
+    const ensureCityInList = async (cityId: number | string) => {
+        if (!cityId) return;
+        const idNum = typeof cityId === 'string' ? parseInt(cityId) : cityId;
+        if (isNaN(idNum) || idNum <= 0) return;
+
+        const { data: dbCity } = await supabase.from('cidades').select('*').eq('id', idNum).maybeSingle();
+        if (dbCity) {
+            setAllCities(prev => {
+                if (!prev.some(c => c.id === dbCity.id)) {
+                    return [...prev, dbCity].sort((a, b) => a.cidade.localeCompare(b.cidade));
+                }
+                return prev;
+            });
+        }
+    };
+
+    useEffect(() => {
         if (order && isOpen) {
             initializeForm(order);
+            const clientUser = order.clienteData || order.chaveData?.clienteData;
+            const atividadeId = order.atividade || order.chaveData?.atividade;
+            const cidadeId = order.cidade || order.chaveData?.cidade || clientUser?.cidade;
+            const clientCep = clientUser?.cep;
+
+            if (cidadeId) {
+                ensureCityInList(cidadeId);
+            }
+
             if (isGestor || isPlanejista) {
-                const atividadeId = order.atividade || order.chaveData?.atividade;
-                const cidadeId = order.cidade || order.chaveData?.cidade;
                 fetchProfessionals(atividadeId, cidadeId);
+            }
+
+            if (clientCep) {
+                fetchCepData(clientCep, atividadeId);
             }
         }
     }, [order, isOpen]);
@@ -147,7 +305,23 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             profUuid = typeof ticket.chaveData.profissional === 'string' ? ticket.chaveData.profissional : (ticket.chaveData.profissional as any).uuid;
         }
 
+        const clientUser = ticket.clienteData || ticket.chaveData?.clienteData;
+        const atividadeId = ticket.atividade || ticket.chaveData?.atividade || 0;
+        const cidadeId = ticket.cidade || ticket.chaveData?.cidade || clientUser?.cidade || 0;
+        const clientCep = clientUser?.cep || '';
+
+        const isOriginatedFromCanceled = !!(ticket.chave_vinculada_codigo || ticket.chaveData?.chave_vinculada_codigo);
+        const relato = ticket.relato_problema || ticket.chaveData?.relato_problema;
+        const effectiveDesc = isOriginatedFromCanceled && relato ? relato : (plan?.descricao || '');
+
         setFormData({
+            atividade: atividadeId,
+            cidade: cidadeId,
+            clienteRua: clientUser?.rua || '',
+            clienteNumero: clientUser?.numero || '',
+            clienteBairro: clientUser?.bairro || '',
+            clienteComplemento: clientUser?.complemento || '',
+            clienteCep: clientCep,
             profissionalUuid: profUuid,
             status: status,
             orcamentoPreco: budget?.preco || 0,
@@ -163,7 +337,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             orcamentoJustificativaSugerido: budget?.justificativa_sugerido || '',
             orcamentoObs: budget?.observacaocliente || '',
             orcamentoNotaFiscal: budget?.notafiscal || false,
-            planejamentoDesc: plan?.descricao || '',
+            planejamentoDesc: effectiveDesc,
             planejamentoData: consumerRequestedDate,
             planejamentoRecursos: plan?.recursos || [],
             planejamentoPagamento: plan?.pagamento || 'Dinheiro',
@@ -174,8 +348,13 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             agendaObs: ticket.agendaObs || ticket.agenda?.[0]?.observacoes || ticket.observacoes || '',
             motivo_recusa: ticket.motivo_recusa || ticket.chaveData?.motivo_recusa || '',
             relato_problema: ticket.relato_problema || ticket.chaveData?.relato_problema || '',
-            solucao_problema: ticket.solucao_problema || ticket.chaveData?.solucao_problema || ''
+            solucao_problema: ticket.solucao_problema || ticket.chaveData?.solucao_problema || '',
+            foto_problema: ticket.foto_problema || ticket.chaveData?.foto_problema || null
         });
+
+        if ((!cidadeId || cidadeId === 0) && clientCep) {
+            fetchCepData(clientCep, atividadeId);
+        }
     };
 
     const fetchProfessionals = async (atividadeId?: number | string, cidadeId?: number | string) => {
@@ -278,7 +457,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const handleAccept = async () => {
         setSaving(true);
         try {
-            const ticketId = order.id || order.chaveData?.id;
+            const ticketId = order.chaveData?.id || order.chave || order.id;
             await supabase.from('chaves').update({ status: 'aguardando_aprovacao' }).eq('id', ticketId);
             
             const clientPhone = normalizedItem.clienteData?.whatsapp;
@@ -302,7 +481,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
         setSaving(true);
         try {
-            const ticketId = order.id || order.chaveData?.id;
+            const ticketId = order.chaveData?.id || order.chave || order.id;
             await supabase.from('chaves').update({
                 status: 'pendente',
                 motivo_recusa: reason
@@ -320,7 +499,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const handleStartExecution = async () => {
         setSaving(true);
         try {
-            const ticketId = order.id || order.chaveData?.id;
+            const ticketId = order.chaveData?.id || order.chave || order.id;
             await supabase.from('chaves').update({ status: 'executando' }).eq('id', ticketId);
             
             const clientPhone = normalizedItem?.clienteData?.whatsapp;
@@ -355,7 +534,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
         setSaving(true);
         try {
-            const ticketId = order.id || order.chaveData?.id;
+            const ticketId = order.chaveData?.id || order.chave || order.id;
             const updatesChave: any = {
                 status: 'aguardando_gestor',
                 fotoantes: formData.fotoantes,
@@ -424,7 +603,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
         setSaving(true);
         try {
-            const ticketId = order.id || order.chaveData?.id;
+            const ticketId = order.chaveData?.id || order.chave || order.id;
             await supabase.from('chaves').update({
                 status: 'erro',
                 relato_problema: relato.trim()
@@ -440,6 +619,289 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         }
     };
 
+    const handleFileUploadProblem = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files?.length) return;
+        const file = e.target.files[0];
+        
+        if (file.size > 50 * 1024 * 1024) {
+            alert('O arquivo é maior que 50MB.');
+            return;
+        }
+
+        setProblemUploading(true);
+        try {
+            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
+            const ticketId = order.chaveData?.chaveunica || order.chaveunica || 'ticket';
+            const path = `problemas/${ticketId}_problema_${Date.now()}.${fileExt}`;
+
+            const { error: uploadError } = await supabase.storage.from('imagens').upload(path, file, {
+                contentType: file.type || undefined
+            });
+
+            if (uploadError) throw uploadError;
+
+            const { data } = supabase.storage.from('imagens').getPublicUrl(path);
+            setProblemPhotoUrl(data.publicUrl);
+        } catch (error: any) {
+            console.error('Erro no upload da foto do problema:', error);
+            alert(`Erro ao carregar arquivo: ${error.message}`);
+        } finally {
+            setProblemUploading(false);
+        }
+    };
+
+    const handleProfessionalRelatarProblema = async () => {
+        if (!problemDesc || problemDesc.trim().length < 5) {
+            alert("A descrição do problema é obrigatória e deve ter pelo menos 5 caracteres.");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const ticketId = order.chaveData?.id || order.chave || order.id;
+            const updates: any = {
+                status: 'erro',
+                relato_problema: problemDesc.trim()
+            };
+            if (problemPhotoUrl) {
+                updates.foto_problema = problemPhotoUrl;
+            }
+
+            const { data, error: updateError } = await supabase.from('chaves').update(updates).eq('id', ticketId).select();
+            if (updateError) throw updateError;
+            if (!data || data.length === 0) {
+                throw new Error("Falha ao atualizar: Você pode não ter permissão (RLS) ou o chamado não existe.");
+            }
+            
+            // Atualiza o estado local para a UI refletir a mudança imediatamente
+            setFormData(prev => ({
+                ...prev,
+                status: 'erro',
+                relato_problema: problemDesc.trim(),
+                foto_problema: problemPhotoUrl || prev.foto_problema
+            }));
+
+            // Enviar notificação WhatsApp para o Cliente
+            const clientPhone = normalizedItem?.clienteData?.whatsapp;
+            const serviceName = normalizedItem?.geral?.nome || 'Serviço';
+            const ticketCode = normalizedItem?.chaveunica || ticketId;
+
+            if (clientPhone) {
+                const msgCliente = `Olá! Notificamos que ocorreu um imprevisto durante a execução do seu serviço (${serviceName} - #${ticketCode}). ⚠️\n\nNossa equipe de gestão já foi comunicada imediatamente e entrará em contato para alinhar os próximos passos e resolver a situação o mais rápido possível.`;
+                await sendWhatsappText(clientPhone, msgCliente);
+            }
+
+            // Enviar notificação WhatsApp para o Gestor Responsável
+            try {
+                let gestorUuid = order.gestor_responsavel || order.chaveData?.gestor_responsavel;
+
+                if (!gestorUuid) {
+                    const { data: freshChave } = await supabase
+                        .from('chaves')
+                        .select('gestor_responsavel')
+                        .eq('id', ticketId)
+                        .maybeSingle();
+                    if (freshChave?.gestor_responsavel) {
+                        gestorUuid = freshChave.gestor_responsavel;
+                    }
+                }
+
+                let targetGestor: { whatsapp?: string; nome?: string } | null = null;
+
+                if (gestorUuid) {
+                    const { data: gUser } = await supabase
+                        .from('users')
+                        .select('whatsapp, nome')
+                        .eq('uuid', gestorUuid)
+                        .maybeSingle();
+                    if (gUser && gUser.whatsapp) {
+                        targetGestor = gUser;
+                    }
+                }
+
+                // Fallback: se ainda não houver gestor responsável vinculado, busca o primeiro gestor cadastrado
+                if (!targetGestor) {
+                    const { data: gestores } = await supabase
+                        .from('users')
+                        .select('whatsapp, nome')
+                        .eq('tipo', 'gestor')
+                        .limit(1);
+                    if (gestores && gestores.length > 0 && gestores[0].whatsapp) {
+                        targetGestor = gestores[0];
+                    }
+                }
+
+                if (targetGestor?.whatsapp) {
+                    const profName = normalizedItem?.profissionalData?.nome || 'Profissional';
+                    const msgGestor = `🚨 *ALERTA DE PROBLEMA EM SERVIÇO* 🚨\n\n` +
+                        `*Chamado:* #${ticketCode} - ${serviceName}\n` +
+                        `*Profissional:* ${profName}\n` +
+                        `*Relato do Problema:* "${problemDesc.trim()}"\n\n` +
+                        `Acesse a plataforma UaiFix para verificar os detalhes e adotar a solução.`;
+
+                    await sendWhatsappText(targetGestor.whatsapp, msgGestor);
+                }
+            } catch (gErr) {
+                console.error("Erro ao notificar gestor responsável via WhatsApp:", gErr);
+            }
+
+            await onUpdate();
+            onClose();
+            setIsProblemModalOpen(false);
+            setProblemDesc('');
+            setProblemPhotoUrl(null);
+            alert('Problema relatado com sucesso! O status foi alterado para ERRO!');
+        } catch (error: any) {
+            alert(error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleCopyCode = () => {
+        const targetCode = normalizedItem?.chaveunica || order.chaveunica || '';
+        if (targetCode) {
+            navigator.clipboard.writeText(targetCode);
+            setCodeCopied(true);
+            setTimeout(() => setCodeCopied(false), 2000);
+        }
+    };
+
+    const handleGestorCancelService = async () => {
+        const ticketId = order.chaveData?.id || order.chave || order.id;
+        const targetCode = (normalizedItem?.chaveunica || order.chaveunica || '').trim().toUpperCase();
+        if (cancelInputCode.trim().toUpperCase() !== targetCode) {
+            alert("O código único inserido é incorreto.");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const updates: any = { status: 'cancelado' };
+
+            const currentGestor = order.gestor_responsavel || order.chaveData?.gestor_responsavel;
+            if (isGestor && userUuid && !currentGestor) {
+                updates.gestor_responsavel = userUuid;
+            }
+
+            const { data, error: updateError } = await supabase.from('chaves').update(updates).eq('id', ticketId).select();
+            if (updateError) throw updateError;
+
+            // Enviar notificação WhatsApp para o Cliente informando sobre o cancelamento
+            const clientPhone = normalizedItem?.clienteData?.whatsapp;
+            const serviceName = normalizedItem?.geral?.nome || 'Serviço';
+            if (clientPhone) {
+                const msgCliente = `Olá! Informamos que o seu chamado (${serviceName} - #${targetCode}) foi cancelado pelo gestor. Se precisar de ajuda ou tiver dúvidas, estamos à disposição!`;
+                await sendWhatsappText(clientPhone, msgCliente);
+            }
+
+            await onUpdate();
+            setIsCancelModalOpen(false);
+            setCancelInputCode('');
+            onClose();
+            alert('Serviço cancelado com sucesso!');
+        } catch (error: any) {
+            alert(error.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleGestorOpenLinkedService = async () => {
+        const ticketId = order.chaveData?.id || order.chave || order.id;
+        const targetCode = (normalizedItem?.chaveunica || order.chaveunica || '').trim().toUpperCase();
+        if (cancelInputCode.trim().toUpperCase() !== targetCode) {
+            alert("O código único inserido é incorreto.");
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const newUniqueKey = Math.random().toString(36).substring(2, 10).toUpperCase();
+            const currentGestorUuid = userUuid || order.gestor_responsavel || order.chaveData?.gestor_responsavel || null;
+
+            const oldPlan = normalizedItem.planejamento?.[0] || order.planejamentoData || order.planejamento?.[0];
+            const oldRelato = normalizedItem.relato_problema || order.relato_problema;
+            const oldFotoProblema = normalizedItem.foto_problema || order.foto_problema;
+
+            const newDesc = oldRelato ? oldRelato : (oldPlan?.descricao || '');
+            const newImagemPedido = oldFotoProblema || oldPlan?.imagem_pedido || null;
+
+            // 1. Criar a nova Chave (OS) pre-preenchida e vinculada
+            const { data: newChaveData, error: newChaveError } = await supabase
+                .from('chaves')
+                .insert({
+                    cliente: normalizedItem.cliente || order.cliente,
+                    atividade: normalizedItem.atividade || order.atividade,
+                    cidade: normalizedItem.cidade || order.cidade,
+                    gestor_responsavel: currentGestorUuid,
+                    status: 'pendente',
+                    chaveunica: newUniqueKey,
+                    relato_problema: oldRelato || null,
+                    foto_problema: oldFotoProblema || null,
+                    fotoantes: [],
+                    fotodepois: [],
+                    whatsapp_chat_id: normalizedItem.whatsapp_chat_id || order.whatsapp_chat_id || null,
+                    whatsapp_lead_cpf: normalizedItem.whatsapp_lead_cpf || order.whatsapp_lead_cpf || null,
+                    chave_vinculada_id: ticketId,
+                    chave_vinculada_codigo: targetCode
+                })
+                .select()
+                .single();
+
+            if (newChaveError) throw newChaveError;
+
+            // 2. Copiar dados de planejamento da OS antiga para a nova OS
+            await supabase.from('planejamento').insert({
+                chave: newChaveData.id,
+                descricao: newDesc,
+                imagem_pedido: newImagemPedido,
+                audio_pedido: oldPlan?.audio_pedido || null,
+                recursos: oldPlan?.recursos || [],
+                pagamento: oldPlan?.pagamento || 'Dinheiro',
+                execucao: oldPlan?.execucao || null,
+                visita: oldPlan?.visita || null,
+                justificativa_data_diferente: oldPlan?.justificativa_data_diferente || null,
+                ativo: true
+            });
+
+            // 3. Atualizar a OS antiga para 'cancelado' e vincular à nova OS
+            const oldUpdates: any = {
+                status: 'cancelado',
+                chave_vinculada_id: newChaveData.id,
+                chave_vinculada_codigo: newUniqueKey
+            };
+            if (isGestor && userUuid && (!order.gestor_responsavel && !order.chaveData?.gestor_responsavel)) {
+                oldUpdates.gestor_responsavel = userUuid;
+            }
+
+            const { error: oldUpdateError } = await supabase
+                .from('chaves')
+                .update(oldUpdates)
+                .eq('id', ticketId);
+
+            if (oldUpdateError) throw oldUpdateError;
+
+            // 4. Enviar mensagem via WhatsApp para o cliente
+            const clientPhone = normalizedItem?.clienteData?.whatsapp;
+            const serviceName = normalizedItem?.geral?.nome || 'Serviço';
+            if (clientPhone) {
+                const msgCliente = `Olá! Notificamos que o seu chamado #${targetCode} (${serviceName}) foi cancelado pelo gestor. Abrimos um novo chamado vinculado (#${newUniqueKey}) para dar continuidade ao serviço desde a etapa de planejamento. Em breve você receberá novos detalhes!`;
+                await sendWhatsappText(clientPhone, msgCliente);
+            }
+
+            await onUpdate();
+            setIsCancelModalOpen(false);
+            setCancelInputCode('');
+            onClose();
+            alert(`Serviço #${targetCode} cancelado e novo serviço vinculado #${newUniqueKey} aberto com sucesso!`);
+        } catch (error: any) {
+            alert(`Erro ao abrir serviço vinculado: ${error.message}`);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleGestorFinalize = async (actionType: 'concluido' | 'concluido_from_erro') => {
         if (actionType === 'concluido_from_erro' && (!formData.solucao_problema || formData.solucao_problema.trim().length < 5)) {
             alert("É obrigatório preencher a solução do problema antes de concluir.");
@@ -448,10 +910,15 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
         setSaving(true);
         try {
-            const ticketId = order.id || order.chaveData?.id;
+            const ticketId = order.chaveData?.id || order.chave || order.id;
             const updates: any = { status: 'concluido' };
             if (actionType === 'concluido_from_erro') {
                 updates.solucao_problema = formData.solucao_problema.trim();
+            }
+
+            const currentGestor = order.gestor_responsavel || order.chaveData?.gestor_responsavel;
+            if (isGestor && userUuid && !currentGestor) {
+                updates.gestor_responsavel = userUuid;
             }
 
             await supabase.from('chaves').update(updates).eq('id', ticketId);
@@ -495,7 +962,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const handleSave = async () => {
         setSaving(true);
         try {
-            const ticketId = order.id || order.chaveData?.id;
+            const ticketId = order.chaveData?.id || order.chave || order.id;
 
             if (formData.planejamentoVisita && formData.planejamentoData) {
                 const v = new Date(formData.planejamentoVisita);
@@ -528,6 +995,13 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             }
 
             const updatesChave: any = { status: finalStatus };
+            if (formData.atividade) {
+                updatesChave.atividade = typeof formData.atividade === 'string' ? parseInt(formData.atividade) : formData.atividade;
+            }
+            if (formData.cidade) {
+                updatesChave.cidade = typeof formData.cidade === 'string' ? parseInt(formData.cidade) : formData.cidade;
+            }
+
             if (isProfessional) {
                 updatesChave.fotoantes = formData.fotoantes;
                 updatesChave.fotodepois = formData.fotodepois;
@@ -540,7 +1014,28 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 updatesChave.profissional = formData.profissionalUuid || null;
             }
 
+            const currentGestor = order.gestor_responsavel || order.chaveData?.gestor_responsavel;
+            if (isGestor && userUuid && !currentGestor) {
+                updatesChave.gestor_responsavel = userUuid;
+            }
+
             await supabase.from('chaves').update(updatesChave).eq('id', ticketId);
+
+            // Atualiza endereço do cliente se for gestor/planejista
+            const clientUuid = normalizedItem.cliente || order.cliente || normalizedItem.clienteData?.uuid;
+            if (clientUuid && (isGestor || isPlanejista)) {
+                const clientUpdates: any = {
+                    rua: formData.clienteRua,
+                    numero: formData.clienteNumero,
+                    bairro: formData.clienteBairro,
+                    complemento: formData.clienteComplemento,
+                    cep: formData.clienteCep
+                };
+                if (formData.cidade) {
+                    clientUpdates.cidade = typeof formData.cidade === 'string' ? parseInt(formData.cidade) : formData.cidade;
+                }
+                await supabase.from('users').update(clientUpdates).eq('uuid', clientUuid);
+            }
 
             if (showBudgetForm && (isGestor || isOrcamentista) && !isBudgetReadOnly) {
                 const b: any = {
@@ -620,12 +1115,36 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     await sendWhatsappText(prof.whatsapp, msgProf);
                 }
             }
-
             await onUpdate();
             onClose();
             const statusMsg = finalStatus !== formData.status ? ` e status atualizado para ${finalStatus.replace('_', ' ')}` : '';
             alert(`Salvo com sucesso${statusMsg}!`);
-        } catch (error: any) { alert(error.message); } finally { setSaving(false); }
+        } catch (error: any) { alert(error.message);        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleStatusChange = async (newStatus: string) => {
+        // Only managers (gestor) can change status freely like this based on the UI
+        if (!isGestor && !isOrcamentista && !isPlanejista) return;
+        
+        setSaving(true);
+        try {
+            const ticketId = order.chaveData?.id || order.chave || order.id;
+            const updates: any = { status: newStatus };
+
+            const currentGestor = order.gestor_responsavel || order.chaveData?.gestor_responsavel;
+            if (isGestor && userUuid && !currentGestor) {
+                updates.gestor_responsavel = userUuid;
+            }
+
+            await supabase.from('chaves').update(updates).eq('id', ticketId);
+            await onUpdate();
+        } catch (error: any) {
+            console.error('Erro ao atualizar status automaticamente:', error);
+        } finally {
+            setSaving(false);
+        }
     };
 
     if (!isOpen || !order) return null;
@@ -652,10 +1171,18 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 isOrcamentista || (isGestor && formData.status !== 'pendente') ? 'Orçamento - ' : ''}
                             {normalizedItem.geral?.nome}
                         </h3>
-                        <div className="flex items-center mt-1">
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <span className="bg-gray-100 text-gray-900 px-2 py-1 rounded-md text-[10px] font-black font-mono flex items-center border border-gray-200">
                                 <Hash size={10} className="mr-1 opacity-50" /> {normalizedItem.chaveunica}
                             </span>
+                            {normalizedItem.chave_vinculada_codigo && (
+                                <span
+                                    className="bg-blue-50 text-blue-600 px-2 py-1 rounded-md text-[10px] font-black font-mono flex items-center border border-blue-200"
+                                    title="Serviço vinculado"
+                                >
+                                    <Link2 size={10} className="mr-1 text-blue-600" /> #{normalizedItem.chave_vinculada_codigo}
+                                </span>
+                            )}
                         </div>
                     </div>
                     <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
@@ -682,6 +1209,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 isProfessional={isProfessional}
                                 editingItem={normalizedItem}
                                 setShowBudgetForm={setShowBudgetForm}
+                                onStatusChange={handleStatusChange}
                             />
 
                             {(isOrcamentista || (isGestor && formData.status !== 'pendente')) && (
@@ -701,8 +1229,13 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 formData={formData}
                                 setFormData={setFormData}
                                 availableProfessionals={availableProfessionals}
+                                allServices={allServices}
+                                allCities={allCities}
+                                onAtividadeCidadeChange={handleAtividadeCidadeChange}
+                                onCepLookup={(cep) => fetchCepData(cep, formData.atividade)}
                                 isGestor={isGestor}
                                 isPlanejista={isPlanejista}
+                                hasLinkedService={!!normalizedItem.chave_vinculada_codigo}
                             />
 
                             <BudgetSection
@@ -796,13 +1329,22 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                             {saving ? <Loader2 className="animate-spin" size={18} /> : <><Play size={18} /><span>Iniciar Execução</span></>}
                         </button>
                     ) : isProfessional && formData.status === 'executando' ? (
-                        <button
-                            onClick={handleFinishTask}
-                            disabled={saving || formData.fotoantes.length === 0 || formData.fotodepois.length === 0 || !formData.agendaObs || formData.agendaObs.trim().length < 5}
-                            className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
-                        >
-                            {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Finalizar Tarefa</span></>}
-                        </button>
+                        <>
+                            <button
+                                onClick={() => setIsProblemModalOpen(true)}
+                                disabled={saving}
+                                className="flex-1 bg-red-50 text-red-600 border border-red-100 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <span>Relatar Problema</span>}
+                            </button>
+                            <button
+                                onClick={handleFinishTask}
+                                disabled={saving || formData.fotoantes.length === 0 || formData.fotodepois.length === 0 || !formData.agendaObs || formData.agendaObs.trim().length < 5}
+                                className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Finalizar Tarefa</span></>}
+                            </button>
+                        </>
                     ) : isGestor && formData.status === 'aguardando_gestor' ? (
                         <>
                             <button
@@ -821,13 +1363,22 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                             </button>
                         </>
                     ) : isGestor && formData.status === 'erro' ? (
-                        <button
-                            onClick={() => handleGestorFinalize('concluido_from_erro')}
-                            disabled={saving || !formData.solucao_problema || formData.solucao_problema.trim().length < 5}
-                            className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
-                        >
-                            {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Concluir Serviço</span></>}
-                        </button>
+                        <>
+                            <button
+                                onClick={() => setIsCancelModalOpen(true)}
+                                disabled={saving}
+                                className="flex-1 bg-red-50 text-red-600 border border-red-100 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <span>Cancelar Serviço</span>}
+                            </button>
+                            <button
+                                onClick={() => handleGestorFinalize('concluido_from_erro')}
+                                disabled={saving || !formData.solucao_problema || formData.solucao_problema.trim().length < 5}
+                                className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Concluir Serviço</span></>}
+                            </button>
+                        </>
                     ) : formData.status === 'concluido' ? (
                         <button disabled className="flex-[2] bg-gray-200 text-gray-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed">
                             <CheckCircle2 size={18} /><span>Concluído</span>
@@ -851,6 +1402,128 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     )}
                 </div>
             </div>
+
+            {isProblemModalOpen && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl flex flex-col p-6 space-y-4">
+                        <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                            <h3 className="font-black text-gray-900 text-lg">Relatar Problema</h3>
+                            <button onClick={() => setIsProblemModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100"><X size={20} /></button>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Foto do Problema (Opcional)</label>
+                                {problemPhotoUrl ? (
+                                    <div className="relative aspect-video rounded-xl overflow-hidden border border-gray-200">
+                                        <img src={problemPhotoUrl} alt="Problema" className="w-full h-full object-cover" />
+                                        <button onClick={() => setProblemPhotoUrl(null)} className="absolute top-2 right-2 bg-red-500 text-white p-1.5 rounded-full shadow-lg">
+                                            <X size={12} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <label className="aspect-video bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-all">
+                                        {problemUploading ? (
+                                            <Loader2 className="animate-spin text-ios-blue" size={24} />
+                                        ) : (
+                                            <>
+                                                <Camera size={24} className="text-gray-300 mb-1" />
+                                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-tight">Adicionar Foto</span>
+                                            </>
+                                        )}
+                                        <input type="file" className="hidden" accept="image/*" onChange={handleFileUploadProblem} disabled={problemUploading} />
+                                    </label>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Descrição do Problema (Obrigatório)</label>
+                                <textarea
+                                    value={problemDesc}
+                                    onChange={(e) => setProblemDesc(e.target.value)}
+                                    placeholder="Descreva o problema encontrado..."
+                                    className="w-full bg-white border border-gray-200 rounded-xl p-3 text-sm font-medium text-gray-900 outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 min-h-[100px] resize-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                            <button onClick={() => setIsProblemModalOpen(false)} className="flex-1 bg-gray-100 text-gray-600 py-3 rounded-xl font-black text-xs uppercase">Cancelar</button>
+                            <button
+                                onClick={handleProfessionalRelatarProblema}
+                                disabled={saving || !problemDesc || problemDesc.trim().length < 5 || problemUploading}
+                                className="flex-[2] bg-red-600 text-white py-3 rounded-xl font-black text-xs uppercase shadow-lg shadow-red-200 flex justify-center items-center gap-2 disabled:opacity-50"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={16} /> : 'Enviar Problema'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isCancelModalOpen && (
+                <div className="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl flex flex-col p-6 space-y-5 border border-gray-100">
+                        <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                            <h3 className="font-black text-gray-900 text-lg">Cancelar Serviço</h3>
+                            <button onClick={() => { setIsCancelModalOpen(false); setCancelInputCode(''); }} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100"><X size={20} /></button>
+                        </div>
+
+                        <div className="bg-amber-50 border border-amber-200/60 p-4 rounded-2xl space-y-2">
+                            <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest leading-none">Código Único do Serviço</p>
+                            <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-amber-200">
+                                <span className="font-mono font-black text-lg text-gray-900 tracking-wider">#{normalizedItem?.chaveunica || order.chaveunica}</span>
+                                <button
+                                    onClick={handleCopyCode}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs font-black uppercase tracking-wider hover:bg-amber-200 transition-all active:scale-95"
+                                >
+                                    {codeCopied ? <><Check size={14} className="text-green-600" /> Copiado!</> : <><Copy size={14} /> Copiar</>}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">
+                                Digite o código único para confirmar
+                            </label>
+                            <input
+                                type="text"
+                                value={cancelInputCode}
+                                onChange={(e) => setCancelInputCode(e.target.value)}
+                                placeholder={`Digite ${normalizedItem?.chaveunica || order.chaveunica}...`}
+                                className="w-full bg-white border border-gray-200 rounded-xl p-3.5 text-sm font-mono font-bold text-gray-900 outline-none focus:border-red-400 focus:ring-1 focus:ring-red-400 placeholder-gray-300"
+                            />
+                        </div>
+
+                        <div className="pt-2 flex flex-col gap-2.5">
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={handleGestorCancelService}
+                                    disabled={saving || cancelInputCode.trim().toUpperCase() !== (normalizedItem?.chaveunica || order.chaveunica || '').trim().toUpperCase()}
+                                    className="flex-1 bg-red-600 text-white py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
+                                >
+                                    {saving ? <Loader2 className="animate-spin" size={16} /> : <span>Cancelar Serviço</span>}
+                                </button>
+
+                                <button
+                                    onClick={handleGestorOpenLinkedService}
+                                    disabled={saving || cancelInputCode.trim().toUpperCase() !== (normalizedItem?.chaveunica || order.chaveunica || '').trim().toUpperCase()}
+                                    className="flex-1 bg-ios-blue text-white py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
+                                >
+                                    {saving ? <Loader2 className="animate-spin" size={16} /> : <span>Abrir Serviço Vinculado</span>}
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => { setIsCancelModalOpen(false); setCancelInputCode(''); }}
+                                className="w-full bg-gray-100 text-gray-600 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all active:scale-95"
+                            >
+                                Voltar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

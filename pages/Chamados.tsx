@@ -8,7 +8,7 @@ import {
     AlertTriangle, ChevronRight, Clock, Briefcase, MapPin,
     Wallet, CreditCard, LayoutGrid, Box, Trash2, Hash, Percent, Bell, Smartphone, Banknote, Camera, ThumbsUp, Star,
     AlertCircle, Play, Image as ImageIcon, ClipboardList, ThumbsDown, PlayCircle, Sparkles, MessageSquare, Tag,
-    History, CheckCircle2, Ban, Activity
+    History, CheckCircle2, Ban, Activity, Link2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import StatusSection from '@/components/modals/StatusSection';
@@ -29,7 +29,7 @@ interface NotificationItem {
     read: boolean;
 }
 
-type TabType = 'novos' | 'orcamento' | 'execucao' | 'concluidos' | 'recusados' | 'historico';
+type TabType = 'novos' | 'orcamento' | 'execucao' | 'concluidos' | 'erro' | 'vinculados' | 'recusados' | 'historico';
 type ModalTab = 'status' | 'consumidor' | 'profissional';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -89,10 +89,12 @@ const Chamados: React.FC = () => {
 
     const allTabs = [
         { id: 'novos', label: 'Novos', icon: AlertCircle, color: 'text-yellow-500' },
-        { id: 'orcamento', label: 'Em Orçamento', icon: DollarSign, color: 'text-blue-500' },
-        { id: 'execucao', label: 'Em Execução', icon: Activity, color: 'text-purple-500' },
+        { id: 'orcamento', label: 'Orçamento', icon: DollarSign, color: 'text-blue-500' },
+        { id: 'execucao', label: 'Execução', icon: Activity, color: 'text-purple-500' },
         { id: 'concluidos', label: 'Concluídos', icon: CheckCircle2, color: 'text-green-500' },
-        { id: 'recusados', label: 'Recusados', icon: Ban, color: 'text-red-500' },
+        { id: 'erro', label: 'Com Erro', icon: AlertTriangle, color: 'text-red-600' },
+        { id: 'vinculados', label: 'Vinculados', icon: Link2, color: 'text-ios-blue' },
+        { id: 'recusados', label: 'Recusados', icon: Ban, color: 'text-red-400' },
         { id: 'historico', label: 'Histórico', icon: History, color: 'text-gray-500' }
     ];
 
@@ -144,8 +146,11 @@ const Chamados: React.FC = () => {
                 .filter(tab => ['novos', 'execucao', 'concluidos', 'historico'].includes(tab.id))
                 .map(tab => tab.id === 'novos' ? { ...tab, label: 'Pendentes' } : tab);
         }
+        if (!isGestor) {
+            return allTabs.filter(tab => !['erro', 'vinculados'].includes(tab.id));
+        }
         return allTabs;
-    }, [isProfessional]);
+    }, [isProfessional, isGestor]);
 
     useEffect(() => {
         fetchUserRole();
@@ -223,7 +228,7 @@ const Chamados: React.FC = () => {
             const chaveIds = chavesData.map(c => c.id);
             const userUuids = new Set<string>();
             const serviceIds = new Set<number>();
-            chavesData.forEach(c => { if (c.cliente) userUuids.add(c.cliente); if (c.profissional) userUuids.add(c.profissional); if (c.atividade) serviceIds.add(c.atividade); });
+            chavesData.forEach(c => { if (c.cliente) userUuids.add(c.cliente); if (c.profissional) userUuids.add(c.profissional); if (c.gestor_responsavel) userUuids.add(c.gestor_responsavel); if (c.atividade) serviceIds.add(c.atividade); });
             const [usersRes, servicesRes, orcRes, planRes, avalRes, agendaRes] = await Promise.all([
                 userUuids.size > 0 ? supabase.from('users').select('*').in('uuid', Array.from(userUuids)) : { data: [] },
                 serviceIds.size > 0 ? supabase.from('geral').select('*').in('id', Array.from(serviceIds)) : { data: [] },
@@ -257,6 +262,7 @@ const Chamados: React.FC = () => {
                 ...c,
                 clienteData: usersMap[c.cliente],
                 profissionalData: usersMap[c.profissional],
+                gestorData: c.gestor_responsavel ? usersMap[c.gestor_responsavel] : undefined,
                 geral: servicesMap[c.atividade],
                 orcamentos: orcMap[c.id] || [],
                 planejamento: planMap[c.id] || [],
@@ -295,7 +301,13 @@ const Chamados: React.FC = () => {
                 filtered = filtered.filter(t => t.status === 'aprovado' || t.status === 'executando');
                 break;
             case 'concluidos':
-                filtered = filtered.filter(t => ['concluido', 'aguardando_gestor', 'erro'].includes(t.status));
+                filtered = filtered.filter(t => ['concluido', 'aguardando_gestor'].includes(t.status));
+                break;
+            case 'erro':
+                filtered = filtered.filter(t => t.status === 'erro');
+                break;
+            case 'vinculados':
+                filtered = filtered.filter(t => !!(t.chave_vinculada_codigo || t.chave_vinculada_id));
                 break;
             case 'recusados':
                 filtered = filtered.filter(t => t.status === 'recusado' || t.status === 'reprovado');
@@ -317,7 +329,7 @@ const Chamados: React.FC = () => {
     };
 
     const filterCounts = useMemo(() => {
-        const counts = { novos: 0, orcamento: 0, execucao: 0, concluidos: 0, recusados: 0, historico: 0 };
+        const counts = { novos: 0, orcamento: 0, execucao: 0, concluidos: 0, erro: 0, vinculados: 0, recusados: 0, historico: 0 };
         tickets.forEach(t => {
             const roleFiltered = isProfessional ? t.profissional === currentUserId : true;
             if (!roleFiltered) return;
@@ -326,7 +338,9 @@ const Chamados: React.FC = () => {
             if (isProfessional ? t.status === 'aguardando_profissional' : t.status === 'pendente') counts.novos++;
             if (t.status === 'analise' || t.status === 'aguardando_profissional' || t.status === 'aguardando_aprovacao') counts.orcamento++;
             if (t.status === 'aprovado' || t.status === 'executando') counts.execucao++;
-            if (['concluido', 'aguardando_gestor', 'erro'].includes(t.status)) counts.concluidos++;
+            if (['concluido', 'aguardando_gestor'].includes(t.status)) counts.concluidos++;
+            if (t.status === 'erro') counts.erro++;
+            if (t.chave_vinculada_codigo || t.chave_vinculada_id) counts.vinculados++;
             if (t.status === 'recusado' || t.status === 'reprovado') counts.recusados++;
         });
         return counts;
@@ -373,6 +387,72 @@ const Chamados: React.FC = () => {
             agendaObs: ticket.agenda?.[0]?.observacoes || ''
         });
         setIsModalOpen(true);
+    };
+
+    const handleOpenLinkedTicket = async (linkedId?: number | null, linkedCode?: string | null) => {
+        if (!linkedId && !linkedCode) return;
+
+        const found = tickets.find(tk =>
+            (linkedId && tk.id === linkedId) ||
+            (linkedCode && tk.chaveunica?.trim().toUpperCase() === linkedCode.trim().toUpperCase())
+        );
+
+        if (found) {
+            handleEdit(found);
+            return;
+        }
+
+        setLoading(true);
+        try {
+            let query = supabase.from('chaves').select('*');
+            if (linkedId) {
+                query = query.eq('id', linkedId);
+            } else if (linkedCode) {
+                query = query.eq('chaveunica', linkedCode);
+            }
+
+            const { data: chaveRes } = await query.maybeSingle();
+            if (!chaveRes) {
+                alert("Serviço vinculado não encontrado.");
+                return;
+            }
+
+            const userUuids = new Set<string>();
+            if (chaveRes.cliente) userUuids.add(chaveRes.cliente);
+            if (chaveRes.profissional) userUuids.add(chaveRes.profissional);
+            if (chaveRes.gestor_responsavel) userUuids.add(chaveRes.gestor_responsavel);
+
+            const [usersRes, serviceRes, orcRes, planRes, avalRes, agendaRes] = await Promise.all([
+                userUuids.size > 0 ? supabase.from('users').select('*').in('uuid', Array.from(userUuids)) : { data: [] },
+                chaveRes.atividade ? supabase.from('geral').select('*').eq('id', chaveRes.atividade).maybeSingle() : { data: null },
+                supabase.from('orcamentos').select('*').eq('chave', chaveRes.id).order('created_at', { ascending: false }),
+                supabase.from('planejamento').select('*').eq('chave', chaveRes.id).order('created_at', { ascending: false }),
+                supabase.from('avaliacoes').select('*').eq('chave', chaveRes.id).maybeSingle(),
+                supabase.from('agenda').select('*').eq('chave', chaveRes.id)
+            ]);
+
+            const usersMap: Record<string, User> = {};
+            usersRes.data?.forEach((u: any) => usersMap[u.uuid] = u);
+
+            const enrichedTicket: ChamadoExtended = {
+                ...chaveRes,
+                clienteData: usersMap[chaveRes.cliente],
+                profissionalData: usersMap[chaveRes.profissional],
+                gestorData: chaveRes.gestor_responsavel ? usersMap[chaveRes.gestor_responsavel] : undefined,
+                geral: serviceRes.data || undefined,
+                orcamentos: orcRes.data || [],
+                planejamento: planRes.data || [],
+                avaliacao: avalRes.data || undefined,
+                agenda: agendaRes.data || []
+            };
+
+            setActiveTab('historico');
+            handleEdit(enrichedTicket);
+        } catch (err: any) {
+            alert(`Erro ao buscar serviço vinculado: ${err.message}`);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const toLocalISOString = (s: string) => {
@@ -423,16 +503,16 @@ const Chamados: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="flex space-x-2 overflow-x-auto no-scrollbar pb-2">
+                <div className="flex items-center justify-between gap-1 md:gap-1.5 w-full overflow-x-auto no-scrollbar pb-2">
                     {visibleTabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as TabType)}
-                            className={`flex items-center px-5 py-2.5 rounded-full text-xs font-black border transition-all whitespace-nowrap gap-2 ${activeTab === tab.id ? 'bg-black text-white border-black shadow-lg scale-105' : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50'}`}
+                            className={`flex-1 min-w-0 flex items-center justify-center px-1.5 md:px-3 py-2 rounded-full text-[11px] font-black border transition-all whitespace-nowrap gap-1 ${activeTab === tab.id ? 'bg-black text-white border-black shadow-md' : 'bg-white text-gray-600 border-gray-100 hover:bg-gray-50'}`}
                         >
-                            <tab.icon size={14} className={activeTab === tab.id ? 'text-white' : tab.color} />
-                            <span>{tab.label}</span>
-                            <span className={`px-1.5 py-0.5 rounded-md text-[9px] ${activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                            <tab.icon size={12} className={`shrink-0 ${activeTab === tab.id ? 'text-white' : tab.color}`} />
+                            <span className="truncate">{tab.label}</span>
+                            <span className={`px-1 py-0.2 rounded text-[8px] font-mono shrink-0 ${activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'}`}>
                                 {filterCounts[tab.id as keyof typeof filterCounts]}
                             </span>
                         </button>
@@ -467,7 +547,25 @@ const Chamados: React.FC = () => {
                                 </div>
                                 <div className="min-w-0">
                                     <h3 className="font-black text-gray-900 text-lg leading-none truncate group-hover:text-ios-blue transition-colors">{t.geral?.nome}</h3>
-                                    <div className="inline-flex items-center mt-2 bg-gray-50 px-2 py-0.5 rounded border border-gray-100"><Hash size={10} className="text-gray-400 mr-1" /><span className="text-[10px] font-black text-gray-500 font-mono tracking-tighter">{t.chaveunica}</span></div>
+                                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                        <div className="inline-flex items-center bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
+                                            <Hash size={10} className="text-gray-400 mr-1" />
+                                            <span className="text-[10px] font-black text-gray-500 font-mono tracking-tighter">{t.chaveunica}</span>
+                                        </div>
+                                        {t.chave_vinculada_codigo && (
+                                            <div
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleOpenLinkedTicket(t.chave_vinculada_id, t.chave_vinculada_codigo);
+                                                }}
+                                                className="inline-flex items-center bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 px-2 py-0.5 rounded transition-colors cursor-pointer"
+                                                title="Clique para abrir o serviço vinculado"
+                                            >
+                                                <Link2 size={10} className="mr-1 text-blue-600" />
+                                                <span className="text-[10px] font-black font-mono tracking-tighter">#{t.chave_vinculada_codigo}</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -481,12 +579,18 @@ const Chamados: React.FC = () => {
                                 </div>
                             </div>
 
-                            {activeTab === 'historico' && (
-                                <div className="mb-4 flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${getStatusColor(t.status).split(' ')[1].replace('text-', 'bg-')}`}></div>
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Status: {t.status.replace('_', ' ')}</span>
+                            <div className="mb-4 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${getStatusColor(t.status).split(' ')[1]?.replace('text-', 'bg-') || 'bg-gray-400'}`}></div>
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">STATUS: {t.status.replace('_', ' ')}</span>
                                 </div>
-                            )}
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${t.gestorData?.nome ? 'bg-purple-600' : 'bg-gray-300'}`}></div>
+                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                        GESTOR: {t.gestorData?.nome || 'Nenhum'}
+                                    </span>
+                                </div>
+                            </div>
 
                             <div className="flex justify-between items-end pt-4 border-t border-gray-50">
                                 <div className="space-y-1.5">

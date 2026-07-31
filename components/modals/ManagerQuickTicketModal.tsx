@@ -681,7 +681,8 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
           fotoantes: [],
           fotodepois: [],
           whatsapp_chat_id: selectedChat.id,
-          whatsapp_lead_cpf: cleanCpf
+          whatsapp_lead_cpf: cleanCpf,
+          gestor_responsavel: gestorUuid || null
         })
         .select()
         .single();
