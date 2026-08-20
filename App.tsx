@@ -28,6 +28,7 @@ import AdminRelatorios from './pages/admin/AdminRelatorios';
 import AdminImportOrcamentos from './pages/admin/AdminImportOrcamentos';
 import AdminLinks from './pages/admin/AdminLinks';
 import AdminFluxoServico from './pages/admin/AdminFluxoServico';
+import AdminAtividades from './pages/admin/AdminAtividades';
 import { Loader2 } from 'lucide-react';
 import { initTrackingCapture } from './utils/tracking';
 
@@ -109,6 +110,7 @@ const App: React.FC = () => {
                   <Route path="dashboard" element={<AdminDashboard />} />
                   <Route path="fluxo" element={<AdminFluxoServico />} />
                   <Route path="chamados" element={<AdminChamados />} />
+                  <Route path="atividades" element={<AdminAtividades />} />
                   <Route path="relatorios" element={<AdminRelatorios />} />
                   <Route path="links" element={<AdminLinks />} />
                   <Route path="importar-orcamentos" element={<AdminImportOrcamentos />} />

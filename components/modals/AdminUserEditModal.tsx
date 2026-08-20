@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { User, City, Estado } from '../../types';
-import { X, Save, Loader2, User as UserIcon, Mail, Phone, MapPin, Shield, CheckCircle, AlertCircle, Search, FileText } from 'lucide-react';
+import { User, City, Estado, Geral } from '../../types';
+import { X, Save, Loader2, User as UserIcon, Mail, Phone, MapPin, Shield, CheckCircle, AlertCircle, Search, FileText, Briefcase, Check } from 'lucide-react';
 import { SearchableSelect } from '../SearchableSelect';
 import { formatPhone, formatCpf, formatCep } from '../../utils/masks';
 import { getOrProvisionCity } from '../../utils/cityHelper';
@@ -19,7 +19,7 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
   onClose,
   onUserUpdated,
 }) => {
-  const [activeTab, setActiveTab] = useState<'pessoal' | 'endereco' | 'perfil'>('pessoal');
+  const [activeTab, setActiveTab] = useState<'pessoal' | 'endereco' | 'atividades' | 'perfil'>('pessoal');
   const [loading, setLoading] = useState(false);
   const [loadingCep, setLoadingCep] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
@@ -28,6 +28,9 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
   const [states, setStates] = useState<Estado[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [loadingCities, setLoadingCities] = useState(false);
+  const [availableServices, setAvailableServices] = useState<Geral[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
+  const [serviceSearchTerm, setServiceSearchTerm] = useState('');
 
   // Form state
   const [nome, setNome] = useState('');
@@ -39,6 +42,7 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
   const [ativo, setAtivo] = useState(true);
   const [fotoperfil, setFotoperfil] = useState('');
   const [biografia, setBiografia] = useState('');
+  const [selectedActivities, setSelectedActivities] = useState<number[]>([]);
 
   // Address fields
   const [cep, setCep] = useState('');
@@ -49,7 +53,7 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
   const [selectedStateId, setSelectedStateId] = useState<number | ''>('');
   const [selectedCityId, setSelectedCityId] = useState<number | ''>('');
 
-  // Fetch states list on load
+  // Fetch states and services list on mount
   useEffect(() => {
     const fetchStates = async () => {
       try {
@@ -64,7 +68,26 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
         console.error('Erro ao buscar estados:', err);
       }
     };
+
+    const fetchServices = async () => {
+      try {
+        setLoadingServices(true);
+        const { data, error } = await supabase
+          .from('geral')
+          .select('*')
+          .order('nome', { ascending: true });
+        if (!error && data) {
+          setAvailableServices(data);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar serviços/atividades:', err);
+      } finally {
+        setLoadingServices(false);
+      }
+    };
+
     fetchStates();
+    fetchServices();
   }, []);
 
   // Fetch cities when state changes
@@ -105,6 +128,7 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
       setAtivo(user.ativo !== undefined ? user.ativo : true);
       setFotoperfil(user.fotoperfil || '');
       setBiografia(user.biografia || '');
+      setSelectedActivities(Array.isArray(user.atividade) ? user.atividade : []);
 
       setCep(formatCep(user.cep));
       setRua(user.rua || '');
@@ -115,11 +139,38 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
       setSelectedCityId(user.cidade || '');
 
       setMessage(null);
+      setServiceSearchTerm('');
       setActiveTab('pessoal');
     }
   }, [user, isOpen]);
 
   if (!isOpen || !user) return null;
+
+  const isProfessional = tipo.toLowerCase() === 'profissional' || tipo.toLowerCase() === 'prestador';
+
+  // Toggle activity selection
+  const toggleActivity = (activityId: number) => {
+    setSelectedActivities((prev) =>
+      prev.includes(activityId)
+        ? prev.filter((id) => id !== activityId)
+        : [...prev, activityId]
+    );
+  };
+
+  const handleSelectAllFiltered = () => {
+    const filteredIds = filteredServices.map((s) => s.id);
+    const newSet = new Set([...selectedActivities, ...filteredIds]);
+    setSelectedActivities(Array.from(newSet));
+  };
+
+  const handleClearSelection = () => {
+    setSelectedActivities([]);
+  };
+
+  const filteredServices = availableServices.filter((s) => {
+    if (!serviceSearchTerm.trim()) return true;
+    return s.nome.toLowerCase().includes(serviceSearchTerm.toLowerCase());
+  });
 
   // Auto CEP Lookup via ViaCEP
   const handleFetchCep = async (cleanCep: string) => {
@@ -169,16 +220,20 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
     setMessage(null);
 
     try {
+      const cleanPhone = whatsapp.replace(/\D/g, '');
+      const cleanCpf = cpf.replace(/\D/g, '');
+
       const updateData: Partial<User> = {
         nome: nome.trim(),
         email: email.trim(),
-        whatsapp: whatsapp.trim(),
-        cpf: cpf.trim(),
+        whatsapp: cleanPhone || undefined,
+        cpf: cleanCpf || undefined,
         sexo: sexo,
         tipo: tipo,
         ativo: ativo,
         fotoperfil: fotoperfil.trim(),
         biografia: biografia.trim(),
+        atividade: selectedActivities,
         cep: cep.trim(),
         rua: rua.trim(),
         numero: numero.trim(),
@@ -263,11 +318,11 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
         </div>
 
         {/* Tab Bar */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-3 space-x-6 text-xs font-bold">
+        <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-3 space-x-4 text-xs font-bold overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('pessoal')}
-            className={`pb-3 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+            className={`pb-3 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'pessoal'
                 ? 'border-blue-600 text-blue-600 font-extrabold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -276,10 +331,11 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
             <UserIcon size={15} />
             Dados Pessoais & Conta
           </button>
+          
           <button
             type="button"
             onClick={() => setActiveTab('endereco')}
-            className={`pb-3 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+            className={`pb-3 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'endereco'
                 ? 'border-blue-600 text-blue-600 font-extrabold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -288,10 +344,31 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
             <MapPin size={15} />
             Endereço
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('atividades')}
+            className={`pb-3 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
+              activeTab === 'atividades'
+                ? 'border-blue-600 text-blue-600 font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Briefcase size={15} />
+            <span>Atividades & Serviços</span>
+            {selectedActivities.length > 0 && (
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
+                activeTab === 'atividades' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700'
+              }`}>
+                {selectedActivities.length}
+              </span>
+            )}
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('perfil')}
-            className={`pb-3 border-b-2 flex items-center gap-2 transition-all cursor-pointer ${
+            className={`pb-3 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
               activeTab === 'perfil'
                 ? 'border-blue-600 text-blue-600 font-extrabold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -517,7 +594,106 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
             </div>
           )}
 
-          {/* Tab 3: Perfil & Biografia */}
+          {/* Tab 3: Atividades & Serviços */}
+          {activeTab === 'atividades' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Briefcase size={16} className="text-blue-600" />
+                    Atividades e Serviços Habilitados
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Selecione as especialidades que este profissional está credenciado a atender na plataforma.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-extrabold transition-all ${
+                    selectedActivities.length > 0
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                  }`}>
+                    {selectedActivities.length} {selectedActivities.length === 1 ? 'atividade selecionada' : 'atividades selecionadas'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por nome de atividade (ex: Eletricista, Pintor, Encanamento)..."
+                    value={serviceSearchTerm}
+                    onChange={(e) => setServiceSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                  />
+                </div>
+
+                {/* Quick actions */}
+                <div className="flex items-center justify-between text-xs px-1">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllFiltered}
+                    className="text-blue-600 font-bold hover:underline cursor-pointer"
+                  >
+                    Selecionar todos visíveis ({filteredServices.length})
+                  </button>
+                  {selectedActivities.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearSelection}
+                      className="text-rose-600 font-bold hover:underline cursor-pointer"
+                    >
+                      Limpar seleção
+                    </button>
+                  )}
+                </div>
+
+                {/* Activities Grid */}
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 max-h-72 overflow-y-auto">
+                  {loadingServices ? (
+                    <div className="py-8 flex items-center justify-center gap-2 text-xs text-slate-400">
+                      <Loader2 size={16} className="animate-spin text-blue-600" />
+                      Carregando catálogo de atividades...
+                    </div>
+                  ) : filteredServices.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-slate-400">
+                      Nenhuma atividade encontrada para "{serviceSearchTerm}".
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {filteredServices.map((service) => {
+                        const isSelected = selectedActivities.includes(service.id);
+                        return (
+                          <button
+                            key={service.id}
+                            type="button"
+                            onClick={() => toggleActivity(service.id)}
+                            className={`flex items-center justify-between p-3 rounded-xl border text-xs font-medium transition-all text-left group cursor-pointer ${
+                              isSelected
+                                ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span className="truncate pr-2">{service.nome}</span>
+                            <div className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 transition-all ${
+                              isSelected ? 'bg-blue-600 text-white' : 'border border-slate-300 group-hover:border-slate-400'
+                            }`}>
+                              {isSelected && <Check size={12} strokeWidth={3} />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tab 4: Perfil & Biografia */}
           {activeTab === 'perfil' && (
             <div className="space-y-4">
               <div>
@@ -592,3 +768,4 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
 };
 
 export default AdminUserEditModal;
+

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, ClipboardList, Users, Settings, LogOut, 
-  ChevronRight, Shield, Menu, X, ArrowLeft, Bell, Sparkles, MessageSquare, BarChart3, FileSpreadsheet, Link2, GitFork
+  ChevronRight, Shield, Menu, X, ArrowLeft, Bell, Sparkles, MessageSquare, BarChart3, FileSpreadsheet, Link2, GitFork, Layers
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -72,7 +72,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
 
       {/* Sidebar Desktop & Mobile Drawer */}
       <aside className={`
-        fixed md:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white flex flex-col justify-between p-5 transition-transform duration-300 transform
+        fixed md:static inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white flex flex-col justify-between p-5 transition-transform duration-300 transform shadow-xl md:shadow-none flex-shrink-0
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         <div className="space-y-6">
@@ -92,111 +92,124 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           </div>
 
           {/* Nav Items */}
-          <nav className="space-y-1.5 pt-2">
-            <p className="px-3 text-[10px] font-extrabold uppercase text-slate-500 tracking-wider mb-2">Visão Geral</p>
+          <nav className="space-y-1 pt-1">
+            <p className="px-3 text-[10px] font-extrabold uppercase text-slate-500 tracking-wider mb-2">Visão Geral & Operação</p>
 
             <button
               onClick={() => { navigate('/admin/dashboard'); setIsSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${isActive('/admin/dashboard')}`}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/dashboard')}`}
             >
-              <div className="flex items-center space-x-3">
-                <LayoutDashboard size={18} />
-                <span className="text-sm">Dashboard</span>
+              <div className="flex items-center space-x-3 truncate">
+                <LayoutDashboard size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Dashboard</span>
               </div>
-              <ChevronRight size={14} className="opacity-50" />
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
             </button>
 
             <button
               onClick={() => { navigate('/admin/fluxo'); setIsSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${isActive('/admin/fluxo')}`}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/fluxo')}`}
             >
-              <div className="flex items-center space-x-3">
-                <GitFork size={18} />
-                <span className="text-sm">Fluxo do Serviço</span>
+              <div className="flex items-center space-x-3 truncate">
+                <GitFork size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Fluxo do Serviço</span>
               </div>
-              <ChevronRight size={14} className="opacity-50" />
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
             </button>
 
             <button
               onClick={() => { navigate('/admin/chamados'); setIsSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${isActive('/admin/chamados')}`}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/chamados')}`}
             >
-              <div className="flex items-center space-x-3">
-                <ClipboardList size={18} />
-                <span className="text-sm">Gestão de Chamados</span>
+              <div className="flex items-center space-x-3 truncate">
+                <ClipboardList size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Gestão de Chamados</span>
               </div>
-              <ChevronRight size={14} className="opacity-50" />
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
             </button>
 
             <button
-              onClick={() => { navigate('/admin/relatorios'); setIsSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${isActive('/admin/relatorios')}`}
+              onClick={() => { navigate('/admin/atividades'); setIsSidebarOpen(false); }}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/atividades')}`}
             >
-              <div className="flex items-center space-x-3">
-                <BarChart3 size={18} />
-                <span className="text-sm">Relatórios & Desempenho</span>
+              <div className="flex items-center space-x-3 truncate">
+                <Layers size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Atividades & Serviços</span>
               </div>
-              <ChevronRight size={14} className="opacity-50" />
-            </button>
-
-            <button
-              onClick={() => { navigate('/admin/links'); setIsSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${isActive('/admin/links')}`}
-            >
-              <div className="flex items-center space-x-3">
-                <Link2 size={18} />
-                <span className="text-sm">Gerador de Links / UTMs</span>
-              </div>
-              <ChevronRight size={14} className="opacity-50" />
-            </button>
-
-            <button
-              onClick={() => { navigate('/admin/importar-orcamentos'); setIsSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${isActive('/admin/importar-orcamentos')}`}
-            >
-              <div className="flex items-center space-x-3">
-                <FileSpreadsheet size={18} />
-                <span className="text-sm">Importar Orçamentos</span>
-              </div>
-              <ChevronRight size={14} className="opacity-50" />
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
             </button>
 
             <button
               onClick={() => { navigate('/admin/users'); setIsSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${isActive('/admin/users')}`}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/users')}`}
             >
-              <div className="flex items-center space-x-3">
-                <Users size={18} />
-                <span className="text-sm">Usuários & Profissionais</span>
+              <div className="flex items-center space-x-3 truncate">
+                <Users size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Usuários & Profissionais</span>
               </div>
-              <ChevronRight size={14} className="opacity-50" />
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
+            </button>
+
+            <p className="px-3 text-[10px] font-extrabold uppercase text-slate-500 tracking-wider mb-2 pt-4">Inteligência & Marketing</p>
+
+            <button
+              onClick={() => { navigate('/admin/relatorios'); setIsSidebarOpen(false); }}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/relatorios')}`}
+            >
+              <div className="flex items-center space-x-3 truncate">
+                <BarChart3 size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Relatórios & Desempenho</span>
+              </div>
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
+            </button>
+
+            <button
+              onClick={() => { navigate('/admin/links'); setIsSidebarOpen(false); }}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/links')}`}
+            >
+              <div className="flex items-center space-x-3 truncate">
+                <Link2 size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Gerador de Links / UTMs</span>
+              </div>
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
+            </button>
+
+            <button
+              onClick={() => { navigate('/admin/importar-orcamentos'); setIsSidebarOpen(false); }}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/importar-orcamentos')}`}
+            >
+              <div className="flex items-center space-x-3 truncate">
+                <FileSpreadsheet size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Importar Orçamentos</span>
+              </div>
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
             </button>
 
             <button
               onClick={() => { navigate('/admin/whatsapp'); setIsSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${isActive('/admin/whatsapp')}`}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/whatsapp')}`}
             >
-              <div className="flex items-center space-x-3">
-                <MessageSquare size={18} />
-                <span className="text-sm">WhatsApp / Atendimento</span>
+              <div className="flex items-center space-x-3 truncate">
+                <MessageSquare size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">WhatsApp / Atendimento</span>
               </div>
-              <ChevronRight size={14} className="opacity-50" />
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
             </button>
 
-            <p className="px-3 text-[10px] font-extrabold uppercase text-slate-500 tracking-wider mb-2 mt-6">Navegação Geral</p>
+            <p className="px-3 text-[10px] font-extrabold uppercase text-slate-500 tracking-wider mb-2 pt-4">Navegação Geral</p>
 
             <button
               onClick={() => { navigate('/home'); setIsSidebarOpen(false); }}
-              className="w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-sm"
+              className="w-full h-11 flex items-center space-x-3 px-3.5 rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-all text-xs font-bold"
             >
-              <ArrowLeft size={18} />
-              <span>Voltar ao App Usuário</span>
+              <ArrowLeft size={18} className="flex-shrink-0" />
+              <span className="whitespace-nowrap">Voltar ao App Usuário</span>
             </button>
           </nav>
         </div>
 
         {/* Footer Actions */}
-        <div className="pt-6 border-t border-slate-800 space-y-3">
+        <div className="pt-5 border-t border-slate-800 space-y-2.5">
           <div className="flex items-center space-x-3 px-3 py-2 bg-slate-800/60 rounded-xl">
             <Shield size={18} className="text-blue-400 flex-shrink-0" />
             <div className="truncate">

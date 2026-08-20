@@ -142,12 +142,14 @@ export function calculatePricingEngine(
     0,
     Number(input.custo_km_unitario ?? config.custo_km_padrao) || 0
   );
-  const deslocamentoCalculado = distanciaKm * custoKmUnitario;
-  const totalDeslocamento = +(
-    input.override_custo_deslocamento !== undefined && input.override_custo_deslocamento > 0
-      ? input.override_custo_deslocamento
-      : deslocamentoCalculado
-  ).toFixed(2);
+  const deslocamentoCalculado = +(distanciaKm * custoKmUnitario).toFixed(2);
+  
+  let totalDeslocamento = deslocamentoCalculado;
+  if (distanciaKm > 0) {
+    totalDeslocamento = deslocamentoCalculado;
+  } else if (input.override_custo_deslocamento !== undefined && Number(input.override_custo_deslocamento) >= 0) {
+    totalDeslocamento = +(Number(input.override_custo_deslocamento) || 0).toFixed(2);
+  }
 
   const subtotalCustosDiretos = +(totalMateriais + totalMaoDeObra + totalDeslocamento).toFixed(2);
 

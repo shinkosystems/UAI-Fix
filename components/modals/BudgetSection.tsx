@@ -149,9 +149,46 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         }));
     };
 
+    // Handlers para Logística e Deslocamento
+    const handleDistanciaChange = (val: string) => {
+        const parsed = val === '' ? 0 : Math.max(0, parseFloat(val) || 0);
+        const custoKm = formData.orcamentoCustoKmUnitario !== undefined
+            ? (parseFloat(formData.orcamentoCustoKmUnitario) || 0)
+            : DEFAULT_PRICING_CONFIG.custo_km_padrao;
+        const totalCalculado = +(parsed * custoKm).toFixed(2);
+
+        setFormData((prev: any) => ({
+            ...prev,
+            orcamentoDistanciaKm: parsed,
+            orcamentoDeslocamento: totalCalculado
+        }));
+    };
+
+    const handleCustoKmChange = (val: string) => {
+        const parsed = val === '' ? 0 : Math.max(0, parseFloat(val) || 0);
+        const dist = parseFloat(formData.orcamentoDistanciaKm) || 0;
+        const totalCalculado = +(dist * parsed).toFixed(2);
+
+        setFormData((prev: any) => ({
+            ...prev,
+            orcamentoCustoKmUnitario: parsed,
+            orcamentoDeslocamento: totalCalculado
+        }));
+    };
+
+    const handleTotalDeslocamentoChange = (val: string) => {
+        const parsed = val === '' ? 0 : Math.max(0, parseFloat(val) || 0);
+        setFormData((prev: any) => ({
+            ...prev,
+            orcamentoDeslocamento: parsed
+        }));
+    };
+
     // Distância e Km
     const distanciaKm = parseFloat(formData.orcamentoDistanciaKm) || 0;
-    const custoKmUnitario = parseFloat(formData.orcamentoCustoKmUnitario) || DEFAULT_PRICING_CONFIG.custo_km_padrao;
+    const custoKmUnitario = formData.orcamentoCustoKmUnitario !== undefined
+        ? (parseFloat(formData.orcamentoCustoKmUnitario) || 0)
+        : DEFAULT_PRICING_CONFIG.custo_km_padrao;
 
     // Percentuais operacionais e fiscais
     const taxaFerramentasPct = formData.orcamentoTaxaFerramentas !== undefined ? parseFloat(formData.orcamentoTaxaFerramentas) : DEFAULT_PRICING_CONFIG.taxa_ferramental_padrao_pct;
@@ -169,7 +206,9 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             itens_servicos: itensServicos,
             distancia_km: distanciaKm,
             custo_km_unitario: custoKmUnitario,
-            override_custo_deslocamento: formData.orcamentoDeslocamento ? parseFloat(formData.orcamentoDeslocamento) : undefined,
+            override_custo_deslocamento: distanciaKm > 0
+                ? (distanciaKm * custoKmUnitario)
+                : (formData.orcamentoDeslocamento !== undefined ? parseFloat(formData.orcamentoDeslocamento) : undefined),
             override_custo_mao_de_obra: itensServicos.length === 0 && formData.orcamentoHH ? parseFloat(formData.orcamentoHH) : undefined,
             override_custo_ferramentas: formData.orcamentoCustoFerramentas ? parseFloat(formData.orcamentoCustoFerramentas) : undefined,
             override_custo_seguro: formData.orcamentoCustoSeguro ? parseFloat(formData.orcamentoCustoSeguro) : undefined,
@@ -179,7 +218,6 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
             taxa_seguro_pct: taxaSeguroPct,
             taxa_overhead_pct: taxaOverheadPct,
             margem_lucro_pct: margemLucroPct,
-            override_lucro_valor: formData.orcamentoLucro ? parseFloat(formData.orcamentoLucro) : undefined,
             taxa_plataforma_pct: taxaPlataformaPct,
             override_taxa_plataforma: formData.orcamentoTaxaPlataforma ? parseFloat(formData.orcamentoTaxaPlataforma) : undefined,
             taxa_gateway_pct: taxaGatewayPct,
@@ -199,7 +237,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
         formData.orcamentoCustoSeguro,
         formData.orcamentoCustoOverhead,
         formData.orcamentoCusto,
-        formData.orcamentoLucro,
+        formData.orcamentoMargemLucroPct,
         formData.orcamentoTaxaPlataforma,
         formData.orcamentoTaxaPagamento,
         taxaFerramentasPct,
@@ -220,7 +258,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                 prev.orcamentoPreco === dre.preco_final_venda &&
                 prev.orcamentoCustoVariavel === dre.total_materiais &&
                 prev.orcamentoCusto === dre.custo_overhead_fixo &&
-                prev.orcamentoLucro === dre.lucro_margem_valor
+                prev.orcamentoLucro === dre.lucro_margem_valor &&
+                prev.orcamentoDeslocamento === dre.total_deslocamento
             ) {
                 return prev;
             }
@@ -584,8 +623,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                             step="0.5"
                             className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm font-bold text-slate-900 outline-none focus:border-amber-500 focus:bg-white transition-all disabled:opacity-50"
                             placeholder="Ex: 15"
-                            value={formData.orcamentoDistanciaKm ?? ''}
-                            onChange={e => setFormData((prev: any) => ({ ...prev, orcamentoDistanciaKm: parseFloat(e.target.value) || 0 }))}
+                            value={formData.orcamentoDistanciaKm !== undefined ? formData.orcamentoDistanciaKm : ''}
+                            onChange={e => handleDistanciaChange(e.target.value)}
                             disabled={isReadOnly}
                         />
                     </div>
@@ -596,8 +635,8 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                             type="number"
                             step="0.10"
                             className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-sm font-bold text-slate-900 outline-none focus:border-amber-500 focus:bg-white transition-all disabled:opacity-50"
-                            value={formData.orcamentoCustoKmUnitario ?? DEFAULT_PRICING_CONFIG.custo_km_padrao}
-                            onChange={e => setFormData((prev: any) => ({ ...prev, orcamentoCustoKmUnitario: parseFloat(e.target.value) || 0 }))}
+                            value={formData.orcamentoCustoKmUnitario !== undefined ? formData.orcamentoCustoKmUnitario : DEFAULT_PRICING_CONFIG.custo_km_padrao}
+                            onChange={e => handleCustoKmChange(e.target.value)}
                             disabled={isReadOnly}
                         />
                     </div>
@@ -609,7 +648,7 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
                             step="0.01"
                             className="w-full bg-amber-50/50 border border-amber-200 rounded-2xl p-3 text-sm font-black text-amber-900 outline-none focus:border-amber-500 focus:bg-white transition-all disabled:opacity-50"
                             value={dre.total_deslocamento}
-                            onChange={e => setFormData((prev: any) => ({ ...prev, orcamentoDeslocamento: parseFloat(e.target.value) || 0 }))}
+                            onChange={e => handleTotalDeslocamentoChange(e.target.value)}
                             disabled={isReadOnly}
                         />
                     </div>
@@ -687,12 +726,25 @@ const BudgetSection: React.FC<BudgetSectionProps> = ({
 
             {/* 6. DRE / DEMONSTRATIVO DE FORMAÇÃO DO PREÇO DA OS */}
             <div className="bg-gradient-to-br from-emerald-50 via-teal-50/40 to-emerald-50/70 p-6 sm:p-7 rounded-[2rem] border border-emerald-200 space-y-5 shadow-xs">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2 text-emerald-950">
                         <ShieldCheck size={20} />
                         <span className="text-xs font-black uppercase tracking-wider">DRE & Auditoria Financeira da OS</span>
                     </div>
-                    <span className="text-xs font-bold text-emerald-800 bg-emerald-100/90 px-3 py-1 rounded-lg">Margem Líquida Almejada: {margemLucroPct}%</span>
+                    <div className="flex items-center gap-2 bg-white/90 border border-emerald-300/80 px-3 py-1.5 rounded-xl shadow-2xs">
+                        <label className="text-xs font-bold text-emerald-900 whitespace-nowrap">Margem Líquida:</label>
+                        <div className="flex items-center">
+                            <input
+                                type="number"
+                                step="1"
+                                className="w-14 text-xs font-black text-emerald-900 text-right outline-none bg-transparent"
+                                value={margemLucroPct}
+                                onChange={e => setFormData((prev: any) => ({ ...prev, orcamentoMargemLucroPct: parseFloat(e.target.value) || 0 }))}
+                                disabled={isReadOnly}
+                            />
+                            <span className="text-xs font-black text-emerald-900 ml-0.5">%</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-1">

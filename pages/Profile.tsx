@@ -334,9 +334,6 @@ const Profile: React.FC = () => {
     setSaving(true); setMessage(null);
     try {
       if (!selectedCityId) throw new Error('Selecione uma cidade válida.');
-      if (isProfessional && selectedActivities.length === 0) {
-        throw new Error('Selecione pelo menos um serviço/especialidade que você atende.');
-      }
       const cleanCpf = cpf.replace(/\D/g, ''), cleanPhone = whatsapp.replace(/\D/g, ''), cleanCep = cep.replace(/\D/g, '');
       if (cleanCpf && !validateCpf(cleanCpf)) throw new Error('CPF inválido.');
       if (cleanCpf) { const { data: existingUser } = await supabase.from('users').select('id').eq('cpf', cleanCpf).neq('id', profile.id).maybeSingle(); if (existingUser) throw new Error('CPF já em uso.'); }
@@ -353,9 +350,6 @@ const Profile: React.FC = () => {
         estado: selectedStateId, 
         cidade: selectedCityId 
       };
-      if (isProfessional) {
-        updates.atividade = selectedActivities;
-      }
       const { error } = await supabase.from('users').update(updates).eq('id', profile.id);
       if (error) throw error;
       setProfile({ ...profile, ...updates } as User);
@@ -444,7 +438,7 @@ const Profile: React.FC = () => {
           <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Sexo / Gênero</label><select value={sexo} onChange={(e) => setSexo(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 appearance-none"><option value="Masculino">Masculino</option><option value="Feminino">Feminino</option><option value="Outro">Outro</option></select></div>
         </div>
 
-        {/* Bloco de Serviços e Especialidades para Profissionais */}
+        {/* Bloco de Serviços e Especialidades para Profissionais (Informativo / Somente Leitura) */}
         {isProfessional && (
           <div className="bg-white rounded-3xl p-6 shadow-glass border border-white space-y-4 animate-in fade-in duration-300">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
@@ -453,80 +447,34 @@ const Profile: React.FC = () => {
                   <Briefcase size={20} className="text-ios-blue" />
                   <h2 className="text-lg font-bold text-gray-900">Serviços & Especialidades</h2>
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">Selecione as categorias e serviços que você está apto a prestar.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Especialidades cadastradas e homologadas pela gestão UAI-Fix.</p>
               </div>
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold self-start sm:self-center transition-all ${selectedActivities.length > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>
-                {selectedActivities.length} {selectedActivities.length === 1 ? 'selecionado' : 'selecionados'}
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold self-start sm:self-center transition-all ${selectedActivities.length > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                {selectedActivities.length} {selectedActivities.length === 1 ? 'especialidade ativa' : 'especialidades ativas'}
               </span>
             </div>
 
             <div className="space-y-3">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                <input
-                  type="text"
-                  placeholder="Buscar especialidade (ex: Pintor, Elétrica, Encanador)..."
-                  value={serviceSearchTerm}
-                  onChange={(e) => setServiceSearchTerm(e.target.value)}
-                  disabled={!canEdit}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 transition-all"
-                />
-              </div>
-
-              {canEdit && (
-                <div className="flex items-center justify-between text-xs px-1">
-                  <button
-                    type="button"
-                    onClick={handleSelectAllFiltered}
-                    className="text-ios-blue font-bold hover:underline"
-                  >
-                    Selecionar todos visíveis ({filteredServices.length})
-                  </button>
-                  {selectedActivities.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleClearSelection}
-                      className="text-red-500 font-bold hover:underline"
-                    >
-                      Limpar seleção
-                    </button>
-                  )}
+              {selectedActivities.length === 0 ? (
+                <div className="p-4 bg-amber-50/60 rounded-2xl border border-amber-100 text-amber-800 text-xs flex items-center gap-2.5">
+                  <AlertCircle size={18} className="text-amber-600 flex-shrink-0" />
+                  <span>Nenhuma especialidade vinculada ainda. Entre em contato com a gestão administrativa para inclusão de suas atividades.</span>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {availableServices
+                    .filter(service => selectedActivities.includes(service.id))
+                    .map(service => (
+                      <span
+                        key={service.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-medium shadow-xs"
+                      >
+                        <Check size={13} className="text-blue-400" strokeWidth={2.5} />
+                        {service.nome}
+                      </span>
+                    ))}
                 </div>
               )}
-
-              <div className="bg-gray-50/70 p-3.5 rounded-2xl border border-gray-100 max-h-64 overflow-y-auto">
-                {filteredServices.length === 0 ? (
-                  <div className="py-8 text-center text-xs text-gray-400">
-                    Nenhum serviço encontrado para "{serviceSearchTerm}".
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {filteredServices.map(service => {
-                      const isSelected = selectedActivities.includes(service.id);
-                      return (
-                        <button
-                          key={service.id}
-                          type="button"
-                          onClick={() => toggleActivity(service.id)}
-                          disabled={!canEdit}
-                          className={`flex items-center justify-between p-3 rounded-xl border text-xs font-medium transition-all text-left group ${
-                            isSelected
-                              ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
-                              : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                          } ${!canEdit ? 'cursor-default' : 'cursor-pointer'}`}
-                        >
-                          <span className="truncate pr-2">{service.nome}</span>
-                          <div className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 transition-all ${
-                            isSelected ? 'bg-blue-500 text-white' : 'border border-gray-300 group-hover:border-gray-400'
-                          }`}>
-                            {isSelected && <Check size={12} strokeWidth={3} />}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         )}

@@ -6,7 +6,7 @@ import { notifyProfessionalNewService, notifyProfessionalBudgetApproved } from '
 import { getOrProvisionCity } from '../../utils/cityHelper';
 import {
     X, Save, Hash, Loader2, ThumbsUp, ThumbsDown,
-    Play, CheckCircle2, Star, Camera, Copy, Check, Link2, MessageSquare, Printer
+    Play, CheckCircle2, Star, Camera, Copy, Check, Link2, MessageSquare, Printer, Send, AlertTriangle
 } from 'lucide-react';
 import StatusSection from './StatusSection';
 import PlanningSection from './PlanningSection';
@@ -963,7 +963,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
     const isBudgetReadOnly = ['aprovado', 'executando', 'concluido', 'aguardando_gestor', 'erro'].includes(formData.status);
 
-    const handleSave = async () => {
+    const handleSave = async (targetStatus?: string) => {
         setSaving(true);
         try {
             const ticketId = order.chaveData?.id || order.chave || order.id;
@@ -978,24 +978,39 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 }
             }
 
-            let finalStatus = formData.status;
+            let finalStatus = targetStatus || formData.status;
 
-            if ((isGestor || isPlanejista) && formData.status === 'pendente') {
-                if (formData.profissionalUuid && formData.planejamentoVisita && formData.planejamentoData) {
-                    finalStatus = 'analise';
-                } else {
-                    alert("Por favor, preencha o Profissional Responsável, Visita Técnica e Execução Prevista para enviar para orçamento.");
+            if (targetStatus === 'aguardando_profissional') {
+                const hasProf = formData.profissionalUuid || order.profissional || normalizedItem.profissional;
+                if (!hasProf) {
+                    alert("Atenção: Selecione um Profissional Responsável na aba Geral antes de disparar o orçamento para aprovação.");
                     setSaving(false);
                     return;
                 }
-            } else if ((isGestor || isOrcamentista) && formData.status === 'analise') {
-                if (formData.orcamentoPreco > 0) {
-                    finalStatus = 'aguardando_profissional';
+                if (!formData.orcamentoPreco || formData.orcamentoPreco <= 0) {
+                    alert("Atenção: O orçamento deve possuir um valor de preço calculado (maior que zero) para ser disparado ao profissional.");
+                    setSaving(false);
+                    return;
                 }
-            } else if ((isGestor || isOrcamentista) && (formData.status === 'recusado' || formData.status === 'reprovado')) {
-                const originalHH = order.orcamentoData?.hh || order.orcamentos?.[0]?.hh || 0;
-                const hasHHChanged = Math.abs(originalHH - formData.orcamentoHH) > 0.01;
-                finalStatus = hasHHChanged ? 'aguardando_profissional' : 'aguardando_aprovacao';
+                finalStatus = 'aguardando_profissional';
+            } else if (!targetStatus) {
+                if ((isGestor || isPlanejista) && formData.status === 'pendente') {
+                    if (formData.profissionalUuid && formData.planejamentoVisita && formData.planejamentoData) {
+                        finalStatus = 'analise';
+                    } else {
+                        alert("Por favor, preencha o Profissional Responsável, Visita Técnica e Execução Prevista para enviar para orçamento.");
+                        setSaving(false);
+                        return;
+                    }
+                } else if ((isGestor || isOrcamentista) && formData.status === 'analise') {
+                    if (formData.orcamentoPreco > 0) {
+                        finalStatus = 'aguardando_profissional';
+                    }
+                } else if ((isGestor || isOrcamentista) && (formData.status === 'recusado' || formData.status === 'reprovado')) {
+                    const originalHH = order.orcamentoData?.hh || order.orcamentos?.[0]?.hh || 0;
+                    const hasHHChanged = Math.abs(originalHH - formData.orcamentoHH) > 0.01;
+                    finalStatus = hasHHChanged ? 'aguardando_profissional' : 'aguardando_aprovacao';
+                }
             }
 
             // Regra estrita: Para aguardar aprovação do cliente, é mandatório orçamento fechado (> 0) e profissional
@@ -1494,33 +1509,51 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                             </button>
                         </>
                     ) : isProfessional && formData.status === 'aguardando_aprovacao' ? (
-                        <button
-                            disabled
-                            className="flex-[2] bg-[#D4E2DC] text-[#4B685A] py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed shadow-none"
-                        >
-                            <CheckCircle2 size={18} /><span>Aceito</span>
-                        </button>
+                        <>
+                            <button
+                                onClick={() => setIsProblemModalOpen(true)}
+                                disabled={saving}
+                                className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2 shadow-xs"
+                            >
+                                <AlertTriangle size={16} /><span>Relatar Problema</span>
+                            </button>
+                            <button
+                                disabled
+                                className="flex-[2] bg-[#D4E2DC] text-[#4B685A] py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed shadow-none"
+                            >
+                                <CheckCircle2 size={18} /><span>Aguardando Cliente</span>
+                            </button>
+                        </>
                     ) : isProfessional && formData.status === 'aprovado' ? (
-                        <button
-                            onClick={handleStartExecution}
-                            disabled={saving}
-                            className="flex-[2] bg-ios-blue text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                        >
-                            {saving ? <Loader2 className="animate-spin" size={18} /> : <><Play size={18} /><span>Iniciar Execução</span></>}
-                        </button>
+                        <>
+                            <button
+                                onClick={() => setIsProblemModalOpen(true)}
+                                disabled={saving}
+                                className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2 shadow-xs"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <><AlertTriangle size={16} /><span>Relatar Problema</span></>}
+                            </button>
+                            <button
+                                onClick={handleStartExecution}
+                                disabled={saving}
+                                className="flex-[2] bg-ios-blue hover:bg-blue-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <><Play size={18} /><span>Iniciar Execução</span></>}
+                            </button>
+                        </>
                     ) : isProfessional && formData.status === 'executando' ? (
                         <>
                             <button
                                 onClick={() => setIsProblemModalOpen(true)}
                                 disabled={saving}
-                                className="flex-1 bg-red-50 text-red-600 border border-red-100 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2"
+                                className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2 shadow-xs"
                             >
-                                {saving ? <Loader2 className="animate-spin" size={18} /> : <span>Relatar Problema</span>}
+                                {saving ? <Loader2 className="animate-spin" size={18} /> : <><AlertTriangle size={16} /><span>Relatar Problema</span></>}
                             </button>
                             <button
                                 onClick={handleFinishTask}
                                 disabled={saving || formData.fotoantes.length === 0 || formData.fotodepois.length === 0 || !formData.agendaObs || formData.agendaObs.trim().length < 5}
-                                className="flex-[2] bg-emerald-600 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
+                                className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale-[0.5] disabled:cursor-not-allowed"
                             >
                                 {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Finalizar Tarefa</span></>}
                             </button>
@@ -1568,17 +1601,36 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                             <CheckCircle2 size={18} /><span>Aguardando Execução</span>
                         </button>
                     ) : (
-                        <button onClick={handleSave} disabled={saving} className="flex-[2] bg-black text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50">
-                            {saving ? <Loader2 className="animate-spin" size={18} /> : (
-                                <span>
-                                    {(isGestor || isPlanejista) && formData.status === 'pendente'
-                                        ? 'Enviar para Orçamento'
-                                        : (isOrcamentista || (isGestor && formData.status !== 'pendente'))
-                                            ? ((formData.status === 'recusado' || formData.status === 'reprovado') ? 'Reenviar Orçamento' : 'Salvar Orçamento')
-                                            : 'Salvar Alterações'}
-                                </span>
-                            )}
-                        </button>
+                        <div className="flex-[2] flex flex-wrap sm:flex-nowrap gap-2">
+                            {/* Botão Secundário: Salvar Rascunho / Alterações */}
+                            <button 
+                                onClick={() => handleSave()} 
+                                disabled={saving} 
+                                className="flex-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2 shadow-xs"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={16} /> : <><Save size={16} /><span>Salvar Rascunho</span></>}
+                            </button>
+
+                            {/* Botão Principal: Disparar para o Profissional Aprovar */}
+                            <button 
+                                onClick={() => handleSave('aguardando_profissional')} 
+                                disabled={saving} 
+                                className="flex-[1.5] bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                            >
+                                {saving ? (
+                                    <Loader2 className="animate-spin" size={18} />
+                                ) : (
+                                    <>
+                                        <Send size={16} />
+                                        <span>
+                                            {formData.status === 'aguardando_profissional' 
+                                                ? 'Reenviar ao Profissional' 
+                                                : 'Disparar para o Profissional'}
+                                        </span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     )}
                 </div>
             </div>
