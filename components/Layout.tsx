@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText, ShoppingBag, PlayCircle, CalendarCheck, MessageSquare } from 'lucide-react';
+import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText, ShoppingBag, PlayCircle, CalendarCheck, MessageSquare, LayoutDashboard, GitFork, Shield } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface LayoutProps {
@@ -126,8 +126,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shadow-sm">
               <img
-                src="https://uehyjyyvkrlggwmfdhgh.supabase.co/storage/v1/object/public/imagens/imagens/994ff870-5268-4a13-8378-0661a9ffe9b9.jpeg"
-                alt="Logo"
+                src="/logo.jpg"
+                alt="Logo UAI Fix"
                 className="w-full h-full object-cover"
               />
             </div>
@@ -205,24 +205,38 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </button>
           )}
 
-          {isManager && (
-            <button
-              onClick={() => navigate('/whatsapp')}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/whatsapp')}`}
-            >
-              <MessageSquare size={20} />
-              <span>Whatsapp</span>
-            </button>
-          )}
+
 
           {isManager && (
-            <button
-              onClick={() => navigate('/settings')}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/settings')}`}
-            >
-              <Settings size={20} />
-              <span>Configurações</span>
-            </button>
+            <>
+              <p className="px-4 text-xs font-bold text-blue-600 uppercase tracking-wider mb-2 mt-6 flex items-center gap-1.5">
+                <Shield size={14} /> Gestão UAI Fix
+              </p>
+
+              <button
+                onClick={() => navigate('/admin/dashboard')}
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-semibold text-slate-800 bg-slate-100 hover:bg-blue-50 hover:text-blue-700`}
+              >
+                <LayoutDashboard size={20} className="text-blue-600" />
+                <span>Painel Admin</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/admin/fluxo')}
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100`}
+              >
+                <GitFork size={20} className="text-blue-600" />
+                <span>Fluxo do Serviço</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/settings')}
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/settings')}`}
+              >
+                <Settings size={20} />
+                <span>Configurações</span>
+              </button>
+            </>
           )}
         </nav>
 

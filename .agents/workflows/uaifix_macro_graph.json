@@ -1,0 +1,255 @@
+{
+    "graph_name": "UAI_Fix_Graph_Architecture",
+    "version": "1.0",
+    "description": "Engenharia de Grafos completa para a plataforma de agendamento inteligente UAI-Fix. Mapeia o ciclo de vida de pedidos, planejamento técnico, orçamento financeiro, agendamentos, execução de ordens de serviço e auditoria de pós-venda.",
+    "knowledge_graph": {
+        "description": "Mapeamento das relações de entidades no Supabase para guiar a orquestração de IA do UAI-Fix.",
+        "typed_edges": [
+            {
+                "source": "chaves",
+                "relation": "belongs_to",
+                "target": "users",
+                "description": "O chamado/pedido (chave) está vinculado a um consumidor (cliente) e prestadores associados (planejista, orcamentista, profissional)."
+            },
+            {
+                "source": "planejamento",
+                "relation": "details",
+                "target": "chaves",
+                "description": "O planejamento técnico armazena cronogramas, descrição dos serviços, recursos e data de execução vinculados à chave."
+            },
+            {
+                "source": "orcamentos",
+                "relation": "prices",
+                "target": "chaves",
+                "description": "O orçamento financeiro detalha custos, tributos, margem de lucro e preço final vinculados à chave."
+            },
+            {
+                "source": "agenda",
+                "relation": "schedules_execution_of",
+                "target": "chaves",
+                "description": "Armazena a data/hora exata de execução agendada no calendário para o profissional e cliente."
+            },
+            {
+                "source": "ordemservico",
+                "relation": "controls_status_of",
+                "target": "chaves",
+                "description": "Controla a emissão oficial de ordens de serviço, datas de início/fim e o PDF de quitação."
+            },
+            {
+                "source": "avaliacoes",
+                "relation": "rates_performance_on",
+                "target": "chaves",
+                "description": "Coleta feedbacks e notas do cliente a respeito do profissional e da execução do serviço."
+            }
+        ]
+    },
+    "task_graphs": {
+        "grafo_A_solicitacao_e_planejamento": {
+            "description": "Fluxo paralelo de triagem, planejamento e orçamento técnico de solicitações.",
+            "edges": [
+                {
+                    "source": "ENTRY",
+                    "target": "Planner_Triagem"
+                },
+                {
+                    "source": "Planner_Triagem",
+                    "target": "Worker_Planejamento_Tecnico"
+                },
+                {
+                    "source": "Planner_Triagem",
+                    "target": "Worker_Calculo_Orcamento"
+                },
+                {
+                    "source": "Worker_Planejamento_Tecnico",
+                    "target": "Synthesizer_Compilacao"
+                },
+                {
+                    "source": "Worker_Calculo_Orcamento",
+                    "target": "Synthesizer_Compilacao"
+                },
+                {
+                    "source": "Synthesizer_Compilacao",
+                    "target": "Interaction_Aprovacao_Cliente"
+                },
+                {
+                    "source": "Interaction_Aprovacao_Cliente",
+                    "target": "EXIT"
+                }
+            ],
+            "nodes": [
+                {
+                    "id": "Planner_Triagem",
+                    "type": "Action",
+                    "instructions": "Identifica a solicitação do cliente em chaves, valida o relato inicial e atribui planejistas/orcamentistas."
+                },
+                {
+                    "id": "Worker_Planejamento_Tecnico",
+                    "type": "Action",
+                    "instructions": "Elabora a lista de recursos, descrição técnica do trabalho, horas previstas e verifica a necessidade de visita prévia."
+                },
+                {
+                    "id": "Worker_Calculo_Orcamento",
+                    "type": "Action",
+                    "instructions": "Calcula custo de mão de obra (HH), insumos, impostos e o preço final sugerido ao cliente."
+                },
+                {
+                    "id": "Synthesizer_Compilacao",
+                    "type": "Action",
+                    "instructions": "Mescla o planejamento técnico e orçamento em uma proposta coesa e atualiza o status para 'aguardando_aprovacao'."
+                },
+                {
+                    "id": "Interaction_Aprovacao_Cliente",
+                    "type": "Interaction",
+                    "instructions": "Human Gate. Aguarda a aprovação ou rejeição formal do orçamento e planejamento pelo consumidor na interface ou WhatsApp."
+                }
+            ]
+        },
+        "grafo_B_agendamento_e_execucao": {
+            "description": "Processo de alocação de profissionais, sincronização de calendários e execução física do serviço.",
+            "edges": [
+                {
+                    "source": "ENTRY",
+                    "target": "Planner_Alocacao_Profissional"
+                },
+                {
+                    "source": "Planner_Alocacao_Profissional",
+                    "target": "Worker_Google_Calendar"
+                },
+                {
+                    "source": "Planner_Alocacao_Profissional",
+                    "target": "Worker_WhatsApp_Notifica"
+                },
+                {
+                    "source": "Worker_Google_Calendar",
+                    "target": "Interaction_Inicio_Execucao"
+                },
+                {
+                    "source": "Worker_WhatsApp_Notifica",
+                    "target": "Interaction_Inicio_Execucao"
+                },
+                {
+                    "source": "Interaction_Inicio_Execucao",
+                    "target": "Worker_Controle_Os_Andamento"
+                },
+                {
+                    "source": "Worker_Controle_Os_Andamento",
+                    "target": "Interaction_Conclusao_Trabalho"
+                },
+                {
+                    "source": "Interaction_Conclusao_Trabalho",
+                    "target": "Worker_Encerramento_OS"
+                },
+                {
+                    "source": "Worker_Encerramento_OS",
+                    "target": "EXIT"
+                }
+            ],
+            "nodes": [
+                {
+                    "id": "Planner_Alocacao_Profissional",
+                    "type": "Action",
+                    "instructions": "Encontra profissionais qualificados ativos na cidade do cliente com base nas atividades do serviço aprovado."
+                },
+                {
+                    "id": "Worker_Google_Calendar",
+                    "type": "Action",
+                    "instructions": "Agenda o compromisso na agenda do profissional e cliente, enviando links de confirmação e convites por e-mail."
+                },
+                {
+                    "id": "Worker_WhatsApp_Notifica",
+                    "type": "Action",
+                    "instructions": "Envia lembrete de confirmação de agendamento via integração de WhatsApp (Z-API)."
+                },
+                {
+                    "id": "Interaction_Inicio_Execucao",
+                    "type": "Interaction",
+                    "instructions": "Human Gate. O profissional marca o início do serviço no local físico, disparando o status 'executando'."
+                },
+                {
+                    "id": "Worker_Controle_Os_Andamento",
+                    "type": "Action",
+                    "instructions": "Registra fotos de antes do início do serviço ('fotoantes') e abre contagem de tempo de execução real."
+                },
+                {
+                    "id": "Interaction_Conclusao_Trabalho",
+                    "type": "Interaction",
+                    "instructions": "Human Gate. O profissional finaliza o serviço físico, registra fotos de depois ('fotodepois') e insere comentários finais."
+                },
+                {
+                    "id": "Worker_Encerramento_OS",
+                    "type": "Action",
+                    "instructions": "Atualiza o status para 'concluido', gera e salva o PDF oficial da Ordem de Serviço nos buckets do Supabase Storage."
+                }
+            ]
+        },
+        "grafo_C_pos_venda_e_auditoria": {
+            "description": "Auditoria de controle de qualidade pós-execução baseada na satisfação do consumidor.",
+            "edges": [
+                {
+                    "source": "ENTRY",
+                    "target": "Planner_Pos_Venda"
+                },
+                {
+                    "source": "Planner_Pos_Venda",
+                    "target": "Worker_Dispara_Avaliacao"
+                },
+                {
+                    "source": "Worker_Dispara_Avaliacao",
+                    "target": "Interaction_Review_Cliente"
+                },
+                {
+                    "source": "Interaction_Review_Cliente",
+                    "target": "Switch_Avaliacao_Score"
+                },
+                {
+                    "source": "Switch_Avaliacao_Score",
+                    "target": "Worker_Auditoria_Qualidade"
+                },
+                {
+                    "source": "Switch_Avaliacao_Score",
+                    "target": "Worker_Atualiza_Ranking"
+                },
+                {
+                    "source": "Worker_Auditoria_Qualidade",
+                    "target": "EXIT"
+                },
+                {
+                    "source": "Worker_Atualiza_Ranking",
+                    "target": "EXIT"
+                }
+            ],
+            "nodes": [
+                {
+                    "id": "Planner_Pos_Venda",
+                    "type": "Action",
+                    "instructions": "Inicia ciclo pós-conclusão da ordem de serviço para checagem de satisfação."
+                },
+                {
+                    "id": "Worker_Dispara_Avaliacao",
+                    "type": "Action",
+                    "instructions": "Envia formulário de classificação de 1 a 5 estrelas e comentários para o cliente."
+                },
+                {
+                    "id": "Interaction_Review_Cliente",
+                    "type": "Interaction",
+                    "instructions": "Human Gate. O cliente responde com a classificação do profissional e o feedback textual do atendimento."
+                },
+                {
+                    "id": "Switch_Avaliacao_Score",
+                    "type": "Switch",
+                    "instructions": "Verifica a nota dada pelo cliente. Se nota < 3, desvia para auditoria de qualidade. Se nota >= 3, desvia para pontuação de ranking."
+                },
+                {
+                    "id": "Worker_Auditoria_Qualidade",
+                    "type": "Action",
+                    "instructions": "Gera um chamado de revisão técnica (status 'erro', preenche 'relato_problema') e notifica o gestor para acompanhamento."
+                },
+                {
+                    "id": "Worker_Atualiza_Ranking",
+                    "type": "Action",
+                    "instructions": "Recalcula a Média Bayesiana de avaliações do profissional e atualiza seu peso no ranking elite."
+                }
+            ]
+        }
+    }
+}

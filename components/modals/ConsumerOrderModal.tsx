@@ -3,9 +3,12 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import {
     X, Star, Calendar, Clock, Banknote, AlertCircle, ThumbsUp, ThumbsDown,
-    Smartphone, CreditCard, MessageSquare, Sparkles, Send, Loader2, Ban, Check, UserCheck, Camera, PlayCircle, Briefcase
+    Smartphone, CreditCard, MessageSquare, Sparkles, Send, Loader2, Ban, Check, UserCheck, Camera, PlayCircle, Briefcase, Printer
 } from 'lucide-react';
 import ConsumerTab from './ConsumerTab';
+import { SignatureModal } from './SignatureModal';
+import { PrintOsModal } from './PrintOsModal';
+import { OsPrintData } from '../../utils/osPrinter';
 
 interface ConsumerOrderModalProps {
     order: any;
@@ -13,6 +16,7 @@ interface ConsumerOrderModalProps {
     onClose: () => void;
     onUpdate: () => Promise<void>;
     userUuid: string;
+    initialTab?: 'geral' | 'consumidor' | 'fotos' | 'avaliacao';
 }
 
 const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
@@ -20,9 +24,10 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
     isOpen,
     onClose,
     onUpdate,
-    userUuid
+    userUuid,
+    initialTab = 'geral'
 }) => {
-    const [activeTab, setActiveTab] = useState<'geral' | 'consumidor' | 'fotos' | 'avaliacao'>('geral');
+    const [activeTab, setActiveTab] = useState<'geral' | 'consumidor' | 'fotos' | 'avaliacao'>(initialTab);
     const [processingAction, setProcessingAction] = useState(false);
     const [paymentChoice, setPaymentChoice] = useState<'original' | 'suggested'>('original');
     const [isRejectionModalOpen, setIsRejectionModalOpen] = useState(false);
@@ -30,6 +35,11 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
     const [ratingScore, setRatingScore] = useState(order?.avaliacao?.nota || 0);
     const [ratingComment, setRatingComment] = useState(order?.avaliacao?.comentario || '');
     const [hoverRating, setHoverRating] = useState(0);
+
+    const [platformRatingScore, setPlatformRatingScore] = useState(order?.avaliacaoPlataforma?.nota || 0);
+    const [platformRatingComment, setPlatformRatingComment] = useState(order?.avaliacaoPlataforma?.comentario || '');
+    const [hoverPlatformRating, setHoverPlatformRating] = useState(0);
+
     const [submittingRating, setSubmittingRating] = useState(false);
     const [discoverySource, setDiscoverySource] = useState('');
     const [discoveryOther, setDiscoveryOther] = useState('');
@@ -39,6 +49,66 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
     });
 
     const [userOrigin, setUserOrigin] = useState<string | null>(null);
+    const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+    const buildOsPrintData = (): OsPrintData => {
+        const plan = order.planejamento?.[0] || order.planejamentoData;
+        const budget = order.orcamento || order.orcamentos?.[0] || order.orcamentoData;
+
+        return {
+            codigoOs: order.chaveunica || String(order.id),
+            dataEmissao: order.created_at,
+            status: getStatusLabel(order.status),
+            cliente: {
+                nome: order.cliente?.nome || order.clienteData?.nome || 'Cliente UAI Fix',
+                cpf: order.cliente?.cpf || order.clienteData?.cpf,
+                telefone: order.cliente?.whatsapp || order.clienteData?.whatsapp,
+                enderecoCompleto: [order.cliente?.rua || order.clienteData?.rua, order.cliente?.numero || order.clienteData?.numero].filter(Boolean).join(', ') || 'Endereço não informado',
+                bairro: order.cliente?.bairro || order.clienteData?.bairro,
+                cidade: order.cliente?.cidadeNome || order.clienteData?.cidadeNome || '',
+                cep: order.cliente?.cep || order.clienteData?.cep,
+                complemento: order.cliente?.complemento || order.clienteData?.complemento
+            },
+            profissional: {
+                nome: order.profissional?.nome || order.profissionalData?.nome || 'Profissional UAI Fix',
+                telefone: order.profissional?.whatsapp || order.profissionalData?.whatsapp || '',
+                especialidade: (order.geral as any)?.nome || order.geralData?.nome || 'Manutenção'
+            },
+            servico: {
+                categoria: (order.geral as any)?.nome || order.geralData?.nome || 'Serviço Geral',
+                descricaoPedido: plan?.descricao || '',
+                recursosAlocados: plan?.recursos || [],
+                dataExecucao: plan?.execucao || ''
+            },
+            financeiro: {
+                precoTotal: budget?.preco || 0,
+                formaPagamento: budget?.tipopagmto || 'PIX',
+                parcelas: budget?.parcelas || 1,
+                notaFiscal: budget?.notafiscal || false,
+                observacoes: budget?.observacaocliente || ''
+            },
+            execucao: {
+                fotoAntes: order.fotoantes || [],
+                fotoDepois: order.fotodepois || []
+            },
+            assinatura: {
+                assinaturaUrl: order.fina_assinatura || order.assinatura || undefined,
+                cpfAssinante: order.cliente?.cpf || order.clienteData?.cpf,
+                timestamp: order.updated_at
+            }
+        };
+    };
+
+    useEffect(() => {
+        if (isOpen) {
+            setActiveTab(initialTab || 'geral');
+            setRatingScore(order?.avaliacao?.nota || 0);
+            setRatingComment(order?.avaliacao?.comentario || '');
+            setPlatformRatingScore(order?.avaliacaoPlataforma?.nota || 0);
+            setPlatformRatingComment(order?.avaliacaoPlataforma?.comentario || '');
+        }
+    }, [isOpen, initialTab, order]);
 
     useEffect(() => {
         const fetchProStatsAndUser = async () => {
@@ -92,7 +162,7 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
         return desc.trim();
     };
 
-    const handleProposalDecision = async (approved: boolean, reason: string = '') => {
+    const handleProposalDecision = async (approved: boolean, reason: string = '', sigData?: { signatureDataUrl: string; cpf: string; latitude: number | null; longitude: number | null; timestamp: string }) => {
         if (processingAction) return;
         setProcessingAction(true);
         try {
@@ -112,11 +182,19 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                 if (paymentChoice === 'suggested' && (budget.desconto_sugerido || 0) > 0) {
                     finalPrice = budget.preco * (1 - (budget.desconto_sugerido || 0) / 100);
                 }
-                await supabase.from('orcamentos').update({
+                const updateOrcData: any = {
                     tipopagmto: finalType,
                     parcelas: finalParcelas,
                     preco: finalPrice
-                }).eq('id', budget.id);
+                };
+                if (sigData) {
+                    updateOrcData.assinatura_cliente = sigData.signatureDataUrl;
+                    updateOrcData.assinatura_cpf = sigData.cpf;
+                    updateOrcData.assinatura_data = sigData.timestamp;
+                    updateOrcData.assinatura_lat = sigData.latitude;
+                    updateOrcData.assinatura_lng = sigData.longitude;
+                }
+                await supabase.from('orcamentos').update(updateOrcData).eq('id', budget.id);
             }
 
             const newStatus = approved ? 'aprovado' : 'recusado';
@@ -142,8 +220,9 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
             await onUpdate();
             onClose();
             setIsRejectionModalOpen(false);
+            setIsSignatureModalOpen(false);
             setRejectionReason('');
-            alert(approved ? "Serviço agendado com sucesso!" : "Proposta recusada.");
+            alert(approved ? "Orçamento aprovado com assinatura digital e serviço agendado com sucesso!" : "Proposta recusada.");
         } catch (e: any) {
             alert("Erro: " + (e.message || "Erro desconhecido"));
         } finally {
@@ -152,19 +231,38 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
     };
 
     const handleSubmitRating = async () => {
-        if (!ratingScore) return;
+        if (!ratingScore && !platformRatingScore) return;
         setSubmittingRating(true);
         try {
             const rawPro = order.profissional;
             const proUuid = typeof rawPro === 'string' ? rawPro : (rawPro as any)?.uuid;
-            const { error } = await supabase.from('avaliacoes').insert({
-                chave: order.id,
-                profissional: proUuid,
-                cliente: userUuid,
-                nota: ratingScore,
-                comentario: ratingComment
-            });
-            if (error) throw error;
+
+            const inserts = [];
+            if (ratingScore && !order.avaliacao) {
+                inserts.push({
+                    chave: order.id,
+                    profissional: proUuid,
+                    cliente: userUuid,
+                    nota: ratingScore,
+                    comentario: ratingComment,
+                    tipo_alvo: 'profissional'
+                });
+            }
+            if (platformRatingScore && !order.avaliacaoPlataforma) {
+                inserts.push({
+                    chave: order.id,
+                    profissional: proUuid || null,
+                    cliente: userUuid,
+                    nota: platformRatingScore,
+                    comentario: platformRatingComment,
+                    tipo_alvo: 'plataforma_uaifix'
+                });
+            }
+
+            if (inserts.length > 0) {
+                const { error } = await supabase.from('avaliacoes').insert(inserts);
+                if (error) throw error;
+            }
 
             if (discoverySource) {
                 let finalSource = discoverySource;
@@ -176,7 +274,7 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                 }
             }
 
-            alert("Avaliação enviada!");
+            alert("Avaliações enviadas com sucesso!");
             await onUpdate();
             onClose();
         } catch (e: any) { alert(e.message); } finally { setSubmittingRating(false); }
@@ -218,7 +316,18 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                         <h3 className="font-bold text-gray-900 text-lg leading-tight">{(order.geral as any)?.nome || order.geralData?.nome}</h3>
                         <p className="text-xs font-mono font-black text-gray-400 uppercase tracking-wider">#{order.chaveunica}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setIsPrintModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all active:scale-95 shadow-xs"
+                            title="Imprimir ou Salvar Ordem de Serviço em PDF"
+                        >
+                            <Printer size={14} />
+                            <span className="hidden sm:inline">Imprimir OS</span>
+                        </button>
+                        <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
+                    </div>
                 </div>
 
                 <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar h-14 shrink-0">
@@ -294,81 +403,133 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                                     </div>
                                 </div>
 
-                                {order.orcamentos?.[0] && order.status === 'aguardando_aprovacao' && (
-                                    <div className="mt-8 pt-8 border-t border-gray-200 animate-in fade-in duration-500">
-                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1"><Banknote size={12} /> Escolha a Forma de Pagamento</p>
-                                        <div className="grid grid-cols-1 gap-3">
-                                            <button onClick={() => setPaymentChoice('original')} className={`p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden ${paymentChoice === 'original' ? 'border-ios-blue bg-blue-50/50 shadow-md ring-4 ring-blue-50' : 'border-gray-200 bg-white'}`}>
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex gap-3">
-                                                        <div className={`p-2 rounded-xl ${paymentChoice === 'original' ? 'bg-ios-blue text-white' : 'bg-gray-100 text-gray-400'}`}>{order.orcamentos[0].tipopagmto === 'PIX' || order.orcamentos[0].tipopagmto === 'Dinheiro' ? <Smartphone size={20} /> : <CreditCard size={20} />}</div>
-                                                        <div>
-                                                            <p className="text-xs font-black text-gray-900 uppercase">Sua Escolha Inicial</p>
-                                                            <h4 className="text-sm font-bold text-gray-700">{order.orcamentos[0].tipopagmto}</h4>
-                                                            {order.orcamentos[0].tipopagmto === 'Cartão de Crédito' && <p className="text-[10px] font-bold text-gray-400">{order.orcamentos[0].parcelas}x no cartão</p>}
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-xs font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
-                                                        {paymentChoice === 'original' && <div className="inline-block bg-ios-blue text-white p-1 rounded-full mt-2"><Check size={12} /></div>}
-                                                    </div>
-                                                </div>
-                                            </button>
+                                 {order.orcamentos?.[0]?.assinatura_cliente && (
+                                     <div className="mt-6 p-4 bg-white rounded-3xl border border-gray-100 space-y-3 shadow-sm">
+                                         <div className="flex items-center justify-between">
+                                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Assinatura Digital Jurídica</p>
+                                             <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded-md text-[9px] font-black uppercase">Válida</span>
+                                         </div>
+                                         <div className="flex gap-4 items-center">
+                                             <div className="bg-gray-50 p-2 rounded-2xl border border-gray-100">
+                                                 <img src={order.orcamentos[0].assinatura_cliente} alt="Assinatura" className="h-14 object-contain" />
+                                             </div>
+                                             <div className="space-y-1 text-[11px] text-gray-600 font-medium">
+                                                 {order.orcamentos[0].assinatura_cpf && <p><span className="font-bold text-gray-900">CPF:</span> {order.orcamentos[0].assinatura_cpf}</p>}
+                                                 {order.orcamentos[0].assinatura_data && <p><span className="font-bold text-gray-900">Data/Hora:</span> {new Date(order.orcamentos[0].assinatura_data).toLocaleString('pt-BR')}</p>}
+                                                 {order.orcamentos[0].assinatura_lat && order.orcamentos[0].assinatura_lng && (
+                                                     <p><span className="font-bold text-gray-900">GPS:</span> {order.orcamentos[0].assinatura_lat.toFixed(4)}, {order.orcamentos[0].assinatura_lng.toFixed(4)}</p>
+                                                 )}
+                                             </div>
+                                         </div>
+                                     </div>
+                                 )}
 
-                                            {order.orcamentos[0].tipopagmto_sugerido && (
-                                                <button onClick={() => setPaymentChoice('suggested')} className={`p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden ${paymentChoice === 'suggested' ? 'border-blue-600 bg-blue-50 shadow-md ring-4 ring-blue-50' : 'border-gray-200 bg-white'}`}>
-                                                    <div className="absolute top-0 right-0 bg-blue-600 text-white px-3 py-1 text-[8px] font-black uppercase rounded-bl-xl flex items-center gap-1 shadow-sm"><Sparkles size={8} /> Sugestão UAI Fix</div>
-                                                    <div className="flex justify-between items-start mt-1">
-                                                        <div className="flex gap-3">
-                                                            <div className={`p-2 rounded-xl ${paymentChoice === 'suggested' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>{order.orcamentos[0].tipopagmto_sugerido === 'PIX' || order.orcamentos[0].tipopagmto_sugerido === 'Dinheiro' ? <Smartphone size={20} /> : <CreditCard size={20} />}</div>
-                                                            <div>
-                                                                <p className="text-xs font-black text-gray-900 uppercase">Oferta Alternativa</p>
-                                                                <h4 className="text-sm font-bold text-gray-700">{order.orcamentos[0].tipopagmto_sugerido}</h4>
-                                                                {order.orcamentos[0].tipopagmto_sugerido === 'Cartão de Crédito' && <p className="text-[10px] font-bold text-gray-400">{order.orcamentos[0].parcelas_sugerido}x no cartão</p>}
-                                                            </div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            {(order.orcamentos[0].desconto_sugerido || 0) > 0 ? (
-                                                                <div className="space-y-0.5">
-                                                                    <p className="text-[10px] text-gray-400 line-through">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
-                                                                    <p className="text-sm font-black text-green-600">R$ {(order.orcamentos[0].preco * (1 - (order.orcamentos[0].desconto_sugerido || 0) / 100)).toFixed(2)}</p>
-                                                                    <div className="bg-green-100 text-green-700 px-2 py-0.5 rounded-md text-[8px] font-black uppercase inline-block">-{(order.orcamentos[0].desconto_sugerido || 0)}% OFF</div>
-                                                                </div>
-                                                            ) : (
-                                                                <p className="text-xs font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
-                                                            )}
-                                                            {paymentChoice === 'suggested' && <div className="inline-block bg-blue-600 text-white p-1 rounded-full mt-2"><Check size={12} /></div>}
-                                                        </div>
-                                                    </div>
-                                                    {order.orcamentos[0].justificativa_sugerido && (
-                                                        <div className="mt-4 p-3 bg-blue-100/50 rounded-2xl border border-blue-200">
-                                                            <p className="text-[9px] font-black text-blue-600 uppercase mb-1 flex items-center gap-1"><MessageSquare size={10} /> Por que sugerimos?</p>
-                                                            <p className="text-xs font-bold text-blue-900 italic leading-relaxed">"{order.orcamentos[0].justificativa_sugerido}"</p>
-                                                        </div>
-                                                    )}
-                                                </button>
-                                            )}
-                                        </div>
+                                  {/* Estado: Aguardando Orçamento */}
+                                  {(order.status === 'pendente' || order.status === 'analise') && (
+                                      <div className="mt-8 p-6 bg-blue-50/80 rounded-3xl border border-blue-200/80 space-y-3 animate-in fade-in duration-300">
+                                          <div className="flex items-center gap-2.5 text-ios-blue">
+                                              <Clock size={18} className="text-ios-blue" />
+                                              <h4 className="text-xs font-black uppercase tracking-wider">Orçamento em Elaboração</h4>
+                                          </div>
+                                          <p className="text-xs text-blue-700 font-medium leading-relaxed">
+                                              Seu pedido está em análise técnica pela nossa equipe para dimensionamento de custos e materiais.
+                                          </p>
+                                      </div>
+                                  )}
 
-                                        {order.orcamentos?.[0].observacaocliente && (
-                                            <div className="mt-6 p-5 bg-blue-600 rounded-3xl text-white shadow-xl relative animate-in slide-in-from-left-4">
-                                                <div className="flex items-center gap-2 mb-2"><MessageSquare size={14} className="text-blue-100" /><p className="text-[10px] font-black uppercase tracking-widest text-blue-100">Mensagem do Orçamentista</p></div>
-                                                <p className="text-sm font-medium leading-relaxed italic">"{order.orcamentos[0].observacaocliente}"</p>
-                                                <div className="absolute -top-2 left-8 w-4 h-4 bg-blue-600 rotate-45"></div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
+                                  {/* Estado: Aguardando Aceite do Profissional */}
+                                  {order.status === 'aguardando_profissional' && (
+                                      <div className="mt-8 p-6 bg-cyan-50/80 rounded-3xl border border-cyan-200/80 space-y-3 animate-in fade-in duration-300">
+                                          <div className="flex items-center gap-2.5 text-cyan-800">
+                                              <Clock size={18} className="animate-spin text-cyan-600" />
+                                              <h4 className="text-xs font-black uppercase tracking-wider">Aguardando Aceite do Profissional</h4>
+                                          </div>
+                                          <p className="text-xs text-cyan-700 font-medium leading-relaxed">
+                                              O orçamento deste serviço foi calculado com precisão e enviado para validação de agenda do profissional responsável.
+                                          </p>
+                                          <p className="text-[11px] text-cyan-600 font-semibold">
+                                              Assim que o profissional confirmar o aceite, a proposta completa com opções de pagamento será liberada aqui para sua aprovação.
+                                          </p>
+                                      </div>
+                                  )}
 
-                                {order.status === 'aguardando_aprovacao' && (
-                                    <div className="mt-8 p-6 bg-white rounded-3xl border border-orange-100 space-y-5 shadow-sm animate-in slide-in-from-bottom-4">
-                                        <div className="flex items-center gap-3 text-orange-700"><AlertCircle size={20} className="flex-shrink-0" /><p className="text-xs font-bold leading-tight">Ao aprovar, o serviço será oficialmente agendado com a forma de pagamento e valor escolhidos.</p></div>
-                                        <div className="flex flex-col gap-2">
-                                            <button onClick={() => handleProposalDecision(true)} disabled={processingAction} className="w-full bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={18} /> : <><ThumbsUp size={18} /><span>Aprovar Orçamento</span></>}</button>
-                                            <button onClick={() => setIsRejectionModalOpen(true)} disabled={processingAction} className="w-full bg-white border border-red-100 text-red-500 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"><ThumbsDown size={14} /><span>Recusar Proposta</span></button>
-                                        </div>
-                                    </div>
-                                )}
+                                  {/* Estado: Aguardando Aprovação do Cliente (Orçamento Fechado e Aceito pelo Profissional) */}
+                                  {order.orcamentos?.[0] && order.orcamentos[0].preco > 0 && order.status === 'aguardando_aprovacao' && (
+                                     <div className="mt-8 pt-8 border-t border-gray-200 animate-in fade-in duration-500">
+                                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-1"><Banknote size={12} /> Escolha a Forma de Pagamento</p>
+                                         <div className="grid grid-cols-1 gap-3">
+                                             <button onClick={() => setPaymentChoice('original')} className={`p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden ${paymentChoice === 'original' ? 'border-ios-blue bg-blue-50/50 shadow-md ring-4 ring-blue-50' : 'border-gray-200 bg-white'}`}>
+                                                 <div className="flex justify-between items-start">
+                                                     <div className="flex gap-3">
+                                                         <div className={`p-2 rounded-xl ${paymentChoice === 'original' ? 'bg-ios-blue text-white' : 'bg-gray-100 text-gray-400'}`}>{order.orcamentos[0].tipopagmto === 'PIX' || order.orcamentos[0].tipopagmto === 'Dinheiro' ? <Smartphone size={20} /> : <CreditCard size={20} />}</div>
+                                                         <div>
+                                                             <p className="text-xs font-black text-gray-900 uppercase">Sua Escolha Inicial</p>
+                                                             <h4 className="text-sm font-bold text-gray-700">{order.orcamentos[0].tipopagmto}</h4>
+                                                             {order.orcamentos[0].tipopagmto === 'Cartão de Crédito' && <p className="text-[10px] font-bold text-gray-400">{order.orcamentos[0].parcelas}x no cartão</p>}
+                                                         </div>
+                                                     </div>
+                                                     <div className="text-right">
+                                                         <p className="text-xs font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
+                                                         {paymentChoice === 'original' && <div className="inline-block bg-ios-blue text-white p-1 rounded-full mt-2"><Check size={12} /></div>}
+                                                     </div>
+                                                 </div>
+                                             </button>
+
+                                             {order.orcamentos[0].tipopagmto_sugerido && (
+                                                 <button onClick={() => setPaymentChoice('suggested')} className={`p-5 rounded-3xl border-2 text-left transition-all relative overflow-hidden ${paymentChoice === 'suggested' ? 'border-blue-600 bg-blue-50 shadow-md ring-4 ring-blue-50' : 'border-gray-200 bg-white'}`}>
+                                                     <div className="absolute top-0 right-0 bg-blue-600 text-white px-3 py-1 text-[8px] font-black uppercase rounded-bl-xl flex items-center gap-1 shadow-sm"><Sparkles size={8} /> Sugestão UAI Fix</div>
+                                                     <div className="flex justify-between items-start mt-1">
+                                                         <div className="flex gap-3">
+                                                             <div className={`p-2 rounded-xl ${paymentChoice === 'suggested' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-400'}`}>{order.orcamentos[0].tipopagmto_sugerido === 'PIX' || order.orcamentos[0].tipopagmto_sugerido === 'Dinheiro' ? <Smartphone size={20} /> : <CreditCard size={20} />}</div>
+                                                             <div>
+                                                                 <p className="text-xs font-black text-gray-900 uppercase">Oferta Alternativa</p>
+                                                                 <h4 className="text-sm font-bold text-gray-700">{order.orcamentos[0].tipopagmto_sugerido}</h4>
+                                                                 {order.orcamentos[0].tipopagmto_sugerido === 'Cartão de Crédito' && <p className="text-[10px] font-bold text-gray-400">{order.orcamentos[0].parcelas_sugerido}x no cartão</p>}
+                                                             </div>
+                                                         </div>
+                                                         <div className="text-right">
+                                                             {(order.orcamentos[0].desconto_sugerido || 0) > 0 ? (
+                                                                 <div className="space-y-0.5">
+                                                                     <p className="text-[10px] text-gray-400 line-through">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
+                                                                     <p className="text-sm font-black text-green-600">R$ {(order.orcamentos[0].preco * (1 - (order.orcamentos[0].desconto_sugerido || 0) / 100)).toFixed(2)}</p>
+                                                                     <div className="bg-green-100 text-green-700 px-2 py-0.5 rounded-md text-[8px] font-black uppercase inline-block">-{(order.orcamentos[0].desconto_sugerido || 0)}% OFF</div>
+                                                                 </div>
+                                                             ) : (
+                                                                 <p className="text-xs font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
+                                                             )}
+                                                             {paymentChoice === 'suggested' && <div className="inline-block bg-blue-600 text-white p-1 rounded-full mt-2"><Check size={12} /></div>}
+                                                         </div>
+                                                     </div>
+                                                     {order.orcamentos[0].justificativa_sugerido && (
+                                                         <div className="mt-4 p-3 bg-blue-100/50 rounded-2xl border border-blue-200">
+                                                             <p className="text-[9px] font-black text-blue-600 uppercase mb-1 flex items-center gap-1"><MessageSquare size={10} /> Por que sugerimos?</p>
+                                                             <p className="text-xs font-bold text-blue-900 italic leading-relaxed">"{order.orcamentos[0].justificativa_sugerido}"</p>
+                                                         </div>
+                                                     )}
+                                                 </button>
+                                             )}
+                                         </div>
+
+                                         {order.orcamentos?.[0].observacaocliente && (
+                                             <div className="mt-6 p-5 bg-blue-600 rounded-3xl text-white shadow-xl relative animate-in slide-in-from-left-4">
+                                                 <div className="flex items-center gap-2 mb-2"><MessageSquare size={14} className="text-blue-100" /><p className="text-[10px] font-black uppercase tracking-widest text-blue-100">Mensagem do Orçamentista</p></div>
+                                                 <p className="text-sm font-medium leading-relaxed italic">"{order.orcamentos[0].observacaocliente}"</p>
+                                                 <div className="absolute -top-2 left-8 w-4 h-4 bg-blue-600 rotate-45"></div>
+                                             </div>
+                                         )}
+                                     </div>
+                                 )}
+
+                                  {/* Botões de Ação do Cliente - Estritamente apenas após orçamento fechado e aceite do profissional */}
+                                  {order.status === 'aguardando_aprovacao' && order.orcamentos?.[0] && order.orcamentos[0].preco > 0 && (
+                                      <div className="mt-8 p-6 bg-white rounded-3xl border border-orange-100 space-y-5 shadow-sm animate-in slide-in-from-bottom-4">
+                                          <div className="flex items-center gap-3 text-orange-700"><AlertCircle size={20} className="flex-shrink-0" /><p className="text-xs font-bold leading-tight">Ao aprovar, o serviço será oficialmente agendado com a forma de pagamento e valor escolhidos mediante assinatura digital.</p></div>
+                                          <div className="flex flex-col gap-2">
+                                              <button onClick={() => setIsSignatureModalOpen(true)} disabled={processingAction} className="w-full bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={18} /> : <><ThumbsUp size={18} /><span>Assinar e Aprovar Orçamento</span></>}</button>
+                                              <button onClick={() => setIsRejectionModalOpen(true)} disabled={processingAction} className="w-full bg-white border border-red-100 text-red-500 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"><ThumbsDown size={14} /><span>Recusar Proposta</span></button>
+                                          </div>
+                                      </div>
+                                  )}
                             </div>
                         </div>
                     )}
@@ -403,47 +564,97 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                     )}
 
                     {activeTab === 'avaliacao' && (
-                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                            {!order.avaliacao ? (
-                                <div className="space-y-8">
-                                    <div className="text-center space-y-2 mt-4"><h4 className="text-xl font-black text-gray-900">Como foi o serviço?</h4><p className="text-xs text-gray-500 font-medium">Sua avaliação ajuda a manter a qualidade.</p></div>
-                                    <div className="flex justify-center space-x-3">{[1, 2, 3, 4, 5].map((star) => (<button key={star} type="button" onClick={() => setRatingScore(star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="transition-all active:scale-90"><Star size={44} className={`${(hoverRating || ratingScore) >= star ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`} /></button>))}</div>
-                                    
-                                    {(!userOrigin || userOrigin === 'site') && (
-                                        <div className="space-y-3">
-                                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.1em] ml-1">Por onde conheceu a UAI Fix?</label>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {['Instagram', 'Indicação', 'YouTube', 'Outro'].map(src => (
-                                                    <button 
-                                                        key={src} 
-                                                        onClick={() => setDiscoverySource(src)}
-                                                        className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border ${discoverySource === src ? 'bg-ios-blue text-white border-ios-blue shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
-                                                    >
-                                                        {src}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {(discoverySource === 'Outro' || discoverySource === 'Indicação') && (
-                                                <input 
-                                                    type="text" 
-                                                    placeholder={discoverySource === 'Indicação' ? "Nome, WhatsApp ou Email de quem te indicou..." : "Especifique..."}
-                                                    value={discoveryOther} 
-                                                    onChange={(e) => setDiscoveryOther(e.target.value)} 
-                                                    className="w-full mt-2 bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-ios-blue/30"
-                                                />
-                                            )}
+                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            {/* Service / Professional Rating Section */}
+                            <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 space-y-4">
+                                <div className="text-center space-y-1">
+                                    <h4 className="text-base font-black text-gray-900">Avaliação do Serviço e Profissional</h4>
+                                    <p className="text-[11px] text-gray-500 font-medium">Como foi o atendimento e a execução técnica?</p>
+                                </div>
+                                {!order.avaliacao ? (
+                                    <div className="space-y-4">
+                                        <div className="flex justify-center space-x-2">
+                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                <button key={star} type="button" onClick={() => setRatingScore(star)} onMouseEnter={() => setHoverRating(star)} onMouseLeave={() => setHoverRating(0)} className="transition-all active:scale-90">
+                                                    <Star size={36} className={`${(hoverRating || ratingScore) >= star ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+                                                </button>
+                                            ))}
                                         </div>
-                                    )}
+                                        <textarea value={ratingComment} onChange={(e) => setRatingComment(e.target.value)} placeholder="Comentário sobre o profissional..." className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[80px] resize-none" />
+                                    </div>
+                                ) : (
+                                    <div className="bg-white p-4 rounded-2xl border border-green-100 text-center space-y-2">
+                                        <div className="flex justify-center space-x-1">
+                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                <Star key={star} size={20} className={star <= (order.avaliacao?.nota || 0) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'} />
+                                            ))}
+                                        </div>
+                                        <p className="text-xs font-bold text-gray-700 italic">"{order.avaliacao?.comentario || 'Sem comentário'}"</p>
+                                    </div>
+                                )}
+                            </div>
 
-                                    <div className="space-y-2"><label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.1em] ml-1">Comentário Adicional</label><textarea value={ratingComment} onChange={(e) => setRatingComment(e.target.value)} placeholder="Descreva sua experiência..." className="w-full bg-gray-50 border border-gray-200 rounded-[1.5rem] p-5 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[120px] resize-none" /></div>
-                                    <button onClick={handleSubmitRating} disabled={submittingRating || !ratingScore} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center space-x-2 disabled:opacity-50">{submittingRating ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar Avaliação</span></>}</button>
+                            {/* UaiFix Platform Rating Section */}
+                            <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 space-y-4">
+                                <div className="text-center space-y-1">
+                                    <h4 className="text-base font-black text-gray-900">Avaliação da Plataforma UaiFix</h4>
+                                    <p className="text-[11px] text-gray-500 font-medium">Como foi sua experiência com o app, orçamentos e suporte?</p>
                                 </div>
-                            ) : (
-                                <div className="bg-green-50 p-8 rounded-[2.5rem] border border-green-100 text-center space-y-4">
-                                    <div className="flex justify-center items-center gap-2 mb-2"><div className="bg-white p-2 rounded-full shadow-sm"><UserCheck size={20} className="text-green-600" /></div><h5 className="font-black text-green-900 text-sm uppercase tracking-wider">Serviço Avaliado</h5></div>
-                                    <div className="flex justify-center space-x-1">{[1, 2, 3, 4, 5].map((star) => (<Star key={star} size={28} className={star <= (order.avaliacao?.nota || 0) ? 'fill-green-500 text-green-500' : 'text-green-200'} />))}</div>
-                                    <p className="text-base font-bold text-green-800 leading-relaxed italic mt-4">"{order.avaliacao?.comentario}"</p>
+                                {!order.avaliacaoPlataforma ? (
+                                    <div className="space-y-4">
+                                        <div className="flex justify-center space-x-2">
+                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                <button key={star} type="button" onClick={() => setPlatformRatingScore(star)} onMouseEnter={() => setHoverPlatformRating(star)} onMouseLeave={() => setHoverPlatformRating(0)} className="transition-all active:scale-90">
+                                                    <Star size={36} className={`${(hoverPlatformRating || platformRatingScore) >= star ? 'fill-blue-500 text-blue-500' : 'text-gray-300'}`} />
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <textarea value={platformRatingComment} onChange={(e) => setPlatformRatingComment(e.target.value)} placeholder="Feedback sobre a UaiFix..." className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/30 min-h-[80px] resize-none" />
+                                    </div>
+                                ) : (
+                                    <div className="bg-white p-4 rounded-2xl border border-blue-100 text-center space-y-2">
+                                        <div className="flex justify-center space-x-1">
+                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                <Star key={star} size={20} className={star <= (order.avaliacaoPlataforma?.nota || 0) ? 'fill-blue-500 text-blue-500' : 'text-gray-200'} />
+                                            ))}
+                                        </div>
+                                        <p className="text-xs font-bold text-gray-700 italic">"{order.avaliacaoPlataforma?.comentario || 'Sem comentário'}"</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {(!userOrigin || userOrigin === 'site') && (!order.avaliacao && !order.avaliacaoPlataforma) && (
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.1em] ml-1">Por onde conheceu a UAI Fix?</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {['Instagram', 'Indicação', 'YouTube', 'Outro'].map(src => (
+                                            <button 
+                                                key={src} 
+                                                onClick={() => setDiscoverySource(src)}
+                                                className={`py-3 px-4 rounded-xl text-xs font-bold transition-all border ${discoverySource === src ? 'bg-ios-blue text-white border-ios-blue shadow-md' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                                            >
+                                                {src}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {(discoverySource === 'Outro' || discoverySource === 'Indicação') && (
+                                        <input 
+                                            type="text" 
+                                            placeholder={discoverySource === 'Indicação' ? "Nome, WhatsApp ou Email de quem te indicou..." : "Especifique..."}
+                                            value={discoveryOther} 
+                                            onChange={(e) => setDiscoveryOther(e.target.value)} 
+                                            className="w-full mt-2 bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm font-bold outline-none focus:ring-2 focus:ring-ios-blue/30"
+                                        />
+                                    )}
                                 </div>
+                            )}
+
+                            <p className="text-[10px] text-gray-400 text-center italic">* Você pode editar suas avaliações em até 7 dias após o envio.</p>
+
+                            {(!order.avaliacao || !order.avaliacaoPlataforma) && (
+                                <button onClick={handleSubmitRating} disabled={submittingRating || (!ratingScore && !platformRatingScore)} className="w-full bg-black text-white py-4 rounded-2xl font-bold shadow-xl flex items-center justify-center space-x-2 disabled:opacity-50">
+                                    {submittingRating ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /><span>Enviar Avaliações</span></>}
+                                </button>
                             )}
                         </div>
                     )}
@@ -473,6 +684,19 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                     </div>
                 </div>
             )}
+
+            <SignatureModal
+                isOpen={isSignatureModalOpen}
+                onClose={() => setIsSignatureModalOpen(false)}
+                onConfirm={(sigData) => handleProposalDecision(true, '', sigData)}
+                loading={processingAction}
+            />
+
+            <PrintOsModal
+                isOpen={isPrintModalOpen}
+                onClose={() => setIsPrintModalOpen(false)}
+                osData={buildOsPrintData()}
+            />
         </div>
     );
 };

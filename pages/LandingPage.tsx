@@ -41,11 +41,11 @@ const LandingPage: React.FC = () => {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-5 h-20 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-blue-400 flex items-center justify-center shadow-lg shadow-blue-500/30">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm overflow-hidden border border-gray-100">
                <img 
-                 src="https://uehyjyyvkrlggwmfdhgh.supabase.co/storage/v1/object/public/imagens/imagens/994ff870-5268-4a13-8378-0661a9ffe9b9.jpeg" 
-                 alt="Logo" 
-                 className="w-full h-full object-cover rounded-xl opacity-90"
+                 src="/logo.jpg" 
+                 alt="Logo UAI Fix" 
+                 className="w-full h-full object-cover"
                />
             </div>
             <span className="text-xl font-bold tracking-tight">UAI Fix</span>

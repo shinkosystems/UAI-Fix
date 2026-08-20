@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import { User, Geral } from '../types';
+import { getStoredTrackingData } from '../utils/tracking';
 import {
     ChevronLeft, Calendar, FileText, CheckCircle, Loader2, AlertTriangle,
     MapPin, Package, Plus, X, Clock, Banknote, Wallet, Camera,
@@ -261,6 +262,8 @@ const Planning: React.FC = () => {
             }
 
             const uniqueKey = Math.random().toString(36).substring(2, 10).toUpperCase();
+            const tracking = getStoredTrackingData();
+            const clientOrigin = tracking?.origem || currentUser.origem || 'organico';
 
             const { data: chaveData, error: chaveError } = await supabase
                 .from('chaves')
@@ -272,7 +275,11 @@ const Planning: React.FC = () => {
                     atividade: parseInt(paramServiceId),
                     cidade: currentUser.cidade,
                     fotoantes: [],
-                    fotodepois: []
+                    fotodepois: [],
+                    origem: clientOrigin,
+                    utm_source: tracking?.utm_source || null,
+                    utm_medium: tracking?.utm_medium || null,
+                    utm_campaign: tracking?.utm_campaign || null
                 })
                 .select()
                 .single();

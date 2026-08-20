@@ -110,7 +110,8 @@ const CalendarPage: React.FC = () => {
             const orcMap = Object.fromEntries(orcRes.data?.map(o => [o.chave, o]) || []);
             const agendaMap = Object.fromEntries(agendaRes.data?.map(a => [a.chave, a]) || []);
             const usersMap = Object.fromEntries(usersRes.data?.map(u => [u.uuid, u]) || []);
-            const reviewsMap = Object.fromEntries(reviewsRes.data?.map(r => [r.chave, r]) || []);
+            const reviewsProfMap = Object.fromEntries(reviewsRes.data?.filter(r => r.tipo_alvo === 'profissional' || !r.tipo_alvo).map(r => [r.chave, r]) || []);
+            const reviewsPlatMap = Object.fromEntries(reviewsRes.data?.filter(r => r.tipo_alvo === 'plataforma_uaifix').map(r => [r.chave, r]) || []);
 
             const normalized: EventExtended[] = chavesData.map(item => {
                 const plan = planMap[item.id];
@@ -127,7 +128,8 @@ const CalendarPage: React.FC = () => {
                     agendaData: agenda,
                     clienteData: usersMap[item.cliente],
                     profissionalData: usersMap[item.profissional],
-                    avaliacao: reviewsMap[item.id],
+                    avaliacao: reviewsProfMap[item.id],
+                    avaliacaoPlataforma: reviewsPlatMap[item.id],
                     calendarDate: new Date(calendarDateStr)
                 };
             });

@@ -17,11 +17,11 @@
     <link rel="manifest" href="/manifest.json">
     
     <!-- Favicons & Icons -->
-    <link rel="icon" type="image/jpeg" href="https://uehyjyyvkrlggwmfdhgh.supabase.co/storage/v1/object/public/imagens/imagens/994ff870-5268-4a13-8378-0661a9ffe9b9.jpeg" />
-    <link rel="apple-touch-icon" href="https://uehyjyyvkrlggwmfdhgh.supabase.co/storage/v1/object/public/imagens/imagens/994ff870-5268-4a13-8378-0661a9ffe9b9.jpeg">
+    <link rel="icon" type="image/jpeg" href="/logo.jpg" />
+    <link rel="apple-touch-icon" href="/logo.jpg">
     
-    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         theme: {
@@ -30,21 +30,16 @@
               sans: ['Inter', 'sans-serif'],
             },
             colors: {
-              ios: {
-                bg: '#F2F2F7', // Classic iOS gray background
-                card: '#FFFFFF',
-                blue: '#007AFF',
-                gray: '#8E8E93',
-                separator: '#C6C6C8',
-              }
+              'ios-bg': '#F2F2F7',
+              'ios-card': '#FFFFFF',
+              'ios-blue': '#007AFF',
+              'ios-gray': '#8E8E93',
+              'ios-separator': '#C6C6C8',
             },
             boxShadow: {
-              'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
-              'vitrified': '0 8px 32px 0 rgba(0, 0, 0, 0.08)',
-              'floating': '0 20px 40px -10px rgba(0, 0, 0, 0.15)',
-            },
-            backdropBlur: {
-              'xs': '2px',
+              glass: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
+              vitrified: '0 8px 32px 0 rgba(0, 0, 0, 0.08)',
+              floating: '0 20px 40px -10px rgba(0, 0, 0, 0.15)',
             }
           }
         }
@@ -80,20 +75,7 @@
         border: 1px solid rgba(255, 255, 255, 0.1);
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.85.0",
-    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.9.6",
-    "jspdf": "https://aistudiocdn.com/jspdf@^2.5.1"
-  }
-}
-</script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>

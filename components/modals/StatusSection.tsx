@@ -1,7 +1,8 @@
 
 import React from 'react';
 import { MapPin, Calendar, Banknote, User as UserIcon, AlertCircle, Ban, CheckCircle2, Sparkles } from 'lucide-react';
-import { ChamadoExtended } from '../../pages/Chamados';
+import { ChamadoExtended } from '../../types';
+import { SearchableSelect } from '../SearchableSelect';
 
 interface StatusSectionProps {
     formData: any;
@@ -118,11 +119,23 @@ const StatusSection: React.FC<StatusSectionProps> = ({
     return (
         <div className="bg-gray-50/50 p-6 rounded-[2rem] border border-gray-100 space-y-4">
             <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block ml-1">Status do Fluxo</label>
-            <select
-                className="w-full bg-white border border-gray-200 rounded-xl p-4 text-sm font-black text-gray-900 outline-none shadow-sm appearance-none"
+            <SearchableSelect
+                options={[
+                    { value: 'pendente', label: 'Pendente' },
+                    { value: 'analise', label: 'Em Orçamento' },
+                    { value: 'aguardando_profissional', label: 'Aguardando Profissional' },
+                    { value: 'aguardando_aprovacao', label: 'Aguardando Cliente' },
+                    { value: 'aprovado', label: 'Aprovado (Agendado)' },
+                    { value: 'executando', label: 'Em Execução' },
+                    { value: 'concluido', label: 'Concluído' },
+                    { value: 'aguardando_gestor', label: 'Aguardando Gestor' },
+                    { value: 'erro', label: 'ERRO!' },
+                    { value: 'recusado', label: 'Recusado' },
+                    { value: 'cancelado', label: 'Cancelado' },
+                ]}
                 value={formData.status}
-                onChange={(e) => {
-                    const newStatus = e.target.value;
+                onChange={(val) => {
+                    const newStatus = String(val);
                     setFormData({ ...formData, status: newStatus });
                     if (isGestor || isOrcamentista) {
                         setShowBudgetForm(newStatus !== 'pendente');
@@ -131,19 +144,9 @@ const StatusSection: React.FC<StatusSectionProps> = ({
                         onStatusChange(newStatus);
                     }
                 }}
-            >
-                <option value="pendente">Pendente</option>
-                <option value="analise">Em Orçamento</option>
-                <option value="aguardando_profissional">Aguardando Profissional</option>
-                <option value="aguardando_aprovacao">Aguardando Cliente</option>
-                <option value="aprovado">Aprovado (Agendado)</option>
-                <option value="executando">Em Execução</option>
-                <option value="concluido">Concluído</option>
-                <option value="aguardando_gestor">Aguardando Gestor</option>
-                <option value="erro">ERRO!</option>
-                <option value="recusado">Recusado</option>
-                <option value="cancelado">Cancelado</option>
-            </select>
+                placeholder="Selecione o status..."
+                searchPlaceholder="Pesquisar status..."
+            />
 
             {(formData.status === 'recusado' || formData.status === 'reprovado') && (
                 <div className="bg-red-50 p-5 rounded-3xl border border-red-100 flex gap-4 animate-in slide-in-from-top-2 mt-2">

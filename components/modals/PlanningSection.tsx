@@ -1,6 +1,7 @@
 import React from 'react';
 import { ClipboardList, MapPin } from 'lucide-react';
 import { User, Geral, City } from '../../types';
+import { SearchableSelect } from '../SearchableSelect';
 
 interface PlanningSectionProps {
     formData: any;
@@ -36,11 +37,16 @@ const PlanningSection: React.FC<PlanningSectionProps> = ({
 
     return (
         <div className="bg-blue-50/30 p-6 rounded-[2.5rem] border border-blue-100 space-y-5">
-            <div className="flex items-center gap-2 mb-2">
-                <ClipboardList size={18} className="text-ios-blue" />
-                <h4 className="text-[10px] font-black text-ios-blue uppercase tracking-widest">
-                    Planejamento e Edição de Serviço
-                </h4>
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                    <ClipboardList size={18} className="text-ios-blue" />
+                    <h4 className="text-[10px] font-black text-ios-blue uppercase tracking-widest">
+                        Planejamento e Edição de Serviço
+                    </h4>
+                </div>
+                <span className="bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider">
+                    {formData.planejamentoData ? 'Planejamento Salvo' : 'Derivado do Pedido'}
+                </span>
             </div>
 
             {formData.motivo_recusa && (
@@ -58,16 +64,13 @@ const PlanningSection: React.FC<PlanningSectionProps> = ({
             {allServices.length > 0 && onAtividadeCidadeChange && (
                 <div className="space-y-2">
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Tipo de Serviço (Atividade)</label>
-                    <select
-                        className="w-full bg-white border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-ios-blue/20"
+                    <SearchableSelect
+                        options={allServices.map(s => ({ value: String(s.id), label: s.nome }))}
                         value={formData.atividade ? String(formData.atividade) : ''}
-                        onChange={(e) => onAtividadeCidadeChange(e.target.value ? parseInt(e.target.value) : '', formData.cidade)}
-                    >
-                        <option value="">Selecione a atividade...</option>
-                        {allServices.map(s => (
-                            <option key={s.id} value={String(s.id)}>{s.nome}</option>
-                        ))}
-                    </select>
+                        onChange={(val) => onAtividadeCidadeChange(val ? parseInt(val) : '', formData.cidade)}
+                        placeholder="Selecione a atividade..."
+                        searchPlaceholder="Pesquisar atividade..."
+                    />
                 </div>
             )}
 
@@ -81,16 +84,13 @@ const PlanningSection: React.FC<PlanningSectionProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="space-y-1">
                             <span className="text-[9px] font-bold text-gray-400 ml-1 uppercase">Cidade</span>
-                            <select
-                                className="w-full bg-white border border-gray-100 rounded-xl p-3 text-xs font-bold text-gray-900 outline-none"
+                            <SearchableSelect
+                                options={allCities.map(c => ({ value: String(c.id), label: c.cidade }))}
                                 value={formData.cidade ? String(formData.cidade) : ''}
-                                onChange={(e) => onAtividadeCidadeChange(formData.atividade, e.target.value ? parseInt(e.target.value) : '')}
-                            >
-                                <option value="">Selecione a cidade...</option>
-                                {allCities.map(c => (
-                                    <option key={c.id} value={String(c.id)}>{c.cidade}</option>
-                                ))}
-                            </select>
+                                onChange={(val) => onAtividadeCidadeChange(formData.atividade, val ? parseInt(val) : '')}
+                                placeholder="Selecione a cidade..."
+                                searchPlaceholder="Pesquisar cidade..."
+                            />
                         </div>
                         <div className="space-y-1">
                             <span className="text-[9px] font-bold text-gray-400 ml-1 uppercase">CEP</span>
@@ -165,16 +165,13 @@ const PlanningSection: React.FC<PlanningSectionProps> = ({
 
             <div className="space-y-2 pt-2 border-t border-blue-100/50">
                 <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Profissional Responsável</label>
-                <select
-                    className="w-full bg-white border border-gray-100 rounded-2xl p-4 text-sm font-bold text-gray-900 outline-none"
+                <SearchableSelect
+                    options={availableProfessionals.map(p => ({ value: p.uuid, label: p.nome }))}
                     value={formData.profissionalUuid}
-                    onChange={(e) => setFormData({ ...formData, profissionalUuid: e.target.value })}
-                >
-                    <option value="">Selecione um profissional...</option>
-                    {availableProfessionals.map(p => (
-                        <option key={p.uuid} value={p.uuid}>{p.nome}</option>
-                    ))}
-                </select>
+                    onChange={(val) => setFormData({ ...formData, profissionalUuid: val })}
+                    placeholder="Selecione um profissional..."
+                    searchPlaceholder="Pesquisar profissional..."
+                />
             </div>
 
             <div className="grid grid-cols-2 gap-4">

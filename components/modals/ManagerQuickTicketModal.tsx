@@ -8,6 +8,8 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../../supabaseClient';
 import { Geral, City } from '../../types';
+import { formatPhone, formatCpf, formatCep } from '../../utils/masks';
+import { getOrProvisionCity } from '../../utils/cityHelper';
 
 /** Cria um client Supabase temporário sem persistência de sessão para criação de shadow users */
 const createTempSupabaseClient = () =>
@@ -85,6 +87,16 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
   const [clientComplement, setClientComplement] = useState('');
   const [clientNeighborhood, setClientNeighborhood] = useState('');
   const [searchingCep, setSearchingCep] = useState(false);
+  const [origemCliente, setOrigemCliente] = useState<string>('whatsapp');
+
+  const originOptions = [
+    { id: 'whatsapp', label: 'WhatsApp', icon: '💬' },
+    { id: 'instagram', label: 'Instagram', icon: '📸' },
+    { id: 'google', label: 'Google', icon: '🔍' },
+    { id: 'indicacao', label: 'Indicação', icon: '🤝' },
+    { id: 'balcao', label: 'Balcão / Fachada', icon: '🚶' },
+    { id: 'outros', label: 'Outros', icon: '🏷️' }
+  ];
 
   const formatCpf = (v: string) => {
     return v.replace(/\D/g, '')
@@ -160,18 +172,12 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
         if (data.logradouro) setClientStreet(data.logradouro);
         if (data.bairro) setClientNeighborhood(data.bairro);
 
-        // Se retornar localidade, tenta encontrar a cidade correspondente no Supabase
         if (data.localidade) {
-          const { data: cityData } = await supabase
-            .from('cidades')
-            .select('*')
-            .ilike('cidade', data.localidade)
-            .limit(1);
-          if (cityData && cityData.length > 0) {
-            setSelectedCity(cityData[0]);
-            setCitySearchTerm(cityData[0].cidade);
+          const provisionedCity = await getOrProvisionCity(data.localidade, data.uf);
+          if (provisionedCity) {
+            setSelectedCity(provisionedCity);
+            setCitySearchTerm(provisionedCity.cidade);
           } else {
-            // Se não achar a cidade exata, atualiza pelo menos o termo de busca
             setCitySearchTerm(data.localidade);
           }
         }
@@ -242,19 +248,20 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
 
       const { data: existingUsers } = await supabase
         .from('users')
-        .select('uuid, nome, rua, numero, complemento, bairro, cep, cidade, estado, cpf')
+        .select('uuid, nome, rua, numero, complemento, bairro, cep, cidade, estado, cpf, origem')
         .in('whatsapp', searchPhones)
         .limit(1);
 
       if (existingUsers && existingUsers.length > 0) {
         const existingUser = existingUsers[0];
         if (existingUser.nome) setClientName(existingUser.nome);
-        if (existingUser.cep) setClientCep(existingUser.cep);
+        if (existingUser.cep) setClientCep(formatCep(existingUser.cep));
         if (existingUser.rua) setClientStreet(existingUser.rua);
         if (existingUser.numero) setClientNumber(existingUser.numero);
         if (existingUser.complemento) setClientComplement(existingUser.complemento);
         if (existingUser.bairro) setClientNeighborhood(existingUser.bairro);
-        if (existingUser.cpf) setClientCpf(existingUser.cpf);
+        if (existingUser.cpf) setClientCpf(formatCpf(existingUser.cpf));
+        if (existingUser.origem) setOrigemCliente(existingUser.origem);
 
         if (existingUser.cidade) {
           const { data: cityData } = await supabase
@@ -281,6 +288,7 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
     setClientNumber('');
     setClientComplement('');
     setClientNeighborhood('');
+    setOrigemCliente('whatsapp');
     setUseDifferentAddress(false);
     setServiceCep('');
     setServiceStreet('');
@@ -599,7 +607,8 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
           bairro: clientNeighborhood || '',
           cep: clientCep || '',
           cidade: selectedCity.id,
-          estado: selectedCity.uf
+          estado: selectedCity.uf,
+          origem: origemCliente
         }).eq('uuid', clientUuid);
       } else {
         const fakeEmail = `whatsapp_${selectedChat.phone.replace(/\D/g, '')}@uaifix.com`;
@@ -632,7 +641,7 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
           complemento: clientComplement || '',
           bairro: clientNeighborhood || '',
           cep: clientCep || '',
-          origem: 'whatsapp',
+          origem: origemCliente,
           fotoperfil: ''
         });
         if (userError) throw new Error(`Erro ao criar perfil do cliente: ${userError.message}`);
@@ -682,6 +691,7 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
           fotodepois: [],
           whatsapp_chat_id: selectedChat.id,
           whatsapp_lead_cpf: cleanCpf,
+          origem: origemCliente,
           gestor_responsavel: gestorUuid || null
         })
         .select()
@@ -766,6 +776,36 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
 
               {/* SECTION: Básico */}
               <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm space-y-5">
+                {/* Origem do Cliente / Atendimento */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 flex items-center justify-between">
+                    <span className="flex items-center"><User size={12} className="mr-1" /> Canal de Origem</span>
+                    <span className="text-ios-blue font-semibold lowercase">atribuição</span>
+                  </label>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {originOptions.map(opt => {
+                      const isSelected = origemCliente === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setOrigemCliente(opt.id)}
+                          className={`py-2.5 px-2 rounded-2xl flex flex-col items-center justify-center transition-all border text-center ${
+                            isSelected
+                              ? 'bg-ios-blue text-white border-ios-blue shadow-sm scale-[1.02]'
+                              : 'bg-gray-50/80 hover:bg-gray-100 text-gray-700 border-gray-100'
+                          }`}
+                        >
+                          <span className="text-base mb-0.5">{opt.icon}</span>
+                          <span className={`text-[11px] font-bold truncate max-w-full ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+                            {opt.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Nome do Cliente */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1 flex items-center">
@@ -1011,10 +1051,10 @@ const ManagerQuickTicketModal: React.FC<ManagerQuickTicketModalProps> = ({ isOpe
                       type="text"
                       value={clientCep}
                       onChange={(e) => {
-                        const val = e.target.value;
-                        setClientCep(val);
-                        if (val.replace(/\D/g, '').length === 8) {
-                          fetchCepData(val);
+                        const formatted = formatCep(e.target.value);
+                        setClientCep(formatted);
+                        if (formatted.replace(/\D/g, '').length === 8) {
+                          fetchCepData(formatted);
                         }
                       }}
                       placeholder="Ex: 00000-000"

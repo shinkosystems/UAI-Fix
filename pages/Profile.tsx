@@ -1,9 +1,10 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { User, City, Estado } from '../types';
+import { User, City, Estado, Geral } from '../types';
 import { useNavigate } from 'react-router-dom';
-import { User as UserIcon, Phone, LogOut, Camera, Save, Loader2, AlertCircle, Search, MapPin, X, FileText, Home, Navigation, Bell } from 'lucide-react';
+import { User as UserIcon, Phone, LogOut, Camera, Save, Loader2, AlertCircle, Search, MapPin, X, FileText, Home, Navigation, Bell, Briefcase, Check } from 'lucide-react';
+import { getOrProvisionCity } from '../utils/cityHelper';
 
 interface NotificationItem {
   id: number;
@@ -47,7 +48,13 @@ const Profile: React.FC = () => {
   const notificationRef = useRef<HTMLDivElement>(null);
   const [userType, setUserType] = useState('');
 
-  const canEdit = ['gestor', 'consumidor'].includes(userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  // Especialidades / Serviços atendidos pelo profissional
+  const [availableServices, setAvailableServices] = useState<Geral[]>([]);
+  const [selectedActivities, setSelectedActivities] = useState<number[]>([]);
+  const [serviceSearchTerm, setServiceSearchTerm] = useState('');
+
+  const canEdit = ['gestor', 'consumidor', 'profissional'].includes(userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  const isProfessional = ['profissional', 'gestor'].includes(userType.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
 
   useEffect(() => {
     fetchData();
@@ -153,32 +160,12 @@ const Profile: React.FC = () => {
           if (!data.erro) {
               setRua(data.logradouro || '');
               setBairro(data.bairro || '');
-              const stateObj = states.find(s => s.uf === data.uf);
-              
-              if(data.localidade && stateObj) {
-                  setSelectedStateId(stateObj.id);
-                  
-                  let { data: cityDB } = await supabase
-                    .from('cidades')
-                    .select('*')
-                    .eq('uf', stateObj.id)
-                    .ilike('cidade', data.localidade.trim())
-                    .maybeSingle();
-                  
-                  if (!cityDB) {
-                      const { data: fuzzyData } = await supabase
-                        .from('cidades')
-                        .select('*')
-                        .eq('uf', stateObj.id)
-                        .ilike('cidade', `%${data.localidade.trim().split(' ')[0]}%`)
-                        .limit(1)
-                        .maybeSingle();
-                      cityDB = fuzzyData;
-                  }
-
-                  if(cityDB) { 
-                      setCityName(cityDB.cidade); 
-                      setSelectedCityId(cityDB.id); 
+              if (data.localidade) {
+                  const provisionedCity = await getOrProvisionCity(data.localidade, data.uf);
+                  if (provisionedCity) {
+                      setCityName(provisionedCity.cidade);
+                      setSelectedCityId(provisionedCity.id);
+                      setSelectedStateId(provisionedCity.uf);
                       setMessage(null);
                   } else {
                       setCityName('');
@@ -213,8 +200,12 @@ const Profile: React.FC = () => {
         if (demoUsers && demoUsers.length > 0) uuidToFetch = demoUsers[0].uuid; 
       }
 
-      const { data: statesData } = await supabase.from('estados').select('*').order('uf', { ascending: true });
-      setStates(statesData || []);
+      const [statesRes, servicesRes] = await Promise.all([
+        supabase.from('estados').select('*').order('uf', { ascending: true }),
+        supabase.from('geral').select('*').eq('ativa', true).order('nome', { ascending: true })
+      ]);
+      setStates(statesRes.data || []);
+      setAvailableServices(servicesRes.data || []);
 
       if (uuidToFetch) {
         const { data: userData, error: userError } = await supabase.from('users').select('*').eq('uuid', uuidToFetch).single();
@@ -232,6 +223,7 @@ const Profile: React.FC = () => {
           setBairro(cleanValue(userData.bairro));
           setComplemento(cleanValue(userData.complemento));
           setUserType(userData.tipo || '');
+          setSelectedActivities(Array.isArray(userData.atividade) ? userData.atividade : []);
           fetchNotifications(userData.tipo || '', uuidToFetch);
           
           if (!isNewAccount) {
@@ -265,6 +257,32 @@ const Profile: React.FC = () => {
       setSearchedCities(data || []);
     } catch (err) { console.error(err); } finally { setSearchingCity(false); }
   };
+
+  const toggleActivity = (activityId: number) => {
+    if (!canEdit) return;
+    setSelectedActivities(prev => 
+      prev.includes(activityId) 
+        ? prev.filter(id => id !== activityId) 
+        : [...prev, activityId]
+    );
+  };
+
+  const handleSelectAllFiltered = () => {
+    if (!canEdit) return;
+    const filteredIds = filteredServices.map(s => s.id);
+    const newSet = new Set([...selectedActivities, ...filteredIds]);
+    setSelectedActivities(Array.from(newSet));
+  };
+
+  const handleClearSelection = () => {
+    if (!canEdit) return;
+    setSelectedActivities([]);
+  };
+
+  const filteredServices = availableServices.filter(s => {
+    if (!serviceSearchTerm.trim()) return true;
+    return s.nome.toLowerCase().includes(serviceSearchTerm.toLowerCase());
+  });
 
   const validateCpf = (cpfStr: string) => {
     const strCPF = cpfStr.replace(/[^\d]+/g, '');
@@ -316,14 +334,32 @@ const Profile: React.FC = () => {
     setSaving(true); setMessage(null);
     try {
       if (!selectedCityId) throw new Error('Selecione uma cidade válida.');
+      if (isProfessional && selectedActivities.length === 0) {
+        throw new Error('Selecione pelo menos um serviço/especialidade que você atende.');
+      }
       const cleanCpf = cpf.replace(/\D/g, ''), cleanPhone = whatsapp.replace(/\D/g, ''), cleanCep = cep.replace(/\D/g, '');
       if (cleanCpf && !validateCpf(cleanCpf)) throw new Error('CPF inválido.');
       if (cleanCpf) { const { data: existingUser } = await supabase.from('users').select('id').eq('cpf', cleanCpf).neq('id', profile.id).maybeSingle(); if (existingUser) throw new Error('CPF já em uso.'); }
-      const updates = { nome, whatsapp: cleanPhone, cpf: cleanCpf, sexo: sexo || 'Outro', cep: cleanCep, rua, numero, bairro, complemento, estado: selectedStateId, cidade: selectedCityId };
+      const updates: any = { 
+        nome, 
+        whatsapp: cleanPhone, 
+        cpf: cleanCpf, 
+        sexo: sexo || 'Outro', 
+        cep: cleanCep, 
+        rua, 
+        numero, 
+        bairro, 
+        complemento, 
+        estado: selectedStateId, 
+        cidade: selectedCityId 
+      };
+      if (isProfessional) {
+        updates.atividade = selectedActivities;
+      }
       const { error } = await supabase.from('users').update(updates).eq('id', profile.id);
       if (error) throw error;
       setProfile({ ...profile, ...updates } as User);
-      setMessage({ type: 'success', text: 'Dados atualizados!' });
+      setMessage({ type: 'success', text: 'Dados atualizados com sucesso!' });
       setTimeout(() => setMessage(null), 3000);
     } catch (error: any) { setMessage({ type: 'error', text: error.message }); } finally { setSaving(false); }
   };
@@ -407,6 +443,93 @@ const Profile: React.FC = () => {
           
           <div className="space-y-2"><label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Sexo / Gênero</label><select value={sexo} onChange={(e) => setSexo(e.target.value)} disabled={!canEdit} className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3.5 px-4 text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 appearance-none"><option value="Masculino">Masculino</option><option value="Feminino">Feminino</option><option value="Outro">Outro</option></select></div>
         </div>
+
+        {/* Bloco de Serviços e Especialidades para Profissionais */}
+        {isProfessional && (
+          <div className="bg-white rounded-3xl p-6 shadow-glass border border-white space-y-4 animate-in fade-in duration-300">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <Briefcase size={20} className="text-ios-blue" />
+                  <h2 className="text-lg font-bold text-gray-900">Serviços & Especialidades</h2>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">Selecione as categorias e serviços que você está apto a prestar.</p>
+              </div>
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold self-start sm:self-center transition-all ${selectedActivities.length > 0 ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>
+                {selectedActivities.length} {selectedActivities.length === 1 ? 'selecionado' : 'selecionados'}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                <input
+                  type="text"
+                  placeholder="Buscar especialidade (ex: Pintor, Elétrica, Encanador)..."
+                  value={serviceSearchTerm}
+                  onChange={(e) => setServiceSearchTerm(e.target.value)}
+                  disabled={!canEdit}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-ios-blue/50 disabled:bg-gray-100 transition-all"
+                />
+              </div>
+
+              {canEdit && (
+                <div className="flex items-center justify-between text-xs px-1">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllFiltered}
+                    className="text-ios-blue font-bold hover:underline"
+                  >
+                    Selecionar todos visíveis ({filteredServices.length})
+                  </button>
+                  {selectedActivities.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearSelection}
+                      className="text-red-500 font-bold hover:underline"
+                    >
+                      Limpar seleção
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="bg-gray-50/70 p-3.5 rounded-2xl border border-gray-100 max-h-64 overflow-y-auto">
+                {filteredServices.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-gray-400">
+                    Nenhum serviço encontrado para "{serviceSearchTerm}".
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {filteredServices.map(service => {
+                      const isSelected = selectedActivities.includes(service.id);
+                      return (
+                        <button
+                          key={service.id}
+                          type="button"
+                          onClick={() => toggleActivity(service.id)}
+                          disabled={!canEdit}
+                          className={`flex items-center justify-between p-3 rounded-xl border text-xs font-medium transition-all text-left group ${
+                            isSelected
+                              ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
+                              : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          } ${!canEdit ? 'cursor-default' : 'cursor-pointer'}`}
+                        >
+                          <span className="truncate pr-2">{service.nome}</span>
+                          <div className={`w-4 h-4 rounded-md flex items-center justify-center flex-shrink-0 transition-all ${
+                            isSelected ? 'bg-blue-500 text-white' : 'border border-gray-300 group-hover:border-gray-400'
+                          }`}>
+                            {isSelected && <Check size={12} strokeWidth={3} />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white rounded-3xl p-6 shadow-glass border border-white space-y-5">
           <h2 className="text-lg font-bold text-gray-900 mb-1 border-b border-gray-100 pb-2">Endereço de Atendimento</h2>

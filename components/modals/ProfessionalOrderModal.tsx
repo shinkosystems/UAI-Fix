@@ -2,9 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { sendWhatsappText, sendWhatsappButtons, sendWhatsappOptionList } from '../../utils/whatsapp';
+import { notifyProfessionalNewService, notifyProfessionalBudgetApproved } from '../../utils/whatsappNotifications';
+import { getOrProvisionCity } from '../../utils/cityHelper';
 import {
     X, Save, Hash, Loader2, ThumbsUp, ThumbsDown,
-    Play, CheckCircle2, Star, Camera, Copy, Check, Link2
+    Play, CheckCircle2, Star, Camera, Copy, Check, Link2, MessageSquare, Printer
 } from 'lucide-react';
 import StatusSection from './StatusSection';
 import PlanningSection from './PlanningSection';
@@ -13,7 +15,9 @@ import ConsumerTab from './ConsumerTab';
 import ProfessionalTab from './ProfessionalTab';
 import PaymentInfoSection from './PaymentInfoSection';
 import FlexibilitySection from './FlexibilitySection';
-import { User, ChamadoExtended, Geral, City } from '../../types';
+import { PrintOsModal } from './PrintOsModal';
+import { OsPrintData } from '../../utils/osPrinter';
+import { User, ChamadoExtended, Geral, City, getOriginBadgeConfig } from '../../types';
 
 interface ProfessionalOrderModalProps {
     order: any;
@@ -35,6 +39,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     userUuid
 }) => {
     const [saving, setSaving] = useState(false);
+    const [notifyingWa, setNotifyingWa] = useState(false);
     const [modalSubTab, setModalSubTab] = useState<ModalTab>('status');
     const [showBudgetForm, setShowBudgetForm] = useState(false);
     const [availableProfessionals, setAvailableProfessionals] = useState<User[]>([]);
@@ -50,6 +55,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const [cancelInputCode, setCancelInputCode] = useState('');
     const [codeCopied, setCodeCopied] = useState(false);
 
+    const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
     const [formData, setFormData] = useState({
         atividade: 0 as number | string,
         cidade: 0 as number | string,
@@ -62,6 +69,18 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         status: '',
         orcamentoPreco: 0,
         orcamentoCusto: 0,
+        orcamentoCustoVariavel: 0,
+        orcamentoItensMateriais: [] as any[],
+        orcamentoItensServicos: [] as any[],
+        orcamentoDistanciaKm: 0,
+        orcamentoCustoKmUnitario: 2.50,
+        orcamentoCustoFerramentas: 0,
+        orcamentoCustoSeguro: 0,
+        orcamentoCustoOverhead: 0,
+        orcamentoDetalhamentoCustos: {} as any,
+        orcamentoDeslocamento: 0,
+        orcamentoTaxaPlataforma: 0,
+        orcamentoTaxaPagamento: 0,
         orcamentoHH: 0,
         orcamentoImposto: 0,
         orcamentoLucro: 0,
@@ -133,49 +152,9 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
             const data = await response.json();
             if (!data.erro && data.localidade) {
-                const rawLoc = data.localidade.trim();
-                const normLoc = normalizeStr(rawLoc);
+                const foundCity = await getOrProvisionCity(data.localidade, data.uf);
 
-                let matchedCity: City | null = null;
-
-                // 1. Tenta buscar no banco de dados via ilike primeiro
-                const { data: dbExact } = await supabase
-                    .from('cidades')
-                    .select('*')
-                    .ilike('cidade', `%${rawLoc}%`)
-                    .limit(1);
-
-                if (dbExact && dbExact.length > 0) {
-                    matchedCity = dbExact[0];
-                } else {
-                    // Tenta fuzzy pelas palavras
-                    const words = rawLoc.split(' ').filter(w => w.length > 3);
-                    for (const w of words) {
-                        const { data: dbFuzzy } = await supabase
-                            .from('cidades')
-                            .select('*')
-                            .ilike('cidade', `%${w}%`)
-                            .limit(1);
-                        if (dbFuzzy && dbFuzzy.length > 0) {
-                            matchedCity = dbFuzzy[0];
-                            break;
-                        }
-                    }
-                }
-
-                // 2. Se não achou por ilike, tenta no array local
-                if (!matchedCity && allCities.length > 0) {
-                    matchedCity = allCities.find(c => {
-                        const normC = normalizeStr(c.cidade);
-                        return normC === normLoc || normC.includes(normLoc) || normLoc.includes(normC);
-                    }) || null;
-                }
-
-                if (matchedCity) {
-                    const foundCity = matchedCity;
-
-                    // CRUCIAL: Garante que a cidade encontrada esteja presente no array allCities
-                    // para que o elemento <select> consiga renderizar a <option> correspondente!
+                if (foundCity) {
                     setAllCities(prev => {
                         if (!prev.some(c => c.id === foundCity.id)) {
                             return [...prev, foundCity].sort((a, b) => a.cidade.localeCompare(b.cidade));
@@ -245,19 +224,32 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
     useEffect(() => {
         if (['aprovado', 'executando', 'concluido'].includes(formData.status)) return;
-        const custoFixo = parseFloat(formData.orcamentoCusto.toString()) || 0;
-        const hh = parseFloat(formData.orcamentoHH.toString()) || 0;
-        const lucro = parseFloat(formData.orcamentoLucro.toString()) || 0;
-        const impostoPercent = parseFloat(formData.orcamentoImposto.toString()) || 0;
+        const custoFixo = parseFloat(formData.orcamentoCusto?.toString()) || 0;
+        const custoVariavel = parseFloat(formData.orcamentoCustoVariavel?.toString()) || 0;
+        const hh = parseFloat(formData.orcamentoHH?.toString()) || 0;
+        const deslocamento = parseFloat(formData.orcamentoDeslocamento?.toString()) || 0;
+        const taxaPlataforma = parseFloat(formData.orcamentoTaxaPlataforma?.toString()) || 0;
+        const taxaPagamento = parseFloat(formData.orcamentoTaxaPagamento?.toString()) || 0;
+        const lucro = parseFloat(formData.orcamentoLucro?.toString()) || 0;
+        const impostoPercent = parseFloat(formData.orcamentoImposto?.toString()) || 0;
 
-        const subtotal = custoFixo + hh + lucro;
+        const subtotal = custoFixo + custoVariavel + hh + deslocamento + taxaPlataforma + taxaPagamento + lucro;
         const impostoValor = subtotal * (impostoPercent / 100);
-        const total = subtotal + impostoValor;
+        const total = parseFloat((subtotal + impostoValor).toFixed(2));
 
         if (Math.abs(total - formData.orcamentoPreco) > 0.01) {
             setFormData(prev => ({ ...prev, orcamentoPreco: total }));
         }
-    }, [formData.orcamentoCusto, formData.orcamentoHH, formData.orcamentoImposto, formData.orcamentoLucro]);
+    }, [
+        formData.orcamentoCusto,
+        formData.orcamentoCustoVariavel,
+        formData.orcamentoHH,
+        formData.orcamentoDeslocamento,
+        formData.orcamentoTaxaPlataforma,
+        formData.orcamentoTaxaPagamento,
+        formData.orcamentoImposto,
+        formData.orcamentoLucro
+    ]);
 
     const toLocalISOString = (s: string) => {
         const date = new Date(s);
@@ -326,6 +318,18 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             status: status,
             orcamentoPreco: budget?.preco || 0,
             orcamentoCusto: budget?.custofixo || 0,
+            orcamentoCustoVariavel: budget?.custo_variavel || 0,
+            orcamentoItensMateriais: Array.isArray(budget?.itens_materiais) ? budget.itens_materiais : [],
+            orcamentoItensServicos: Array.isArray(budget?.itens_servicos) ? budget.itens_servicos : [],
+            orcamentoDistanciaKm: budget?.distancia_km || 0,
+            orcamentoCustoKmUnitario: budget?.custo_km_unitario || 2.50,
+            orcamentoCustoFerramentas: budget?.custo_ferramentas || 0,
+            orcamentoCustoSeguro: budget?.custo_seguro || 0,
+            orcamentoCustoOverhead: budget?.custo_overhead || 0,
+            orcamentoDetalhamentoCustos: budget?.detalhamento_custos || {},
+            orcamentoDeslocamento: budget?.custo_deslocamento || 0,
+            orcamentoTaxaPlataforma: budget?.taxa_plataforma || 0,
+            orcamentoTaxaPagamento: budget?.taxa_pagamento || 0,
             orcamentoHH: budget?.hh || 0,
             orcamentoImposto: budget?.imposto || 0,
             orcamentoLucro: budget?.lucro || 0,
@@ -994,6 +998,21 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 finalStatus = hasHHChanged ? 'aguardando_profissional' : 'aguardando_aprovacao';
             }
 
+            // Regra estrita: Para aguardar aprovação do cliente, é mandatório orçamento fechado (> 0) e profissional
+            if (finalStatus === 'aguardando_aprovacao') {
+                if (!formData.orcamentoPreco || formData.orcamentoPreco <= 0) {
+                    alert("Atenção: O chamado só pode ser enviado para aprovação do cliente com o orçamento calculado e preço fechado (maior que zero).");
+                    setSaving(false);
+                    return;
+                }
+                const hasProf = formData.profissionalUuid || order.profissional || normalizedItem.profissional;
+                if (!hasProf) {
+                    alert("Atenção: É obrigatório que haja um profissional responsável atribuído antes de liberar para aprovação do cliente.");
+                    setSaving(false);
+                    return;
+                }
+            }
+
             const updatesChave: any = { status: finalStatus };
             if (formData.atividade) {
                 updatesChave.atividade = typeof formData.atividade === 'string' ? parseInt(formData.atividade) : formData.atividade;
@@ -1042,6 +1061,18 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     chave: ticketId,
                     preco: formData.orcamentoPreco,
                     custofixo: formData.orcamentoCusto,
+                    custo_variavel: formData.orcamentoCustoVariavel || 0,
+                    itens_materiais: formData.orcamentoItensMateriais || [],
+                    itens_servicos: formData.orcamentoItensServicos || [],
+                    distancia_km: formData.orcamentoDistanciaKm || 0,
+                    custo_km_unitario: formData.orcamentoCustoKmUnitario || 2.50,
+                    custo_ferramentas: formData.orcamentoCustoFerramentas || 0,
+                    custo_seguro: formData.orcamentoCustoSeguro || 0,
+                    custo_overhead: formData.orcamentoCustoOverhead || 0,
+                    detalhamento_custos: formData.orcamentoDetalhamentoCustos || {},
+                    custo_deslocamento: formData.orcamentoDeslocamento || 0,
+                    taxa_plataforma: formData.orcamentoTaxaPlataforma || 0,
+                    taxa_pagamento: formData.orcamentoTaxaPagamento || 0,
                     hh: formData.orcamentoHH,
                     imposto: formData.orcamentoImposto,
                     lucro: formData.orcamentoLucro,
@@ -1058,9 +1089,52 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
                 const budgetId = order.orcamentoData?.id || order.orcamentos?.[0]?.id;
                 if (budgetId) {
-                    await supabase.from('orcamentos').update(b).eq('id', budgetId);
+                    const { error: updateError } = await supabase.from('orcamentos').update(b).eq('id', budgetId);
+                    if (updateError) {
+                        // Fallback se novas colunas ainda não foram migradas no banco
+                        console.warn('Erro ao atualizar orcamento com novos campos, tentando fallback básico:', updateError);
+                        const fallbackB = {
+                            chave: ticketId,
+                            preco: formData.orcamentoPreco,
+                            custofixo: formData.orcamentoCusto,
+                            hh: formData.orcamentoHH,
+                            imposto: formData.orcamentoImposto,
+                            lucro: formData.orcamentoLucro,
+                            tipopagmto: formData.orcamentoTipoPgto,
+                            parcelas: formData.orcamentoParcelas,
+                            tipopagmto_sugerido: formData.orcamentoTipoPgtoSugerido || null,
+                            parcelas_sugerido: formData.orcamentoParcelasSugerido,
+                            desconto_sugerido: formData.orcamentoDescontoSugerido,
+                            justificativa_sugerido: formData.orcamentoJustificativaSugerido || null,
+                            observacaocliente: formData.orcamentoObs,
+                            notafiscal: formData.orcamentoNotaFiscal,
+                            ativo: true
+                        };
+                        await supabase.from('orcamentos').update(fallbackB).eq('id', budgetId);
+                    }
                 } else {
-                    await supabase.from('orcamentos').insert(b);
+                    const { error: insertError } = await supabase.from('orcamentos').insert(b);
+                    if (insertError) {
+                        console.warn('Erro ao inserir orcamento com novos campos, tentando fallback básico:', insertError);
+                        const fallbackB = {
+                            chave: ticketId,
+                            preco: formData.orcamentoPreco,
+                            custofixo: formData.orcamentoCusto,
+                            hh: formData.orcamentoHH,
+                            imposto: formData.orcamentoImposto,
+                            lucro: formData.orcamentoLucro,
+                            tipopagmto: formData.orcamentoTipoPgto,
+                            parcelas: formData.orcamentoParcelas,
+                            tipopagmto_sugerido: formData.orcamentoTipoPgtoSugerido || null,
+                            parcelas_sugerido: formData.orcamentoParcelasSugerido,
+                            desconto_sugerido: formData.orcamentoDescontoSugerido,
+                            justificativa_sugerido: formData.orcamentoJustificativaSugerido || null,
+                            observacaocliente: formData.orcamentoObs,
+                            notafiscal: formData.orcamentoNotaFiscal,
+                            ativo: true
+                        };
+                        await supabase.from('orcamentos').insert(fallbackB);
+                    }
                 }
             }
 
@@ -1108,11 +1182,10 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 }
             }
 
-            if (finalStatus === 'aguardando_profissional' && formData.status !== 'aguardando_profissional') {
-                const prof = availableProfessionals.find(p => p.uuid === formData.profissionalUuid);
-                if (prof?.whatsapp) {
-                    const msgProf = `Olá, ${prof.nome || 'Profissional'}! 🔧\n\nVocê tem um novo serviço com ACEITE PENDENTE no sistema da UaiFix.\n\nAcesse a plataforma para visualizar os detalhes e confirmar a sua disponibilidade.`;
-                    await sendWhatsappText(prof.whatsapp, msgProf);
+            if (finalStatus === 'aguardando_profissional' || formData.status === 'pendente' && finalStatus === 'analise') {
+                const prof = availableProfessionals.find(p => p.uuid === formData.profissionalUuid) || normalizedItem.profissionalData;
+                if (prof) {
+                    await notifyProfessionalNewService(normalizedItem, prof, normalizedItem.clienteData);
                 }
             }
             await onUpdate();
@@ -1121,6 +1194,28 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             alert(`Salvo com sucesso${statusMsg}!`);
         } catch (error: any) { alert(error.message);        } finally {
             setSaving(false);
+        }
+    };
+
+    const handleManualNotifyProfessional = async () => {
+        const profUuid = formData.profissionalUuid || normalizedItem.profissional || normalizedItem.profissionalData?.uuid;
+        const prof = availableProfessionals.find(p => p.uuid === profUuid) || normalizedItem.profissionalData;
+        if (!prof) {
+            alert('Selecione ou vincule um profissional antes de enviar a notificação.');
+            return;
+        }
+        setNotifyingWa(true);
+        try {
+            const res = await notifyProfessionalNewService(normalizedItem, prof, normalizedItem.clienteData);
+            if (res.success) {
+                alert(`Notificação enviada com sucesso para o WhatsApp de ${prof.nome || 'Profissional'}!`);
+            } else {
+                alert(`Não foi possível enviar: ${res.error}`);
+            }
+        } catch (err: any) {
+            alert(`Erro ao enviar notificação: ${err.message}`);
+        } finally {
+            setNotifyingWa(false);
         }
     };
 
@@ -1161,9 +1256,61 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         agenda: order.agenda || (order.execucao ? [order] : [])
     };
 
+    const buildOsPrintData = (): OsPrintData => {
+        const ticketId = order.chaveData?.id || order.chave || order.id;
+        const code = normalizedItem.chaveunica || String(ticketId);
+        const plan = normalizedItem.planejamento?.[0] || order.planejamentoData || order.planejamento?.[0];
+        const budget = normalizedItem.orcamentos?.[0] || order.orcamentoData || order.orcamentos?.[0];
+        const cityName = allCities.find(c => String(c.id) === String(formData.cidade))?.cidade || normalizedItem.clienteData?.cidadeNome || '';
+
+        return {
+            codigoOs: code,
+            dataEmissao: normalizedItem.created_at || order.created_at,
+            status: formData.status || normalizedItem.status || 'Pendente',
+            cliente: {
+                nome: normalizedItem.clienteData?.nome || order.clienteData?.nome || 'Cliente UAI Fix',
+                cpf: normalizedItem.clienteData?.cpf || order.clienteData?.cpf,
+                telefone: normalizedItem.clienteData?.whatsapp || order.clienteData?.whatsapp,
+                enderecoCompleto: [formData.clienteRua || normalizedItem.clienteData?.rua, formData.clienteNumero || normalizedItem.clienteData?.numero].filter(Boolean).join(', ') || normalizedItem.clienteData?.rua || '',
+                bairro: formData.clienteBairro || normalizedItem.clienteData?.bairro,
+                cidade: cityName,
+                cep: formData.clienteCep || normalizedItem.clienteData?.cep,
+                complemento: formData.clienteComplemento || normalizedItem.clienteData?.complemento
+            },
+            profissional: {
+                nome: normalizedItem.profissionalData?.nome || availableProfessionals.find(p => p.uuid === formData.profissionalUuid)?.nome || 'Profissional UAI Fix',
+                telefone: normalizedItem.profissionalData?.whatsapp || '',
+                especialidade: normalizedItem.geral?.nome || 'Manutenção'
+            },
+            servico: {
+                categoria: normalizedItem.geral?.nome || 'Serviço Geral',
+                descricaoPedido: formData.planejamentoDesc || plan?.descricao || '',
+                recursosAlocados: formData.planejamentoRecursos || plan?.recursos || [],
+                dataExecucao: formData.planejamentoData || plan?.execucao || ''
+            },
+            financeiro: {
+                precoTotal: formData.orcamentoPreco || budget?.preco || 0,
+                formaPagamento: formData.orcamentoTipoPgto || budget?.tipopagmto || 'PIX',
+                parcelas: formData.orcamentoParcelas || budget?.parcelas || 1,
+                notaFiscal: formData.orcamentoNotaFiscal || budget?.notafiscal || false,
+                observacoes: formData.orcamentoObs || budget?.observacaocliente || ''
+            },
+            execucao: {
+                fotoAntes: formData.fotoantes || normalizedItem.fotoantes || [],
+                fotoDepois: formData.fotodepois || normalizedItem.fotodepois || [],
+                relatoProblema: formData.relato_problema || normalizedItem.relato_problema
+            },
+            assinatura: {
+                assinaturaUrl: (order.fina_assinatura || order.assinatura || normalizedItem.fina_assinatura || normalizedItem.assinatura) || undefined,
+                cpfAssinante: normalizedItem.clienteData?.cpf || undefined,
+                timestamp: normalizedItem.updated_at || undefined
+            }
+        };
+    };
+
     return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
                 <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
                     <div>
                         <h3 className="font-black text-gray-900 text-lg leading-tight">
@@ -1172,20 +1319,53 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                             {normalizedItem.geral?.nome}
                         </h3>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <span className="bg-gray-100 text-gray-900 px-2 py-1 rounded-md text-[10px] font-black font-mono flex items-center border border-gray-200">
-                                <Hash size={10} className="mr-1 opacity-50" /> {normalizedItem.chaveunica}
+                            <span className="bg-gray-100 text-gray-900 px-2.5 py-1 rounded-md text-[10px] font-black font-mono flex items-center border border-gray-200" title="Código do Pedido / Chamado Principal">
+                                <Hash size={10} className="mr-1 opacity-50" /> Pedido: #{normalizedItem.chaveunica}
                             </span>
+                            {(() => {
+                                const originCfg = getOriginBadgeConfig(normalizedItem.origem || order.clienteData?.origem);
+                                return (
+                                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold border flex items-center gap-1 ${originCfg.badgeBg}`} title={`Canal de Origem: ${originCfg.label}`}>
+                                        <span>{originCfg.icon}</span>
+                                        <span>{originCfg.label}</span>
+                                    </span>
+                                );
+                            })()}
                             {normalizedItem.chave_vinculada_codigo && (
                                 <span
-                                    className="bg-blue-50 text-blue-600 px-2 py-1 rounded-md text-[10px] font-black font-mono flex items-center border border-blue-200"
-                                    title="Serviço vinculado"
+                                    className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded-md text-[10px] font-black font-mono flex items-center border border-blue-200"
+                                    title="Serviço Vinculado (Origem/Substituição)"
                                 >
-                                    <Link2 size={10} className="mr-1 text-blue-600" /> #{normalizedItem.chave_vinculada_codigo}
+                                    <Link2 size={10} className="mr-1 text-blue-600" /> Vinculado: #{normalizedItem.chave_vinculada_codigo}
                                 </span>
                             )}
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setIsPrintModalOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all shadow-xs active:scale-95"
+                            title="Visualizar e Imprimir Ordem de Serviço em A4"
+                        >
+                            <Printer size={14} />
+                            <span className="hidden sm:inline">Imprimir OS</span>
+                        </button>
+
+                        {(isGestor || isPlanejista || isOrcamentista) && (
+                            <button
+                                type="button"
+                                onClick={handleManualNotifyProfessional}
+                                disabled={notifyingWa}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 transition-all shadow-xs disabled:opacity-50"
+                                title="Enviar notificação no WhatsApp do profissional"
+                            >
+                                {notifyingWa ? <Loader2 className="animate-spin" size={14} /> : <MessageSquare size={14} />}
+                                <span className="hidden sm:inline">Notificar WhatsApp</span>
+                            </button>
+                        )}
+                        <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
+                    </div>
                 </div>
 
                 <div className="flex border-b border-gray-100 bg-white overflow-x-auto no-scrollbar h-14 shrink-0">
@@ -1524,6 +1704,12 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     </div>
                 </div>
             )}
+
+            <PrintOsModal
+                isOpen={isPrintModalOpen}
+                onClose={() => setIsPrintModalOpen(false)}
+                osData={buildOsPrintData()}
+            />
         </div>
     );
 };

@@ -34,11 +34,74 @@ serve(async (req) => {
           const headers: Record<string, string> = { 'Content-Type': 'application/json' };
           if (config.client_token) headers['client-token'] = config.client_token;
           
-          await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-text`, {
+          const response = await fetch(`https://api.z-api.io/instances/${config.instance_id}/token/${config.token}/send-text`, {
             method: 'POST',
             headers,
             body: JSON.stringify({ phone, message: text })
           });
+
+          if (response.ok) {
+            const zapiData = await response.json();
+            const messageId = zapiData.messageId || `msg_${Date.now()}`;
+
+            let cleanPhone = phone.replace(/\D/g, '');
+            if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+              cleanPhone = `55${cleanPhone}`;
+            }
+
+            let contactName = `WhatsApp (${cleanPhone})`;
+            const { data: foundUser } = await supabase
+              .from('users')
+              .select('nome')
+              .ilike('whatsapp', `%${cleanPhone.slice(-8)}%`)
+              .limit(1)
+              .maybeSingle();
+
+            if (foundUser?.nome) {
+              contactName = foundUser.nome;
+            }
+
+            const { data: chat } = await supabase
+              .from('whatsapp_chats')
+              .upsert({
+                phone: cleanPhone,
+                name: contactName,
+                last_message: text,
+                last_message_time: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'phone' })
+              .select()
+              .single();
+
+            if (chat) {
+              const { data: existingMsg } = await supabase
+                .from('whatsapp_messages')
+                .select('id')
+                .eq('message_id', messageId)
+                .maybeSingle();
+
+              if (!existingMsg) {
+                await supabase.from('whatsapp_messages').insert({
+                  chat_id: chat.id,
+                  message_id: messageId,
+                  content: text,
+                  type: 'text',
+                  sender: 'manager',
+                  status: 'sent',
+                  metadata: zapiData
+                });
+
+                await supabase
+                  .from('whatsapp_chats')
+                  .update({
+                    last_message: text,
+                    last_message_time: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', chat.id);
+              }
+            }
+          }
         }
       } catch (err) {
         console.error("Erro ao enviar msg Z-API:", err);

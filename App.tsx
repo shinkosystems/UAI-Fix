@@ -4,6 +4,8 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './supabaseClient';
 import { Session } from '@supabase/supabase-js';
 import Layout from './components/Layout';
+import AdminLayout from './components/AdminLayout';
+import AdminGuard from './components/AdminGuard';
 import Home from './pages/Home';
 import Search from './pages/Search';
 import SubCategory from './pages/SubCategory';
@@ -19,13 +21,24 @@ import CalendarPage from './pages/Calendar';
 import Execution from './pages/Execution';
 import LandingPage from './pages/LandingPage';
 import Whatsapp from './pages/Whatsapp';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminChamados from './pages/admin/AdminChamados';
+import AdminUsers from './pages/admin/AdminUsers';
+import AdminRelatorios from './pages/admin/AdminRelatorios';
+import AdminImportOrcamentos from './pages/admin/AdminImportOrcamentos';
+import AdminLinks from './pages/admin/AdminLinks';
+import AdminFluxoServico from './pages/admin/AdminFluxoServico';
 import { Loader2 } from 'lucide-react';
+import { initTrackingCapture } from './utils/tracking';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Inicializa a captura de parâmetros de aquisição e UTMs da URL/Referrer
+    initTrackingCapture();
+
     const checkInactivity = async () => {
       const lastAccess = localStorage.getItem('last_access');
       if (lastAccess) {
@@ -86,6 +99,28 @@ const App: React.FC = () => {
           element={!session ? <Login /> : <Navigate to="/home" replace />}
         />
 
+        {/* Admin Portal Protected Routes (Requer perfil de Gestor/Admin) */}
+        <Route
+          path="/admin/*"
+          element={
+            <AdminGuard>
+              <AdminLayout>
+                <Routes>
+                  <Route path="dashboard" element={<AdminDashboard />} />
+                  <Route path="fluxo" element={<AdminFluxoServico />} />
+                  <Route path="chamados" element={<AdminChamados />} />
+                  <Route path="relatorios" element={<AdminRelatorios />} />
+                  <Route path="links" element={<AdminLinks />} />
+                  <Route path="importar-orcamentos" element={<AdminImportOrcamentos />} />
+                  <Route path="users" element={<AdminUsers />} />
+                  <Route path="whatsapp" element={<Whatsapp />} />
+                  <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
+                </Routes>
+              </AdminLayout>
+            </AdminGuard>
+          }
+        />
+
         {/* Protected Routes: Require Session */}
         <Route
           path="/*"
@@ -94,7 +129,6 @@ const App: React.FC = () => {
               <Layout>
                 <Routes>
                   {/* Internal Dashboard Home */}
-                  <Route path="whatsapp" element={<Whatsapp />} />
                   <Route path="home" element={<Home />} />
 
                   <Route path="search" element={<Search />} />
@@ -105,9 +139,17 @@ const App: React.FC = () => {
                   <Route path="calendar" element={<CalendarPage />} />
                   <Route path="execution" element={<Execution />} />
                   <Route path="profile" element={<Profile />} />
-                  <Route path="settings" element={<Settings />} />
+                  <Route 
+                    path="settings" 
+                    element={
+                      <AdminGuard>
+                        <Settings />
+                      </AdminGuard>
+                    } 
+                  />
                   <Route path="chamados" element={<Chamados />} />
                   <Route path="orders" element={<ClientOrders />} />
+                  <Route path="fluxo" element={<AdminFluxoServico />} />
 
                   {/* Redirect catch-all for authenticated users */}
                   <Route path="*" element={<Navigate to="/home" replace />} />

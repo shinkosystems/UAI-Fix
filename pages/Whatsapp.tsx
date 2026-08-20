@@ -49,6 +49,7 @@ interface Chat {
 const MOCK_CHATS: Chat[] = [
   {
     id: '1',
+    phone: '5531999990001',
     name: 'João Silva',
     avatar: 'https://i.pravatar.cc/150?u=1',
     lastMessage: 'Olá, gostaria de saber o status do meu pedido.',
@@ -63,6 +64,7 @@ const MOCK_CHATS: Chat[] = [
   },
   {
     id: '2',
+    phone: '5531999990002',
     name: 'Maria Oliveira',
     avatar: 'https://i.pravatar.cc/150?u=2',
     lastMessage: 'Obrigada pelo atendimento!',
@@ -76,6 +78,7 @@ const MOCK_CHATS: Chat[] = [
   },
   {
     id: '3',
+    phone: '5531999990003',
     name: 'Carlos Santos',
     avatar: 'https://i.pravatar.cc/150?u=3',
     lastMessage: 'Pode me enviar o orçamento?',

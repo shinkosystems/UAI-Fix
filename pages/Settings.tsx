@@ -1,9 +1,10 @@
-// @sos-edit: false
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { createClient } from '@supabase/supabase-js';
 import { Geral, User, City, Estado } from '../types';
 import { Loader2, Plus, Edit2, Trash2, X, Save, CheckCircle, AlertTriangle, Layers, Users, Image as ImageIcon, FolderTree, LayoutGrid, Box, CloudUpload, Search, MapPin, Briefcase, Home, Navigation, FileText, Lock, AlertCircle, MessageSquare, ChevronLeft, ExternalLink } from 'lucide-react';
+import { SearchableSelect } from '../components/SearchableSelect';
+import { getOrProvisionCity } from '../utils/cityHelper';
 
 // Hardcoded keys for temp client
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -221,36 +222,17 @@ const Settings: React.FC = () => {
                       displayStateUf: data.uf
                   };
 
-                  const stateObj = states.find(s => s.uf === data.uf);
-                  
-                  if (data.localidade && stateObj) {
-                      updates.estado = stateObj.id;
-                      
-                      let { data: cityDB } = await supabase
-                        .from('cidades')
-                        .select('*')
-                        .eq('uf', stateObj.id)
-                        .ilike('cidade', data.localidade.trim())
-                        .maybeSingle();
-                      
-                      if (!cityDB) {
-                          const { data: fuzzyData } = await supabase
-                            .from('cidades')
-                            .select('*')
-                            .eq('uf', stateObj.id)
-                            .ilike('cidade', `%${data.localidade.trim().split(' ')[0]}%`)
-                            .limit(1)
-                            .maybeSingle();
-                          cityDB = fuzzyData;
-                      }
-
-                      if (cityDB) {
-                          updates.cidade = cityDB.id;
-                          updates.cidade_data = { cidade: cityDB.cidade, uf: cityDB.uf };
+                  if (data.localidade) {
+                      const provisionedCity = await getOrProvisionCity(data.localidade, data.uf);
+                      if (provisionedCity) {
+                          updates.cidade = provisionedCity.id;
+                          updates.estado = provisionedCity.uf;
+                          updates.cidade_data = { cidade: provisionedCity.cidade, uf: provisionedCity.uf };
+                          setCepAlert(null);
                       } else {
                           updates.cidade = null;
                           updates.cidade_data = null;
-                          setCepAlert("Cuidado: A cidade não foi encontrada automaticamente no banco. Selecione-a abaixo.");
+                          setCepAlert("Não foi possível resolver a cidade automaticamente.");
                       }
                   }
                   
@@ -636,14 +618,18 @@ const Settings: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Tipo</label>
-                     <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
-                        <option value="all">Todos</option>
-                        <option value="consumidor">Consumidor</option>
-                        <option value="profissional">Profissional</option>
-                        <option value="gestor">Gestor</option>
-                        <option value="planejista">Planejista</option>
-                        <option value="orcamentista">Orçamentista</option>
-                     </select>
+                     <SearchableSelect
+                        options={[
+                            { value: 'all', label: 'Todos' },
+                            { value: 'consumidor', label: 'Consumidor' },
+                            { value: 'profissional', label: 'Profissional' },
+                            { value: 'gestor', label: 'Gestor' },
+                            { value: 'planejista', label: 'Planejista' },
+                            { value: 'orcamentista', label: 'Orçamentista' },
+                        ]}
+                        value={filterType}
+                        onChange={(val) => setFilterType(String(val))}
+                     />
                 </div>
                 <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Cidade (Nome)</label>
@@ -651,11 +637,15 @@ const Settings: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Status</label>
-                     <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-                        <option value="all">Todos</option>
-                        <option value="active">Ativos</option>
-                        <option value="inactive">Inativos</option>
-                     </select>
+                     <SearchableSelect
+                        options={[
+                            { value: 'all', label: 'Todos' },
+                            { value: 'active', label: 'Ativos' },
+                            { value: 'inactive', label: 'Inativos' },
+                        ]}
+                        value={filterStatus}
+                        onChange={(val) => setFilterStatus(String(val))}
+                     />
                 </div>
              </div>
         )}
@@ -671,19 +661,28 @@ const Settings: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                      <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Status</label>
-                     <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" value={serviceFilterStatus} onChange={(e) => setServiceFilterStatus(e.target.value)}>
-                        <option value="all">Todos</option>
-                        <option value="active">Ativos</option>
-                        <option value="inactive">Inativos</option>
-                     </select>
+                     <SearchableSelect
+                        options={[
+                            { value: 'all', label: 'Todos' },
+                            { value: 'active', label: 'Ativos' },
+                            { value: 'inactive', label: 'Inativos' },
+                        ]}
+                        value={serviceFilterStatus}
+                        onChange={(val) => setServiceFilterStatus(String(val))}
+                     />
                 </div>
                 {serviceSubTab === 'secondary' && (
                     <div className="space-y-1 md:col-span-2">
                         <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Categoria Pai</label>
-                        <select className="w-full bg-gray-50 border border-gray-100 rounded-xl py-2 px-3 text-sm text-black focus:ring-2 focus:ring-ios-blue/10 outline-none" value={serviceFilterParent} onChange={(e) => setServiceFilterParent(e.target.value)}>
-                            <option value="all">Todas as categorias</option>
-                            {primaryCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.nome}</option>)}
-                        </select>
+                        <SearchableSelect
+                            options={[
+                                { value: 'all', label: 'Todas as categorias' },
+                                ...primaryCategories.map(cat => ({ value: cat.id, label: cat.nome }))
+                            ]}
+                            value={serviceFilterParent}
+                            onChange={(val) => setServiceFilterParent(String(val))}
+                            searchPlaceholder="Pesquisar categoria..."
+                        />
                     </div>
                 )}
              </div>
@@ -941,26 +940,47 @@ const Settings: React.FC = () => {
                                 <div className={`flex-1 p-4 rounded-2xl border cursor-pointer transition-all ${formData.primaria ? 'bg-black text-white border-black' : 'bg-white border-gray-200 hover:bg-gray-50'}`} onClick={() => setFormData({...formData, primaria: !formData.primaria})}><span className="text-xs font-bold uppercase block mb-1">Categoria Pai?</span><div className="flex justify-between items-center"><span className="text-sm font-bold">{formData.primaria ? 'Sim' : 'Não'}</span>{formData.primaria ? <CheckCircle size={18} className="text-green-400" /> : <div className="w-4 h-4 rounded-full border border-gray-300"></div>}</div></div>
                                 <div className="flex-1 space-y-1"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ativo?</label><div className={`p-4 rounded-2xl border cursor-pointer transition-all ${formData.ativa ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`} onClick={() => setFormData({...formData, ativa: !formData.ativa})}><div className="flex justify-between items-center"><span className="text-sm font-bold">{formData.ativa ? 'Ativo' : 'Inativo'}</span>{formData.ativa ? <CheckCircle size={18} /> : <X size={18} />}</div></div></div>
                             </div>
-                            {!formData.primaria && (<div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Categoria Pai (Dependência)</label><select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black focus:ring-2 focus:ring-ios-blue/30 outline-none transition-all" value={formData.dependencia || ''} onChange={e => setFormData({...formData, dependencia: parseInt(e.target.value)})}><option value="">Selecione...</option>{primaryCategories.map(cat => <option key={cat.id} value={cat.id}>{cat.nome}</option>)}</select></div>)}
+                            {!formData.primaria && (
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Categoria Pai (Dependência)</label>
+                                    <SearchableSelect
+                                        options={primaryCategories.map(cat => ({ value: cat.id, label: cat.nome }))}
+                                        value={formData.dependencia || ''}
+                                        onChange={(val) => setFormData({...formData, dependencia: val ? parseInt(val) : null})}
+                                        placeholder="Selecione..."
+                                        searchPlaceholder="Pesquisar categoria..."
+                                    />
+                                </div>
+                            )}
                         </>
                     ) : (
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Tipo de Usuário <span className="text-red-500 ml-0.5">*</span></label>
-                                    <select 
-                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" 
+                                    <SearchableSelect 
+                                        options={[
+                                            { value: 'Consumidor', label: 'Consumidor' },
+                                            { value: 'Profissional', label: 'Profissional' },
+                                            { value: 'Gestor', label: 'Gestor' },
+                                            { value: 'Planejista', label: 'Planejista' },
+                                            { value: 'Orcamentista', label: 'Orçamentista' },
+                                        ]}
                                         value={formData.tipo} 
-                                        onChange={(e) => setFormData({...formData, tipo: e.target.value})}
-                                    >
-                                        <option value="Consumidor">Consumidor</option>
-                                        <option value="Profissional">Profissional</option>
-                                        <option value="Gestor">Gestor</option>
-                                        <option value="Planejista">Planejista</option>
-                                        <option value="Orcamentista">Orçamentista</option>
-                                    </select>
+                                        onChange={(val) => setFormData({...formData, tipo: String(val)})}
+                                    />
                                 </div>
-                                <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ativo? <span className="text-red-500 ml-0.5">*</span></label><select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.ativo ? 'true' : 'false'} onChange={(e) => setFormData({...formData, ativo: e.target.value === 'true'})}><option value="true">Sim</option><option value="false">Não</option></select></div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Ativo? <span className="text-red-500 ml-0.5">*</span></label>
+                                    <SearchableSelect
+                                        options={[
+                                            { value: 'true', label: 'Sim' },
+                                            { value: 'false', label: 'Não' },
+                                        ]}
+                                        value={formData.ativo ? 'true' : 'false'}
+                                        onChange={(val) => setFormData({...formData, ativo: val === 'true'})}
+                                    />
+                                </div>
                             </div>
                             <div className="space-y-2"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nome Completo <span className="text-red-500 ml-0.5">*</span></label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.nome || ''} onChange={(e) => setFormData({...formData, nome: e.target.value})} placeholder="Nome do usuário" /></div>
                             <div className="grid grid-cols-2 gap-4">
@@ -997,12 +1017,17 @@ const Settings: React.FC = () => {
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Sexo <span className="text-red-500 ml-0.5">*</span></label>
-                                        <select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.sexo || ''} onChange={(e) => setFormData({...formData, sexo: e.target.value})}>
-                                            <option value="">Selecione...</option>
-                                            <option value="Masculino">Masculino</option>
-                                            <option value="Feminino">Feminino</option>
-                                            <option value="Outro">Outro</option>
-                                        </select>
+                                        <SearchableSelect
+                                            options={[
+                                                { value: '', label: 'Selecione...' },
+                                                { value: 'Masculino', label: 'Masculino' },
+                                                { value: 'Feminino', label: 'Feminino' },
+                                                { value: 'Outro', label: 'Outro' },
+                                            ]}
+                                            value={formData.sexo || ''}
+                                            onChange={(val) => setFormData({...formData, sexo: String(val)})}
+                                            placeholder="Selecione..."
+                                        />
                                     </div>
                                 </div>
                                 <div className="space-y-2 mb-3"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Rua <span className="text-red-500 ml-0.5">*</span></label><input className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 text-sm font-medium text-black outline-none" value={formData.rua || ''} onChange={(e) => setFormData({...formData, rua: e.target.value})} /></div>
@@ -1034,7 +1059,16 @@ const Settings: React.FC = () => {
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
               <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-6">
                   <div className="text-center mb-4"><div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3 text-red-500"><AlertTriangle size={24} /></div><h3 className="font-bold text-gray-900 text-lg">Atenção!</h3><p className="text-sm text-gray-500">Esta categoria possui {orphanedChildrenCount} sub-serviços dependentes. Para transformá-la em sub-serviço, você deve realocar os dependentes para outra Categoria Pai.</p></div>
-                  <div className="space-y-3 mb-4"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nova Categoria Pai</label><select className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-3 text-sm font-medium text-black outline-none" value={newParentId} onChange={(e) => setNewParentId(parseInt(e.target.value))}><option value="">Selecione...</option>{availableParents.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}</select></div>
+                  <div className="space-y-3 mb-4">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nova Categoria Pai</label>
+                      <SearchableSelect
+                          options={availableParents.map(p => ({ value: p.id, label: p.nome }))}
+                          value={newParentId}
+                          onChange={(val) => setNewParentId(val ? parseInt(val) : '')}
+                          placeholder="Selecione..."
+                          searchPlaceholder="Pesquisar categoria..."
+                      />
+                  </div>
                   <div className="flex space-x-3"><button onClick={() => { setIsReassignModalOpen(false); setFormData(prev => ({...prev, primaria: true})); }} className="flex-1 bg-white border border-gray-200 text-gray-700 py-3 rounded-xl font-bold">Cancelar</button><button onClick={handleReassignAndSave} className="flex-1 bg-red-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-red-200">Confirmar</button></div>
               </div>
           </div>

@@ -1,0 +1,10 @@
+agent_id,name,role,responsibility,file
+pedro-pm,Pedro PM,Product Manager,Concepção da ideia PRD requisitos regras de negócio e visao de produtos AI-powered,agents/pedro-pm.agent.md
+fernando-reports,Fernando Reports,External Data & Reports Specialist,Inspeção de Figma extração de dados Supabase consultas SQL APIs externas e relatórios técnicos,agents/fernando-reports.agent.md
+sofia-design,Sofia Design,UX/UI Specialist,Design System UI premium experiência de uso interfaces conversacionais e micro-animações,agents/sofia-design.agent.md
+marcos-ai,Marcos AI,AI & Agents Specialist,Arquitetura de IA LLMs agentes subagentes RAG vetores pgvector Vercel AI SDK e Skills,agents/marcos-ai.agent.md
+bruno-supabase,Bruno Supabase,Supabase & Cloud Engineer,Modelagem PostgreSQL RLS Auth Storage pgvector busca por similaridade e Edge Functions,agents/bruno-supabase.agent.md
+lucas-automation,Lucas Automation,Automation Specialist,Webhooks automações integrações de APIs chamadas de ferramentas de agentes e push notifications,agents/lucas-automation.agent.md
+mateus-dev,Mateus Dev,Lead Dev Universal,Desenvolvimento Next.js Expo React Native Electron PWA streaming de IA e arquitetura limpa,agents/mateus-dev.agent.md
+carla-qa,Carla QA,QA & Refactoring Specialist,Testes automatizados auditoria de segurança avaliação de respostas de IA e prevenção de regressão,agents/carla-qa.agent.md
+diego-devops,Diego DevOps,DevOps & Multi-Deploy,Deploy Vercel EAS Mobile builds empacotamento Desktop infraestrutura de IA e CI/CD,agents/diego-devops.agent.md

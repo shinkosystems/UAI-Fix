@@ -1,9 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Mail, Lock, Loader2, ArrowRight, CheckCircle, User, FileText, MapPin, Home, Navigation, Search, X, Phone, AlertCircle } from 'lucide-react';
 import { City, Estado } from '../types';
+import { getOrProvisionCity } from '../utils/cityHelper';
+import { getStoredTrackingData } from '../utils/tracking';
 
 const Login: React.FC = () => {
   const location = useLocation();
@@ -124,37 +125,14 @@ const Login: React.FC = () => {
           setBairro(data.bairro || '');
           setDisplayStateUf(data.uf);
           
-          const stateObj = states.find(s => s.uf === data.uf);
-          
-          if (data.localidade && stateObj) {
-              setSelectedStateId(stateObj.id);
-              
-              // Busca robusta na tabela de cidades
-              let { data: cityDB, error: cityError } = await supabase
-                .from('cidades')
-                .select('*')
-                .eq('uf', stateObj.id)
-                .ilike('cidade', data.localidade.trim())
-                .maybeSingle();
-              
-              if (!cityDB) {
-                  const { data: fuzzyData } = await supabase
-                    .from('cidades')
-                    .select('*')
-                    .eq('uf', stateObj.id)
-                    .ilike('cidade', `%${data.localidade.trim().split(' ')[0]}%`)
-                    .limit(1)
-                    .maybeSingle();
-                  cityDB = fuzzyData;
-              }
-
-              if (cityDB) {
-                  setSelectedCityId(cityDB.id.toString());
-                  setSelectedCityName(cityDB.cidade);
-              } else {
-                  setSelectedCityId('');
-                  setSelectedCityName('');
-                  setErrorMsg("CEP encontrado, mas a cidade precisa ser selecionada manualmente abaixo.");
+          if (data.localidade) {
+              const provisionedCity = await getOrProvisionCity(data.localidade, data.uf);
+              if (provisionedCity) {
+                  setSelectedCityId(provisionedCity.id.toString());
+                  setSelectedCityName(provisionedCity.cidade);
+                  setSelectedStateId(provisionedCity.uf);
+                  const stateObj = states.find(s => s.id === provisionedCity.uf);
+                  if (stateObj) setDisplayStateUf(stateObj.uf);
               }
           }
           
@@ -216,6 +194,8 @@ const Login: React.FC = () => {
 
         if (authData.user) {
             const stateId = selectedStateId || 1;
+            const tracking = getStoredTrackingData();
+
             const { error: profileError } = await supabase
                 .from('users')
                 .insert({
@@ -235,7 +215,13 @@ const Login: React.FC = () => {
                     complemento: complemento,
                     cidade: parseInt(selectedCityId),
                     estado: stateId,
-                    atividade: []
+                    atividade: [],
+                    origem: tracking?.origem || 'organico',
+                    utm_source: tracking?.utm_source || null,
+                    utm_medium: tracking?.utm_medium || null,
+                    utm_campaign: tracking?.utm_campaign || null,
+                    utm_term: tracking?.utm_term || null,
+                    referrer_url: tracking?.referrer_url || null
                 });
 
             if (profileError) {
@@ -322,8 +308,8 @@ const Login: React.FC = () => {
         <div className="text-center space-y-2">
           <div className="w-24 h-24 rounded-3xl mx-auto flex items-center justify-center shadow-2xl shadow-blue-200 mb-6 overflow-hidden bg-white">
             <img 
-               src="https://uehyjyyvkrlggwmfdhgh.supabase.co/storage/v1/object/public/imagens/imagens/994ff870-5268-4a13-8378-0661a9ffe9b9.jpeg" 
-               alt="Logo" 
+               src="/logo.jpg" 
+               alt="Logo UAI Fix" 
                className="w-full h-full object-cover"
              />
           </div>

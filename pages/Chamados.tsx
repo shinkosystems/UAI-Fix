@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
-import { Chave, Geral, User, Orcamento, Planejamento, Avaliacao, Agenda, ChamadoExtended } from '../types';
+import { Chave, Geral, User, Orcamento, Planejamento, Avaliacao, Agenda, ChamadoExtended, getOriginBadgeConfig, ORIGIN_CHANNELS } from '../types';
 import {
     Loader2, Search, Plus, X, Save, Send, FileText,
     User as UserIcon, Calendar, DollarSign, CheckCircle,
@@ -49,6 +49,7 @@ const Chamados: React.FC = () => {
     const navigate = useNavigate();
 
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedOrigin, setSelectedOrigin] = useState<string>('todos');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<ChamadoExtended | null>(null);
     const [saving, setSaving] = useState(false);
@@ -63,6 +64,17 @@ const Chamados: React.FC = () => {
         orcamentoPreco: 0,
         orcamentoCusto: 0,
         orcamentoCustoVariavel: 0,
+        orcamentoItensMateriais: [] as any[],
+        orcamentoItensServicos: [] as any[],
+        orcamentoDistanciaKm: 0,
+        orcamentoCustoKmUnitario: 2.50,
+        orcamentoCustoFerramentas: 0,
+        orcamentoCustoSeguro: 0,
+        orcamentoCustoOverhead: 0,
+        orcamentoDetalhamentoCustos: {} as any,
+        orcamentoDeslocamento: 0,
+        orcamentoTaxaPlataforma: 0,
+        orcamentoTaxaPagamento: 0,
         orcamentoHH: 0,
         orcamentoImposto: 0,
         orcamentoLucro: 0,
@@ -164,19 +176,32 @@ const Chamados: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        const custoFixo = parseFloat(formData.orcamentoCusto.toString()) || 0;
-        const hh = parseFloat(formData.orcamentoHH.toString()) || 0;
-        const lucro = parseFloat(formData.orcamentoLucro.toString()) || 0;
-        const impostoPercent = parseFloat(formData.orcamentoImposto.toString()) || 0;
+        const custoFixo = parseFloat(formData.orcamentoCusto?.toString()) || 0;
+        const custoVariavel = parseFloat(formData.orcamentoCustoVariavel?.toString()) || 0;
+        const hh = parseFloat(formData.orcamentoHH?.toString()) || 0;
+        const deslocamento = parseFloat(formData.orcamentoDeslocamento?.toString()) || 0;
+        const taxaPlataforma = parseFloat(formData.orcamentoTaxaPlataforma?.toString()) || 0;
+        const taxaPagamento = parseFloat(formData.orcamentoTaxaPagamento?.toString()) || 0;
+        const lucro = parseFloat(formData.orcamentoLucro?.toString()) || 0;
+        const impostoPercent = parseFloat(formData.orcamentoImposto?.toString()) || 0;
 
-        const subtotal = custoFixo + hh + lucro;
+        const subtotal = custoFixo + custoVariavel + hh + deslocamento + taxaPlataforma + taxaPagamento + lucro;
         const impostoValor = subtotal * (impostoPercent / 100);
-        const total = subtotal + impostoValor;
+        const total = parseFloat((subtotal + impostoValor).toFixed(2));
 
         if (Math.abs(total - formData.orcamentoPreco) > 0.01) {
             setFormData(prev => ({ ...prev, orcamentoPreco: total }));
         }
-    }, [formData.orcamentoCusto, formData.orcamentoHH, formData.orcamentoImposto, formData.orcamentoLucro]);
+    }, [
+        formData.orcamentoCusto,
+        formData.orcamentoCustoVariavel,
+        formData.orcamentoHH,
+        formData.orcamentoDeslocamento,
+        formData.orcamentoTaxaPlataforma,
+        formData.orcamentoTaxaPagamento,
+        formData.orcamentoImposto,
+        formData.orcamentoLucro
+    ]);
 
     const fetchUserRole = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -254,7 +279,14 @@ const Chamados: React.FC = () => {
                 planMap[key].push(p);
             });
             const avalMap: Record<number, Avaliacao> = {};
-            avalRes.data?.forEach((a: any) => avalMap[a.chave] = a);
+            const avalPlatMap: Record<number, Avaliacao> = {};
+            avalRes.data?.forEach((a: any) => {
+                if (a.tipo_alvo === 'plataforma_uaifix') {
+                    avalPlatMap[a.chave] = a;
+                } else {
+                    avalMap[a.chave] = a;
+                }
+            });
             const agendaMap: Record<number, Agenda[]> = {};
             agendaRes.data?.forEach((ag: any) => { if (!agendaMap[ag.chave]) agendaMap[ag.chave] = []; agendaMap[ag.chave].push(ag); });
 
@@ -267,6 +299,7 @@ const Chamados: React.FC = () => {
                 orcamentos: orcMap[c.id] || [],
                 planejamento: planMap[c.id] || [],
                 avaliacao: avalMap[c.id],
+                avaliacaoPlataforma: avalPlatMap[c.id],
                 agenda: agendaMap[c.id] || []
             })));
         } catch (error) { console.error(error); } finally { setLoading(false); }
@@ -318,12 +351,22 @@ const Chamados: React.FC = () => {
         }
 
         if (searchTerm) {
-            const lower = searchTerm.toLowerCase();
+            const lower = searchTerm.toLowerCase().trim();
             filtered = filtered.filter(t =>
+                t.id?.toString().includes(lower) ||
                 t.chaveunica?.toLowerCase().includes(lower) ||
-                t.geral?.nome.toLowerCase().includes(lower) ||
-                t.clienteData?.nome.toLowerCase().includes(lower)
+                t.geral?.nome?.toLowerCase().includes(lower) ||
+                t.clienteData?.nome?.toLowerCase().includes(lower) ||
+                t.profissionalData?.nome?.toLowerCase().includes(lower) ||
+                t.gestorData?.nome?.toLowerCase().includes(lower)
             );
+        }
+
+        if (selectedOrigin !== 'todos') {
+            filtered = filtered.filter(t => {
+                const itemOrigin = (t.origem || t.clienteData?.origem || 'organico').toLowerCase();
+                return itemOrigin === selectedOrigin;
+            });
         }
         return filtered;
     };
@@ -366,6 +409,18 @@ const Chamados: React.FC = () => {
             status: status,
             orcamentoPreco: budget?.preco || 0,
             orcamentoCusto: budget?.custofixo || 0,
+            orcamentoCustoVariavel: budget?.custo_variavel || 0,
+            orcamentoItensMateriais: Array.isArray(budget?.itens_materiais) ? budget.itens_materiais : [],
+            orcamentoItensServicos: Array.isArray(budget?.itens_servicos) ? budget.itens_servicos : [],
+            orcamentoDistanciaKm: budget?.distancia_km || 0,
+            orcamentoCustoKmUnitario: budget?.custo_km_unitario || 2.50,
+            orcamentoCustoFerramentas: budget?.custo_ferramentas || 0,
+            orcamentoCustoSeguro: budget?.custo_seguro || 0,
+            orcamentoCustoOverhead: budget?.custo_overhead || 0,
+            orcamentoDetalhamentoCustos: budget?.detalhamento_custos || {},
+            orcamentoDeslocamento: budget?.custo_deslocamento || 0,
+            orcamentoTaxaPlataforma: budget?.taxa_plataforma || 0,
+            orcamentoTaxaPagamento: budget?.taxa_pagamento || 0,
             orcamentoHH: budget?.hh || 0,
             orcamentoImposto: budget?.imposto || 0,
             orcamentoLucro: budget?.lucro || 0,
@@ -521,21 +576,54 @@ const Chamados: React.FC = () => {
             </div>
 
             <div className="p-5 max-w-7xl mx-auto space-y-6">
-                <div className="relative group">
-                    <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-ios-blue transition-colors" />
-                    <input
-                        type="text"
-                        placeholder="ID, Cliente ou Serviço..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-white border border-gray-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold shadow-sm focus:ring-4 focus:ring-ios-blue/5 outline-none transition-all"
-                    />
+                <div className="space-y-3">
+                    <div className="relative group">
+                        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-ios-blue transition-colors" />
+                        <input
+                            type="text"
+                            placeholder="ID, Cliente ou Serviço..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-white border border-gray-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold shadow-sm focus:ring-4 focus:ring-ios-blue/5 outline-none transition-all"
+                        />
+                    </div>
+
+                    {/* Filtro Rápido por Origem */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest mr-1 shrink-0">Origem:</span>
+                        <button
+                            onClick={() => setSelectedOrigin('todos')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 border ${
+                                selectedOrigin === 'todos'
+                                    ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
+                                    : 'bg-white text-gray-600 border-gray-100 hover:bg-gray-50'
+                            }`}
+                        >
+                            Todas
+                        </button>
+                        {Object.values(ORIGIN_CHANNELS).map(ch => (
+                            <button
+                                key={ch.key}
+                                onClick={() => setSelectedOrigin(ch.key)}
+                                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1 border ${
+                                    selectedOrigin === ch.key
+                                        ? 'bg-ios-blue text-white border-ios-blue shadow-sm'
+                                        : 'bg-white text-gray-600 border-gray-100 hover:bg-gray-50'
+                                }`}
+                            >
+                                <span>{ch.icon}</span>
+                                <span>{ch.label}</span>
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
                     {loading ? (
                         <div className="col-span-full flex justify-center py-20"><Loader2 className="animate-spin text-ios-blue" size={40} /></div>
-                    ) : getFilteredTickets().length > 0 ? getFilteredTickets().map(t => (
+                    ) : getFilteredTickets().length > 0 ? getFilteredTickets().map(t => {
+                        const originConfig = getOriginBadgeConfig(t.origem || t.clienteData?.origem);
+                        return (
                         <div key={t.id} onClick={() => handleEdit(t)} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer relative overflow-hidden group">
                             <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-2xl text-[9px] font-black uppercase tracking-widest border-b border-l ${getStatusColor(t.status)}`}>
                                 {t.status.replace('_', ' ')}
@@ -545,12 +633,17 @@ const Chamados: React.FC = () => {
                                 <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden shadow-inner flex-shrink-0">
                                     {t.geral?.imagem ? <img src={t.geral.imagem} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-300"><FileText size={24} /></div>}
                                 </div>
-                                <div className="min-w-0">
+                                <div className="min-w-0 flex-1">
                                     <h3 className="font-black text-gray-900 text-lg leading-none truncate group-hover:text-ios-blue transition-colors">{t.geral?.nome}</h3>
                                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                                         <div className="inline-flex items-center bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
                                             <Hash size={10} className="text-gray-400 mr-1" />
                                             <span className="text-[10px] font-black text-gray-500 font-mono tracking-tighter">{t.chaveunica}</span>
+                                        </div>
+                                        {/* Origin Channel Badge */}
+                                        <div className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${originConfig.badgeBg}`} title={`Origem: ${originConfig.label}`}>
+                                            <span className="mr-1">{originConfig.icon}</span>
+                                            <span>{originConfig.label}</span>
                                         </div>
                                         {t.chave_vinculada_codigo && (
                                             <div
@@ -608,7 +701,7 @@ const Chamados: React.FC = () => {
                                 )}
                             </div>
                         </div>
-                    )) : (
+                    ); }) : (
                         <div className="col-span-full py-24 bg-white rounded-[3rem] border-2 border-dashed border-gray-100 flex flex-col items-center text-center">
                             <Box size={48} className="text-gray-200 mb-4" />
                             <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Nenhum chamado nesta categoria</p>

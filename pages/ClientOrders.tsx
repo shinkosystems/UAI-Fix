@@ -18,19 +18,20 @@ interface OrderExtended extends Chave {
     orcamentos: Orcamento[];
     planejamento: Planejamento[];
     avaliacao?: Avaliacao;
+    avaliacaoPlataforma?: Avaliacao;
     agenda?: Agenda[];
     ordemServico?: OrdemServico[];
 }
 
 type ModalTab = 'geral' | 'consumidor' | 'fotos' | 'obs' | 'avaliacao';
-type FilterType = 'aberto' | 'agendados' | 'execucao' | 'recusados' | 'concluidos' | 'finalizados';
+type FilterType = 'aberto' | 'agendados' | 'execucao' | 'recusados' | 'concluidos' | 'pendente_avaliacao' | 'finalizados';
 
 const ClientOrders: React.FC = () => {
     const [orders, setOrders] = useState<OrderExtended[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedOrder, setSelectedOrder] = useState<OrderExtended | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<ModalTab>('geral');
+    const [modalInitialTab, setModalInitialTab] = useState<'geral' | 'consumidor' | 'fotos' | 'avaliacao'>('geral');
     const [activeFilter, setActiveFilter] = useState<FilterType>('aberto');
     const [userType, setUserType] = useState<string>('');
     const [currentUserId, setCurrentUserId] = useState<string>('');
@@ -57,13 +58,19 @@ const ClientOrders: React.FC = () => {
         return desc.trim();
     };
 
+    const isPendingRating = (order: OrderExtended) => {
+        const status = order.status.toLowerCase();
+        const isFinished = ['concluido', 'aguardando_gestor'].includes(status);
+        return isFinished && (!order.avaliacao || !order.avaliacaoPlataforma);
+    };
+
     useEffect(() => { fetchOrders(); }, []);
 
     useEffect(() => {
         if (!loading && location.state?.ratingOrderId && orders.length > 0) {
             const order = orders.find(o => o.id === location.state.ratingOrderId);
             if (order) {
-                handleOpenDetails(order);
+                handleOpenDetails(order, 'avaliacao');
             }
         }
     }, [loading, location.state, orders]);
@@ -118,7 +125,8 @@ const ClientOrders: React.FC = () => {
                 profissional: uMap[proUuid] || null,
                 orcamentos: budgets.data?.filter(b => b.chave === c.id) || [],
                 planejamento: plans.data?.filter(p => p.chave === c.id) || [],
-                avaliacao: reviews.data?.find(r => r.chave === c.id),
+                avaliacao: reviews.data?.find(r => r.chave === c.id && (r.tipo_alvo === 'profissional' || !r.tipo_alvo)),
+                avaliacaoPlataforma: reviews.data?.find(r => r.chave === c.id && r.tipo_alvo === 'plataforma_uaifix'),
                 agenda: agenda.data?.filter(a => a.chave === c.id) || [],
                 ordemServico: os.data?.filter(o => o.chave === c.id) || []
             };
@@ -133,6 +141,7 @@ const ClientOrders: React.FC = () => {
             if (activeFilter === 'execucao') return status === 'executando';
             if (activeFilter === 'recusados') return status === 'recusado' || status === 'reprovado';
             if (activeFilter === 'concluidos') return ['concluido', 'aguardando_gestor', 'erro'].includes(status);
+            if (activeFilter === 'pendente_avaliacao') return isPendingRating(order);
             if (activeFilter === 'finalizados') return true;
             return true;
         });
@@ -145,12 +154,14 @@ const ClientOrders: React.FC = () => {
             execucao: orders.filter(o => o.status.toLowerCase() === 'executando').length,
             recusados: orders.filter(o => ['recusado', 'reprovado'].includes(o.status.toLowerCase())).length,
             concluidos: orders.filter(o => ['concluido', 'aguardando_gestor', 'erro'].includes(o.status.toLowerCase())).length,
+            pendente_avaliacao: orders.filter(isPendingRating).length,
             finalizados: orders.length
         };
     }, [orders]);
 
-    const handleOpenDetails = (order: OrderExtended) => {
+    const handleOpenDetails = (order: OrderExtended, tab: 'geral' | 'consumidor' | 'fotos' | 'avaliacao' = 'geral') => {
         setSelectedOrder(order);
+        setModalInitialTab(tab);
         setIsModalOpen(true);
     };
 
@@ -190,6 +201,7 @@ const ClientOrders: React.FC = () => {
         { id: 'aberto', label: 'Em Análise', icon: ListChecks },
         { id: 'agendados', label: 'Agendados', icon: CalendarCheck },
         { id: 'execucao', label: 'Em Execução', icon: Activity },
+        { id: 'pendente_avaliacao', label: 'Avaliações Pendentes', icon: Star, isHighlight: true },
         { id: 'recusados', label: 'Recusados', icon: Ban },
         { id: 'concluidos', label: 'Concluídos', icon: CheckCircle2 },
         { id: 'finalizados', label: 'Histórico', icon: History },
@@ -205,72 +217,158 @@ const ClientOrders: React.FC = () => {
 
                 {/* FILTRO DE STATUS (ESTILO CHIPS iOS 26) */}
                 <div className="flex space-x-2 overflow-x-auto no-scrollbar pb-1">
-                    {filterButtons.map((btn) => (
-                        <button
-                            key={btn.id}
-                            onClick={() => setActiveFilter(btn.id as FilterType)}
-                            className={`flex items-center px-4 py-2 rounded-full text-xs font-bold border transition-all whitespace-nowrap gap-2 ${activeFilter === btn.id
-                                ? 'bg-black text-white border-black shadow-md scale-105'
-                                : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50 active:scale-95'
-                                }`}
-                        >
-                            <btn.icon size={14} />
-                            <span>{btn.label}</span>
-                            <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${activeFilter === btn.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                                {filterCounts[btn.id as keyof typeof filterCounts]}
-                            </span>
-                        </button>
-                    ))}
+                    {filterButtons.map((btn) => {
+                        const count = filterCounts[btn.id as keyof typeof filterCounts];
+                        const isActive = activeFilter === btn.id;
+                        const isPendingTab = btn.id === 'pendente_avaliacao';
+
+                        return (
+                            <button
+                                key={btn.id}
+                                onClick={() => setActiveFilter(btn.id as FilterType)}
+                                className={`flex items-center px-4 py-2 rounded-full text-xs font-bold border transition-all whitespace-nowrap gap-2 ${
+                                    isActive
+                                        ? isPendingTab
+                                            ? 'bg-amber-500 text-white border-amber-500 shadow-md scale-105'
+                                            : 'bg-black text-white border-black shadow-md scale-105'
+                                        : isPendingTab && count > 0
+                                            ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                                            : 'bg-white text-gray-500 border-gray-100 hover:bg-gray-50 active:scale-95'
+                                    }`}
+                            >
+                                <btn.icon size={14} className={isPendingTab && (count > 0 || isActive) ? 'fill-current' : ''} />
+                                <span>{btn.label}</span>
+                                <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${
+                                    isActive 
+                                        ? 'bg-white/20 text-white' 
+                                        : isPendingTab && count > 0
+                                            ? 'bg-amber-500 text-white font-black'
+                                            : 'bg-gray-100 text-gray-400'
+                                }`}>
+                                    {count}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
             <div className="p-5 space-y-6 max-w-4xl mx-auto">
+                {/* BANNER DE AVALIAÇÕES PENDENTES */}
+                {!loading && filterCounts.pendente_avaliacao > 0 && activeFilter !== 'pendente_avaliacao' && (
+                    <div 
+                        onClick={() => setActiveFilter('pendente_avaliacao')}
+                        className="bg-gradient-to-r from-amber-500 to-amber-600 rounded-[2rem] p-5 text-white shadow-lg flex items-center justify-between cursor-pointer hover:shadow-xl transition-all active:scale-[0.99] animate-in slide-in-from-top-3"
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-white/20 backdrop-blur-md rounded-2xl">
+                                <Star size={24} className="fill-white text-white" />
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-black uppercase tracking-wide">
+                                    {filterCounts.pendente_avaliacao === 1 
+                                        ? '1 avaliação pendente' 
+                                        : `${filterCounts.pendente_avaliacao} avaliações pendentes`}
+                                </h4>
+                                <p className="text-xs text-amber-100 font-medium">
+                                    Avalie o atendimento recebido e ajude outros clientes.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="bg-white text-amber-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                            <span>Avaliar</span>
+                            <ChevronRight size={14} />
+                        </div>
+                    </div>
+                )}
+
                 {loading ? (
                     <div className="flex justify-center py-20"><Loader2 className="animate-spin text-ios-blue" /></div>
                 ) : filteredOrders.length === 0 ? (
                     <div className="text-center py-24 bg-white rounded-[2.5rem] border-dashed border-2 border-gray-100 text-gray-400 space-y-4 animate-in fade-in zoom-in duration-500">
                         <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto text-gray-200">
-                            <ListChecks size={40} />
+                            {activeFilter === 'pendente_avaliacao' ? <Star size={40} className="fill-amber-100 text-amber-200" /> : <ListChecks size={40} />}
                         </div>
                         <div className="space-y-1">
-                            <p className="font-black uppercase tracking-widest text-xs">Vazio por aqui</p>
-                            <p className="text-[10px] font-bold text-gray-300">Nenhum pedido encontrado nesta categoria.</p>
+                            <p className="font-black uppercase tracking-widest text-xs">
+                                {activeFilter === 'pendente_avaliacao' ? 'Tudo em dia!' : 'Vazio por aqui'}
+                            </p>
+                            <p className="text-[10px] font-bold text-gray-300">
+                                {activeFilter === 'pendente_avaliacao' 
+                                    ? 'Você não tem nenhum serviço pendente de avaliação.' 
+                                    : 'Nenhum pedido encontrado nesta categoria.'}
+                            </p>
                         </div>
                         {activeFilter !== 'aberto' && (
                             <button onClick={() => setActiveFilter('aberto')} className="text-ios-blue text-[10px] font-black uppercase tracking-widest hover:underline">Ver pedidos em análise</button>
                         )}
                     </div>
                 ) : (
-                    filteredOrders.map(order => (
-                        <div key={order.id} onClick={() => handleOpenDetails(order)} className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 transition-all cursor-pointer hover:shadow-md active:scale-[0.98] relative overflow-hidden group animate-in slide-in-from-bottom-2 duration-300">
-                            <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-2xl text-[10px] font-black uppercase tracking-wider border-l border-b transition-colors ${getStatusColor(order.status)}`}>{getStatusLabel(order.status)}</div>
-                            <div className="flex items-center space-x-4 mt-2 mb-4">
-                                <div className="w-14 h-14 bg-gray-100 rounded-2xl overflow-hidden shadow-inner flex-shrink-0">{order.geral?.imagem ? <img src={order.geral.imagem} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-300"><Calendar size={24} /></div>}</div>
-                                <div className="min-w-0 flex-1"><h3 className="font-bold text-gray-900 text-lg leading-tight truncate group-hover:text-ios-blue transition-colors">{order.geral?.nome}</h3><p className="text-[10px] font-mono font-black text-gray-400 uppercase mt-0.5 tracking-widest">ID: {order.chaveunica}</p></div>
+                    filteredOrders.map(order => {
+                        const pendingRating = isPendingRating(order);
+
+                        return (
+                            <div key={order.id} onClick={() => handleOpenDetails(order)} className={`bg-white p-6 rounded-[2rem] shadow-sm border transition-all cursor-pointer hover:shadow-md active:scale-[0.98] relative overflow-hidden group animate-in slide-in-from-bottom-2 duration-300 ${
+                                pendingRating ? 'border-amber-200 ring-2 ring-amber-100' : 'border-gray-100'
+                            }`}>
+                                <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-2xl text-[10px] font-black uppercase tracking-wider border-l border-b transition-colors ${getStatusColor(order.status)}`}>{getStatusLabel(order.status)}</div>
+                                <div className="flex items-center space-x-4 mt-2 mb-4">
+                                    <div className="w-14 h-14 bg-gray-100 rounded-2xl overflow-hidden shadow-inner flex-shrink-0">{order.geral?.imagem ? <img src={order.geral.imagem} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-300"><Calendar size={24} /></div>}</div>
+                                    <div className="min-w-0 flex-1"><h3 className="font-bold text-gray-900 text-lg leading-tight truncate group-hover:text-ios-blue transition-colors">{order.geral?.nome}</h3><p className="text-[10px] font-mono font-black text-gray-400 uppercase mt-0.5 tracking-widest">ID: {order.chaveunica}</p></div>
+                                </div>
+                                <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
+                                    <div className="flex items-center space-x-3">
+                                        <div className="w-8 h-8 rounded-full bg-white border border-gray-200 overflow-hidden"><img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`} className="w-full h-full object-cover" /></div>
+                                        <div className="min-w-0"><p className="text-[9px] font-black text-gray-400 uppercase leading-none mb-1">Profissional</p><p className="text-xs font-bold text-gray-900 truncate">{order.profissional?.nome || 'Não definido'}</p></div>
+                                    </div>
+                                    <div className="text-right">
+                                        {order.orcamentos?.length > 0 && order.status.toLowerCase() !== 'aguardando_profissional' ? (
+                                            <span className="text-base font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</span>
+                                        ) : (
+                                            <span className="text-[10px] font-black text-gray-400 uppercase">
+                                                {order.status.toLowerCase() === 'aguardando_profissional' ? 'Aguardando Profissional' : 'Aguardando Orçamento'}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {order.status === 'aguardando_aprovacao' && (
+                                    <div className="mt-4 pt-3 border-t border-orange-100 flex items-center justify-between">
+                                        <p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-1"><AlertCircle size={12} /> Orçamento pronto!</p>
+                                        <div className="bg-orange-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg animate-pulse">Decidir Agora</div>
+                                    </div>
+                                )}
+
+                                {pendingRating && (
+                                    <div className="mt-4 pt-3 border-t border-amber-100 flex items-center justify-between">
+                                        <p className="text-[10px] font-black text-amber-600 uppercase flex items-center gap-1">
+                                            <Star size={12} className="fill-amber-500 text-amber-500" /> Avaliação Pendente
+                                        </p>
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenDetails(order, 'avaliacao');
+                                            }}
+                                            className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase shadow-md flex items-center gap-1.5 active:scale-95 transition-all"
+                                        >
+                                            <Star size={12} className="fill-white text-white" />
+                                            <span>Avaliar Serviço</span>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {order.avaliacao && (
+                                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
+                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Sua Avaliação</span>
+                                        <div className="flex items-center gap-1 font-black text-amber-500 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">
+                                            <Star size={12} className="fill-amber-400 text-amber-400" />
+                                            <span>{order.avaliacao.nota.toFixed(1)}</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
-                                <div className="flex items-center space-x-3">
-                                    <div className="w-8 h-8 rounded-full bg-white border border-gray-200 overflow-hidden"><img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`} className="w-full h-full object-cover" /></div>
-                                    <div className="min-w-0"><p className="text-[9px] font-black text-gray-400 uppercase leading-none mb-1">Profissional</p><p className="text-xs font-bold text-gray-900 truncate">{order.profissional?.nome || 'Não definido'}</p></div>
-                                </div>
-                                <div className="text-right">
-                                    {order.orcamentos?.length > 0 && order.status.toLowerCase() !== 'aguardando_profissional' ? (
-                                        <span className="text-base font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</span>
-                                    ) : (
-                                        <span className="text-[10px] font-black text-gray-400 uppercase">
-                                            {order.status.toLowerCase() === 'aguardando_profissional' ? 'Aguardando Profissional' : 'Aguardando Orçamento'}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                            {order.status === 'aguardando_aprovacao' && (
-                                <div className="mt-4 pt-3 border-t border-orange-100 flex items-center justify-between">
-                                    <p className="text-[10px] font-black text-orange-600 uppercase flex items-center gap-1"><AlertCircle size={12} /> Orçamento pronto!</p>
-                                    <div className="bg-orange-500 text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase shadow-lg animate-pulse">Decidir Agora</div>
-                                </div>
-                            )}
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
 
@@ -281,6 +379,7 @@ const ClientOrders: React.FC = () => {
                     onClose={() => setIsModalOpen(false)}
                     onUpdate={fetchOrders}
                     userUuid={currentUserId}
+                    initialTab={modalInitialTab}
                 />
             )}
         </div>

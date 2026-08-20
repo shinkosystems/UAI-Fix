@@ -1,0 +1,56 @@
+name: "Universal Multiplatform & AI Systems Squad (BMAD-Graph Edition)"
+code: "universal-systems-squad"
+description: "Squad portátil baseado em BMAD-Graph Engineering para desenvolvimento, refatoração, relatórios de dados de plataformas externas (Figma, Supabase, APIs) e manutenção de aplicações multiplataforma."
+version: "1.3.0"
+portable: true
+architecture: "BMAD-Graph Engine (Nodes, Edges, Parallel Branches & Feedback Loops)"
+
+graph_nodes:
+  - id: pedro-pm
+    phase: Phase B (Requirements)
+  - id: fernando-reports
+    phase: Phase B (External Data & Platform Inspection)
+  - id: sofia-design
+    phase: Phase B/M (UX/UI Spec)
+  - id: marcos-ai
+    phase: Phase M (AI Architecture & Vectors)
+    parallel_with: ["bruno-supabase", "lucas-automation"]
+  - id: bruno-supabase
+    phase: Phase M (Database & RLS)
+    parallel_with: ["marcos-ai", "lucas-automation"]
+  - id: lucas-automation
+    phase: Phase M (Workflows & Webhooks)
+    parallel_with: ["marcos-ai", "bruno-supabase"]
+  - id: mateus-dev
+    phase: Phase A (TDD Implementation)
+  - id: carla-qa
+    phase: Phase D (Quality Gatekeeper)
+    edges:
+      on_pass: diego-devops
+      on_fail_code: mateus-dev
+      on_fail_rls: bruno-supabase
+  - id: diego-devops
+    phase: Phase D (Deploy & Release)
+
+skills:
+  - deep-research
+  - competitor-analysis
+  - ai-product
+  - agent-creator
+  - vercel-ai-sdk-expert
+  - vector-database-engineer
+  - mcp-builder
+  - prompt-engineer
+  - nextjs-best-practices
+  - supabase-mcp
+  - ui-component
+  - react-patterns
+  - vercel-deployment
+  - tdd-workflow
+  - code-reviewer
+  - security-auditor
+  - performance-engineer
+
+quality_gates:
+  pre_implementation: "PRD aprovado, Inspeção de plataformas externas (Figma/Supabase) realizada por fernando-reports, UI definida e schemas Postgres/IA validados."
+  pre_deploy: "Validação do nó Carla QA aprovada (zero falhas em testes/RLS/relatórios), acionando a aresta de transição para o nó Diego DevOps."
