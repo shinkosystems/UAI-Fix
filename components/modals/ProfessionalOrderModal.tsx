@@ -124,7 +124,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const fetchServicesAndCities = async (specificCityId?: number | string) => {
         try {
             const cid = specificCityId ? (typeof specificCityId === 'string' ? parseInt(specificCityId) : specificCityId) : null;
-            const promises: Promise<any>[] = [
+            const promises: any[] = [
                 supabase.from('geral').select('*').order('nome'),
                 supabase.from('cidades').select('*').order('cidade').limit(2000)
             ];
@@ -135,7 +135,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
             const [servRes, cityRes, specificCityRes] = await Promise.all(promises);
             if (servRes.data) setAllServices(servRes.data);
-            
+
             let combined = cityRes.data || [];
             if (specificCityRes?.data) {
                 if (!combined.some((c: any) => c.id === specificCityRes.data.id)) {
@@ -466,18 +466,18 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
     const sendBudgetButtons = async (phone: string, data: any, ticketId: string) => {
         const precoStr = data.orcamentoPreco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        
+
         let paymentInfo = `Forma de Pagamento: ${data.orcamentoTipoPgto || 'Dinheiro'}`;
         let hasSuggested = false;
         let suggestedVal = data.orcamentoPreco;
         let suggestedMethod = data.orcamentoTipoPgto;
 
         if (data.orcamentoTipoPgtoSugerido) {
-             paymentInfo = `Forma de Pagamento Sugerida: ${data.orcamentoTipoPgtoSugerido}`;
-             suggestedMethod = data.orcamentoTipoPgtoSugerido;
-             if (data.orcamentoTipoPgtoSugerido !== data.orcamentoTipoPgto) hasSuggested = true;
+            paymentInfo = `Forma de Pagamento Sugerida: ${data.orcamentoTipoPgtoSugerido}`;
+            suggestedMethod = data.orcamentoTipoPgtoSugerido;
+            if (data.orcamentoTipoPgtoSugerido !== data.orcamentoTipoPgto) hasSuggested = true;
         }
-        
+
         let descText = "";
         if (data.orcamentoDescontoSugerido > 0) {
             hasSuggested = true;
@@ -494,13 +494,13 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         }
 
         const text = `Seu orçamento está pronto!\n\nValor Original: ${precoStr}\n${paymentInfo}${descText}${justText}\n\nVocê aceita o orçamento?`;
-        
+
         const getButtonText = (method: string, val: number) => {
             let abbrev = (method || '').replace('Cartão de ', '').replace('Dinheiro', 'Dinh');
             if (abbrev.length > 7) abbrev = abbrev.substring(0, 7);
             const valStr = val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             let btn = `${abbrev}(${valStr})`;
-            if (btn.length > 20) btn = `${abbrev.substring(0,3)}(${valStr})`;
+            if (btn.length > 20) btn = `${abbrev.substring(0, 3)}(${valStr})`;
             return btn.substring(0, 20);
         };
 
@@ -527,12 +527,12 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         try {
             const ticketId = order.chaveData?.id || order.chave || order.id;
             await supabase.from('chaves').update({ status: 'aguardando_aprovacao' }).eq('id', ticketId);
-            
+
             const clientPhone = normalizedItem.clienteData?.whatsapp;
             if (clientPhone) {
                 await sendBudgetButtons(clientPhone, formData, ticketId);
             }
-            
+
             await onUpdate();
             onClose();
             alert('Tarefa aceita com sucesso! Aguardando aprovação do cliente.');
@@ -569,7 +569,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         try {
             const ticketId = order.chaveData?.id || order.chave || order.id;
             await supabase.from('chaves').update({ status: 'executando' }).eq('id', ticketId);
-            
+
             const clientPhone = normalizedItem?.clienteData?.whatsapp;
             if (clientPhone) {
                 const msg = `O profissional responsável pelo seu chamado acaba de iniciar a execução do serviço! 🚀\n\nQualquer dúvida, estamos à disposição.`;
@@ -634,7 +634,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             // WhatsApp Notification for Conclusion
             const clientPhone = normalizedItem.clienteData?.whatsapp;
             const isWhatsappOS = normalizedItem.planejamento?.some((p: any) => p.descricao?.includes('WHATSAPP'));
-            
+
             if (clientPhone) {
                 if (isWhatsappOS) {
                     const title = `Serviço Concluído! ✅`;
@@ -676,7 +676,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 status: 'erro',
                 relato_problema: relato.trim()
             }).eq('id', ticketId);
-            
+
             await onUpdate();
             onClose();
             alert('Problema relatado com sucesso! O status foi alterado para ERRO!');
@@ -690,7 +690,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const handleFileUploadProblem = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.target.files?.length) return;
         const file = e.target.files[0];
-        
+
         if (file.size > 50 * 1024 * 1024) {
             alert('O arquivo é maior que 50MB.');
             return;
@@ -740,7 +740,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             if (!data || data.length === 0) {
                 throw new Error("Falha ao atualizar: Você pode não ter permissão (RLS) ou o chamado não existe.");
             }
-            
+
             // Atualiza o estado local para a UI refletir a mudança imediatamente
             setFormData(prev => ({
                 ...prev,
@@ -990,11 +990,11 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             }
 
             await supabase.from('chaves').update(updates).eq('id', ticketId);
-            
+
             // Enviar notificação de conclusão para o cliente
             const clientPhone = normalizedItem.clienteData?.whatsapp;
             const isWhatsappOS = normalizedItem.planejamento?.some((p: any) => p.descricao?.includes('WHATSAPP'));
-            
+
             if (clientPhone) {
                 if (isWhatsappOS) {
                     const title = `Serviço Concluído! ✅`;
@@ -1271,7 +1271,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             onClose();
             const statusMsg = finalStatus !== formData.status ? ` e status atualizado para ${finalStatus.replace('_', ' ')}` : '';
             alert(`Salvo com sucesso${statusMsg}!`);
-        } catch (error: any) { alert(error.message);        } finally {
+        } catch (error: any) { alert(error.message); } finally {
             setSaving(false);
         }
     };
@@ -1326,7 +1326,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const handleStatusChange = async (newStatus: string) => {
         // Only managers (gestor) can change status freely like this based on the UI
         if (!isGestor && !isOrcamentista && !isPlanejista) return;
-        
+
         setSaving(true);
         try {
             const ticketId = order.chaveData?.id || order.chave || order.id;
@@ -1666,11 +1666,10 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 type="button"
                                 onClick={handleToggleHideOrder}
                                 disabled={saving}
-                                className={`px-4 py-4 rounded-2xl font-black text-xs uppercase tracking-wider border transition-all flex items-center gap-1.5 active:scale-95 shadow-xs ${
-                                    isOrderHidden
+                                className={`px-4 py-4 rounded-2xl font-black text-xs uppercase tracking-wider border transition-all flex items-center gap-1.5 active:scale-95 shadow-xs ${isOrderHidden
                                         ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
                                         : 'bg-white hover:bg-gray-100 text-gray-600 border-gray-200'
-                                }`}
+                                    }`}
                                 title={isOrderHidden ? "Restaurar visibilidade no painel" : "Ocultar este chamado do painel principal"}
                             >
                                 {isOrderHidden ? <><Eye size={16} /><span className="hidden sm:inline">Desocultar</span></> : <><EyeOff size={16} /><span className="hidden sm:inline">Ocultar Chamado</span></>}
@@ -1794,9 +1793,9 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     ) : (
                         <div className="flex-[2] flex flex-wrap sm:flex-nowrap gap-2">
                             {/* Botão Secundário: Salvar Rascunho / Alterações */}
-                            <button 
-                                onClick={() => handleSave()} 
-                                disabled={saving} 
+                            <button
+                                onClick={() => handleSave()}
+                                disabled={saving}
                                 className="flex-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2 shadow-xs cursor-pointer"
                             >
                                 {saving ? <Loader2 className="animate-spin" size={16} /> : <><Save size={16} /><span>Salvar Rascunho</span></>}
@@ -1824,9 +1823,9 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                             </button>
 
                             {/* Botão Principal: Disparar para o Profissional Aprovar */}
-                            <button 
-                                onClick={() => handleSave('aguardando_profissional')} 
-                                disabled={saving} 
+                            <button
+                                onClick={() => handleSave('aguardando_profissional')}
+                                disabled={saving}
                                 className="flex-[1.2] bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                             >
                                 {saving ? (
@@ -1835,8 +1834,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                     <>
                                         <Send size={16} />
                                         <span>
-                                            {formData.status === 'aguardando_profissional' 
-                                                ? 'Reenviar ao Profissional' 
+                                            {formData.status === 'aguardando_profissional'
+                                                ? 'Reenviar ao Profissional'
                                                 : 'Disparar para o Profissional'}
                                         </span>
                                     </>
@@ -1854,7 +1853,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                             <h3 className="font-black text-gray-900 text-lg">Relatar Problema</h3>
                             <button onClick={() => setIsProblemModalOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100"><X size={20} /></button>
                         </div>
-                        
+
                         <div className="space-y-4">
                             <div>
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Foto do Problema (Opcional)</label>
