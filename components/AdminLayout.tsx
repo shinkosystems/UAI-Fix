@@ -48,10 +48,10 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-slate-800">
+    <div className="h-screen max-h-screen bg-slate-50 flex flex-col md:flex-row text-slate-800 overflow-hidden">
 
       {/* Top Mobile Bar */}
-      <div className="md:hidden bg-slate-900 text-white px-5 py-4 flex items-center justify-between shadow-md">
+      <div className="md:hidden bg-slate-900 text-white px-5 py-4 flex items-center justify-between shadow-md flex-shrink-0">
         <div className="flex items-center space-x-3">
           <div className="w-9 h-9 rounded-xl overflow-hidden bg-white p-0.5 shadow-sm">
             <img src="/logo.jpg" alt="UAI Fix Admin" className="w-full h-full object-cover rounded-lg" />
@@ -72,7 +72,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
 
       {/* Sidebar Desktop & Mobile Drawer */}
       <aside className={`
-        fixed md:static inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white flex flex-col justify-between p-5 transition-transform duration-300 transform shadow-xl md:shadow-none flex-shrink-0
+        fixed md:static inset-y-0 left-0 z-50 w-72 bg-slate-900 text-white flex flex-col justify-between p-5 transition-transform duration-300 transform shadow-xl md:shadow-none flex-shrink-0 h-full overflow-y-auto
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
         <div className="space-y-6">
@@ -240,8 +240,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
       </aside>
 
       {/* Main Content Container */}
-      <main className="flex-1 overflow-y-auto">
-        <header className="hidden md:flex bg-white border-b border-slate-200 px-8 py-4 items-center justify-between shadow-xs">
+      <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        <header className="hidden md:flex bg-white border-b border-slate-200 px-8 py-4 items-center justify-between shadow-xs flex-shrink-0">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Painel Administrativo UAI Fix</h2>
             <p className="text-xs text-slate-500">Gestão centralizada de chamados, usuários e indicadores de desempenho</p>
@@ -254,7 +254,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           </div>
         </header>
 
-        <div className="p-4 sm:p-6 md:p-8">
+        <div className={`flex-1 min-h-0 ${location.pathname === '/admin/whatsapp' ? 'p-3 sm:p-4 md:p-6 flex flex-col overflow-hidden' : 'p-4 sm:p-6 md:p-8 overflow-y-auto'}`}>
           {children}
         </div>
       </main>

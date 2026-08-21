@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual do Profissional Parceiro — UAI-Fix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #d97706; /* Âmbar UaiFix Profissional */
+      --primary-dark: #b45309;
+      --primary-light: #fef3c7;
+      --navy: #0f172a;
+      --slate: #334155;
+      --slate-light: #64748b;
+      --bg-gray: #f8fafc;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --success-light: #ecfdf5;
+      --warning: #f59e0b;
+      --warning-light: #fffbeb;
+      --danger: #ef4444;
+      --blue: #2563eb;
+      --blue-light: #eff6ff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--slate);
+      background-color: #ffffff;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    @page {
+      size: A4;
+      margin: 20mm 15mm 20mm 15mm;
+    }
+
+    .page {
+      page-break-after: always;
+      position: relative;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    /* Cover Page */
+    .cover-container {
+      height: 100vh;
+      min-height: 250mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 40px 30px;
+      background: linear-gradient(145deg, #0f172a 0%, #1e293b 55%, #78350f 100%);
+      color: #ffffff;
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cover-decor-1 {
+      position: absolute;
+      top: -80px;
+      right: -80px;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(245, 158, 11, 0.4) 0%, rgba(245, 158, 11, 0) 70%);
+      border-radius: 50%;
+    }
+
+    .cover-decor-2 {
+      position: absolute;
+      bottom: -60px;
+      left: -60px;
+      width: 280px;
+      height: 280px;
+      background: radial-gradient(circle, rgba(37, 99, 235, 0.25) 0%, rgba(37, 99, 235, 0) 70%);
+      border-radius: 50%;
+    }
+
+    .cover-header {
+      position: relative;
+      z-index: 2;
+    }
+
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #fde68a;
+    }
+
+    .brand-badge span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #fbbf24;
+    }
+
+    .cover-body {
+      position: relative;
+      z-index: 2;
+      margin: 40px 0;
+    }
+
+    .cover-title {
+      font-size: 38px;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 16px;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+    }
+
+    .cover-title span {
+      background: linear-gradient(90deg, #fbbf24, #f59e0b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .cover-subtitle {
+      font-size: 17px;
+      color: #cbd5e1;
+      font-weight: 400;
+      max-width: 520px;
+      line-height: 1.5;
+    }
+
+    .cover-meta {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 20px;
+      border-radius: 12px;
+    }
+
+    .meta-item h4 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+
+    .meta-item p {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    /* Content Layout */
+    .content-page {
+      padding: 10px 0;
+    }
+
+    .section-header {
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-number {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .section-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.3px;
+    }
+
+    .badge-user-type {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid #fde68a;
+    }
+
+    /* Typography & Components */
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--navy);
+      margin: 20px 0 10px 0;
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--slate);
+      font-size: 13.5px;
+    }
+
+    .lead-text {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--slate);
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+
+    /* Cards and Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+
+    .card h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .card p {
+      font-size: 12.5px;
+      color: var(--slate-light);
+      margin-bottom: 0;
+    }
+
+    /* Step by step list */
+    .step-list {
+      margin: 16px 0;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 14px;
+      align-items: flex-start;
+    }
+
+    .step-number {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    .step-content h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 2px;
+    }
+
+    .step-content p {
+      font-size: 13px;
+      color: var(--slate);
+      margin-bottom: 0;
+    }
+
+    /* Alerts and Callouts */
+    .callout {
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 16px 0;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      border-left: 4px solid;
+    }
+
+    .callout-info {
+      background: var(--blue-light);
+      border-left-color: var(--blue);
+    }
+
+    .callout-warning {
+      background: var(--warning-light);
+      border-left-color: var(--warning);
+    }
+
+    .callout-success {
+      background: var(--success-light);
+      border-left-color: var(--success);
+    }
+
+    .callout-icon {
+      font-size: 18px;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .callout-body h5 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+
+    .callout-body p {
+      font-size: 12.5px;
+      margin-bottom: 0;
+      color: var(--slate);
+    }
+
+    /* Table Styles */
+    .table-container {
+      margin: 16px 0;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      text-align: left;
+    }
+
+    th {
+      background: #f1f5f9;
+      color: var(--navy);
+      font-weight: 700;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--slate);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+
+    /* Footer */
+    .doc-footer {
+      margin-top: 30px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--slate-light);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- CAPA -->
+  <div class="page">
+    <div class="cover-container">
+      <div class="cover-decor-1"></div>
+      <div class="cover-decor-2"></div>
+      
+      <div class="cover-header">
+        <div class="brand-badge">
+          <span></span> REDE DE PARCEIROS UAI-FIX
+        </div>
+      </div>
+
+      <div class="cover-body">
+        <h1 class="cover-title">
+          Manual do <span>Profissional</span>
+        </h1>
+        <p class="cover-subtitle">
+          Guia operacional para prestadores de serviço: captação de clientes, gestão de agenda, execução técnica e crescimento profissional.
+        </p>
+      </div>
+
+      <div class="cover-meta">
+        <div class="meta-item">
+          <h4>Perfil de Acesso</h4>
+          <p>Técnico / Especialista</p>
+        </div>
+        <div class="meta-item">
+          <h4>Versão do Sistema</h4>
+          <p>UAI-Fix 2.4.0 (2026)</p>
+        </div>
+        <div class="meta-item">
+          <h4>Módulo</h4>
+          <p>Execução & Atendimentos</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PÁGINA 1: PERFIL E CREDENCIAMENTO -->
+  <div class="page">
+    <div class="content-page">
+      <div class="section-header">
+        <div>
+          <span class="section-number">Capítulo 01</span>
+          <h2 class="section-title">Credenciamento & Perfil Profissional</h2>
+        </div>
+        <span class="badge-user-type">Configuração Inicial</span>
+      </div>
+
+      <p class="lead-text">
+        Como parceiro credenciado <strong>UAI-Fix</strong>, você tem acesso direto a centenas de solicitações de serviços sem precisar gastar com marketing ou prospecção individual.
+      </p>
+
+      <h3>1.1 Configuração Completa do seu Perfil</h3>
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h4>Foto de Perfil Profissional</h4>
+            <p>Utilize uma foto nítida, com boa iluminação e semblante profissional. Perfis com foto bem apresentada recebem até 3x mais aceites de clientes.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h4>Biografia e Especialidades ("Sobre")</h4>
+            <p>Destaque seus anos de experiência, certificações técnicas (ex: NR-10, NR-35), cursos profissionalizantes e principais diferenciais de atendimento.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h4>Seleção de Categorias de Atividade</h4>
+            <p>Vincule todas as atividades que você domina (ex: Manutenção Hidráulica, Reparos Elétricos, Instalação de Ar Condicionado). Você só receberá chamados compatíveis com sua seleção.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">📍</div>
+        <div class="callout-body">
+          <h5>Definição de Cidades e Raio de Atuação</h5>
+          <p>Configure corretamente sua cidade base no perfil. O algoritmo da UaiFix prioriza profissionais geograficamente mais próximos para reduzir seu custo de deslocamento.</p>
+        </div>
+      </div>
+
+      <h3>1.2 Pilares de Sucesso do Profissional UaiFix</h3>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-icon">⚡</div>
+          <h4>Rapidez de Resposta</h4>
+          <p>Aceitar ou responder chamados rapidamente garante prioridade no envio de novas oportunidades.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🕒</div>
+          <h4>Pontualidade Rigorosa</h4>
+          <p>Cumprir o horário agendado ou avisar com antecedência via WhatsApp em caso de imprevisto.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🧹</div>
+          <h4>Capricho & Limpeza</h4>
+          <p>Deixar o ambiente do cliente limpo e recolher resíduos após a conclusão do serviço.</p>
+        </div>
+      </div>
+
+      <div class="doc-footer">
+        <span>UAI-Fix — Manual Oficial do Profissional</span>
+        <span>Página 1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PÁGINA 2: RECEBIMENTO, AGENDA E EXECUÇÃO -->
+  <div class="page">
+    <div class="content-page">
+      <div class="section-header">
+        <div>
+          <span class="section-number">Capítulo 02</span>
+          <h2 class="section-title">Recebimento de Pedidos & Execução</h2>
+        </div>
+        <span class="badge-user-type">Rotina de Campo</span>
+      </div>
+
+      <p class="lead-text">
+        A rotina operacional no aplicativo foi desenhada para que você gaste o menor tempo possível com burocracia e foque no que faz de melhor: executar o serviço com perfeição.
+      </p>
+
+      <h3>2.1 Fluxo Operacional de Atendimento</h3>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-icon">📲</div>
+          <h4>1. Notificação de Nova Oportunidade</h4>
+          <p>Você recebe uma mensagem automática via WhatsApp e uma notificação no app com os detalhes do serviço, bairro e data sugerida.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">✅</div>
+          <h4>2. Aceite do Chamado</h4>
+          <p>Ao aceitar, o chamado entra instantaneamente na sua <strong>Agenda</strong> e os dados completos de contato do cliente são liberados.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">▶️</div>
+          <h4>3. Início de Execução (Check-in)</h4>
+          <p>Ao chegar ao local do cliente, clique em <strong>"Iniciar Execução"</strong>. Isso atualiza o status para o cliente e gestor em tempo real.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🏁</div>
+          <h4>4. Finalização & Observações</h4>
+          <p>Após concluir, clique em <strong>"Concluir Serviço"</strong> e registre observações técnicas, garantias ou recomendações passadas ao cliente.</p>
+        </div>
+      </div>
+
+      <div class="callout callout-warning">
+        <div class="callout-icon">⚠️</div>
+        <div class="callout-body">
+          <h5>Importância do Registro de Início e Término</h5>
+          <p>O registro exato dos horários no app serve como comprovante formal de atendimento, resguardando o profissional em caso de dúvidas sobre tempo de permanência ou cumprimento de escopo.</p>
+        </div>
+      </div>
+
+      <h3>2.2 Reputação e Avaliações</h3>
+      <p>Sua nota média (de 1.0 a 5.0 estrelas) é o principal fator de ranking. Profissionais com nota acima de 4.8 recebem:</p>
+      <ul style="margin-left: 20px; font-size: 13px; color: var(--slate); margin-bottom: 16px;">
+        <li><strong>Selo de Destaque / Especialista Recomendado</strong> na vitrine de busca.</li>
+        <li><strong>Prioridade no despacho de chamados de alto valor</strong> e manutenções recorrentes.</li>
+        <li>Maior taxa de conversão nas contratações diretas.</li>
+      </ul>
+
+      <div class="callout callout-success">
+        <div class="callout-icon">💬</div>
+        <div class="callout-body">
+          <h5>Dica de Ouro para Boas Avaliações</h5>
+          <p>Ao finalizar o atendimento, peça cordialmente ao cliente para que faça a avaliação no aplicativo. Feedbacks positivos atraem mais trabalho de forma contínua!</p>
+        </div>
+      </div>
+
+      <div class="doc-footer">
+        <span>UAI-Fix — Manual Oficial do Profissional</span>
+        <span>Página 2</span>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

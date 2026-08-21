@@ -434,14 +434,14 @@ const Whatsapp: React.FC = () => {
   );
 
   return (
-    <div className="flex h-[calc(100vh-64px)] md:h-full bg-[#F0F2F5] overflow-hidden">
+    <div className="flex-1 min-h-0 flex h-full bg-[#F0F2F5] overflow-hidden rounded-2xl border border-gray-200 shadow-sm">
       {/* Sidebar - Chat List */}
       <div className={`
         ${isMobileChatOpen ? 'hidden' : 'flex'} 
-        md:flex flex-col w-full md:w-[350px] lg:w-[400px] shrink-0 border-r border-gray-200 bg-white
+        md:flex flex-col w-full md:w-[350px] lg:w-[400px] shrink-0 border-r border-gray-200 bg-white h-full min-h-0 overflow-hidden
       `}>
         {/* Search */}
-        <div className="p-2 bg-white">
+        <div className="p-2 bg-white shrink-0">
           <div className="relative flex items-center bg-[#F0F2F5] rounded-xl px-4 py-2 transition-all focus-within:bg-white focus-within:shadow-md border border-transparent focus-within:border-gray-200">
             <Search size={18} className="text-gray-400 mr-3" />
             <input 
@@ -455,7 +455,7 @@ const Whatsapp: React.FC = () => {
         </div>
 
         {/* Chat List */}
-        <div className="flex-1 overflow-y-auto no-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
           {filteredChats.map(chat => (
             <div 
               key={chat.id}
@@ -491,12 +491,12 @@ const Whatsapp: React.FC = () => {
       {/* Main Chat Area */}
       <div className={`
         ${isMobileChatOpen ? 'flex' : 'hidden'} 
-        md:flex flex-col flex-1 min-w-0 bg-[#E5DDD5] relative
+        md:flex flex-col flex-1 min-w-0 bg-[#E5DDD5] relative h-full min-h-0 overflow-hidden
       `}>
         {selectedChat ? (
           <>
             {/* Chat Header */}
-            <div className="p-3 bg-[#F0F2F5] flex items-center justify-between border-b border-gray-200 z-10">
+            <div className="p-3 bg-[#F0F2F5] flex items-center justify-between border-b border-gray-200 z-10 shrink-0">
               <div className="flex items-center">
                 <button 
                   onClick={() => setIsMobileChatOpen(false)}
@@ -554,7 +554,7 @@ const Whatsapp: React.FC = () => {
 
             {/* Offline Alert Banner */}
             {!isOnline && (
-              <div className="bg-red-500 text-white text-xs px-4 py-2 flex items-center justify-center space-x-2 z-10 shadow-md">
+              <div className="bg-red-500 text-white text-xs px-4 py-2 flex items-center justify-center space-x-2 z-10 shadow-md shrink-0">
                 <AlertTriangle size={14} className="animate-bounce" />
                 <span className="font-medium">Você está offline. As mensagens que falharem podem ser reenviadas clicando no ícone de aviso.</span>
               </div>
@@ -567,7 +567,7 @@ const Whatsapp: React.FC = () => {
             ></div>
 
             {/* Messages Container */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2 relative no-scrollbar">
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2 relative custom-scrollbar">
               {messages.map((msg, index) => {
                 const showDateSeparator = index === 0 || msg.dateStr !== messages[index - 1].dateStr;
                 
@@ -675,7 +675,7 @@ const Whatsapp: React.FC = () => {
             </div>
 
             {/* Message Input Area */}
-            <div className="p-3 bg-[#F0F2F5] flex items-center space-x-3 z-10">
+            <div className="p-3 bg-[#F0F2F5] flex items-center space-x-3 z-10 shrink-0">
               <button className="text-gray-500 hover:text-ios-blue transition-colors"><Smile size={24} /></button>
               <button className="text-gray-500 hover:text-ios-blue transition-colors"><Paperclip size={24} /></button>
               <form onSubmit={handleSendMessage} className="flex-1">

@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual do Gestor & Administrador — UAI-Fix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0f172a; /* Slate/Navy Gestor */
+      --primary-accent: #2563eb;
+      --primary-light: #f1f5f9;
+      --navy: #0f172a;
+      --slate: #334155;
+      --slate-light: #64748b;
+      --bg-gray: #f8fafc;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --success-light: #ecfdf5;
+      --warning: #f59e0b;
+      --warning-light: #fffbeb;
+      --danger: #ef4444;
+      --danger-light: #fef2f2;
+      --purple: #8b5cf6;
+      --purple-light: #f5f3ff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--slate);
+      background-color: #ffffff;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    @page {
+      size: A4;
+      margin: 20mm 15mm 20mm 15mm;
+    }
+
+    .page {
+      page-break-after: always;
+      position: relative;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    /* Cover Page */
+    .cover-container {
+      height: 100vh;
+      min-height: 250mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 40px 30px;
+      background: linear-gradient(145deg, #020617 0%, #0f172a 60%, #1e1b4b 100%);
+      color: #ffffff;
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cover-decor-1 {
+      position: absolute;
+      top: -80px;
+      right: -80px;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.35) 0%, rgba(99, 102, 241, 0) 70%);
+      border-radius: 50%;
+    }
+
+    .cover-decor-2 {
+      position: absolute;
+      bottom: -60px;
+      left: -60px;
+      width: 280px;
+      height: 280px;
+      background: radial-gradient(circle, rgba(37, 99, 235, 0.3) 0%, rgba(37, 99, 235, 0) 70%);
+      border-radius: 50%;
+    }
+
+    .cover-header {
+      position: relative;
+      z-index: 2;
+    }
+
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #c7d2fe;
+    }
+
+    .brand-badge span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #818cf8;
+    }
+
+    .cover-body {
+      position: relative;
+      z-index: 2;
+      margin: 40px 0;
+    }
+
+    .cover-title {
+      font-size: 38px;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 16px;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+    }
+
+    .cover-title span {
+      background: linear-gradient(90deg, #a5b4fc, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .cover-subtitle {
+      font-size: 17px;
+      color: #cbd5e1;
+      font-weight: 400;
+      max-width: 540px;
+      line-height: 1.5;
+    }
+
+    .cover-meta {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 20px;
+      border-radius: 12px;
+    }
+
+    .meta-item h4 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+
+    .meta-item p {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    /* Content Layout */
+    .content-page {
+      padding: 10px 0;
+    }
+
+    .section-header {
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-number {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--primary-accent);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .section-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.3px;
+    }
+
+    .badge-user-type {
+      background: #e0e7ff;
+      color: #3730a3;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid #c7d2fe;
+    }
+
+    /* Typography & Components */
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--navy);
+      margin: 20px 0 10px 0;
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--slate);
+      font-size: 13.5px;
+    }
+
+    .lead-text {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--slate);
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+
+    /* Cards and Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--purple-light);
+      color: var(--purple);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+
+    .card h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .card p {
+      font-size: 12.5px;
+      color: var(--slate-light);
+      margin-bottom: 0;
+    }
+
+    /* Alerts and Callouts */
+    .callout {
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 16px 0;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      border-left: 4px solid;
+    }
+
+    .callout-info {
+      background: var(--primary-light);
+      border-left-color: var(--primary-accent);
+    }
+
+    .callout-warning {
+      background: var(--warning-light);
+      border-left-color: var(--warning);
+    }
+
+    .callout-success {
+      background: var(--success-light);
+      border-left-color: var(--success);
+    }
+
+    .callout-icon {
+      font-size: 18px;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .callout-body h5 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+
+    .callout-body p {
+      font-size: 12.5px;
+      margin-bottom: 0;
+      color: var(--slate);
+    }
+
+    /* Table Styles */
+    .table-container {
+      margin: 16px 0;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      text-align: left;
+    }
+
+    th {
+      background: #f1f5f9;
+      color: var(--navy);
+      font-weight: 700;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--slate);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+
+    /* Footer */
+    .doc-footer {
+      margin-top: 30px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--slate-light);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- CAPA -->
+  <div class="page">
+    <div class="cover-container">
+      <div class="cover-decor-1"></div>
+      <div class="cover-decor-2"></div>
+      
+      <div class="cover-header">
+        <div class="brand-badge">
+          <span></span> GESTÃO & GOVERNANÇA UAI-FIX
+        </div>
+      </div>
+
+      <div class="cover-body">
+        <h1 class="cover-title">
+          Manual do <span>Gestor & Admin</span>
+        </h1>
+        <p class="cover-subtitle">
+          Guia executivo para controle operacional, gestão de funil de serviços, moderação de parceiros, automações e relatórios de inteligência.
+        </p>
+      </div>
+
+      <div class="cover-meta">
+        <div class="meta-item">
+          <h4>Nível de Acesso</h4>
+          <p>Gestor / Administrador</p>
+        </div>
+        <div class="meta-item">
+          <h4>Versão do Sistema</h4>
+          <p>UAI-Fix 2.4.0 (2026)</p>
+        </div>
+        <div class="meta-item">
+          <h4>Módulo</h4>
+          <p>Painel de Controle Central</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PÁGINA 1: DASHBOARD E GOVERNANÇA OPERACIONAL -->
+  <div class="page">
+    <div class="content-page">
+      <div class="section-header">
+        <div>
+          <span class="section-number">Capítulo 01</span>
+          <h2 class="section-title">Dashboard Executivo & Gestão do Funil</h2>
+        </div>
+        <span class="badge-user-type">Painel Operacional</span>
+      </div>
+
+      <p class="lead-text">
+        O painel administrativo do <strong>UAI-Fix</strong> centraliza a saúde do ecossistema em tempo real, permitindo identificar gargalos, balancear oferta/demanda e garantir SLAs rigorosos.
+      </p>
+
+      <h3>1.1 Módulos Centrais do Painel Administrativo</h3>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-icon">📊</div>
+          <h4>Dashboard & KPIs</h4>
+          <p>Métricas consolidadas de faturamento estimado, volume de chamados por estágio, tempo médio de atendimento e taxa de conversão.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🗂️</div>
+          <h4>Gestão de Chamados (Kanban)</h4>
+          <p>Visão de pipeline com colunas: <em>Solicitados, Aceitos, Em Andamento, Concluídos e Cancelados</em> com ações rápidas.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">👥</div>
+          <h4>Gestão de Usuários</h4>
+          <p>Aprovação e moderação cadastral de novos técnicos, auditoria de clientes e controle de permissões.</p>
+        </div>
+      </div>
+
+      <h3>1.2 Intervenções Operacionais do Gestor</h3>
+      <p>O administrador possui autoridade para intervir em qualquer ordem de serviço para manter a excelência da operação:</p>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-icon">🔄</div>
+          <h4>Reatribuição de Técnico</h4>
+          <p>Caso um profissional tenha um imprevisto, o gestor pode transferir a OS para outro prestador disponível sem perda de histórico.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">⚡</div>
+          <h4>Desbloqueio de Gargalos</h4>
+          <p>Identificação de chamados solicitados há mais de 2 horas sem aceite para despacho prioritário ou contato direto via WhatsApp.</p>
+        </div>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <h5>Monitoramento Contínuo de SLA</h5>
+          <p>Acompanhe diariamente o tempo decorrido entre a solicitação inicial do cliente e o primeiro aceite técnico. O padrão ideal é de até 30 minutos em horário comercial.</p>
+        </div>
+      </div>
+
+      <div class="doc-footer">
+        <span>UAI-Fix — Manual Oficial do Gestor</span>
+        <span>Página 1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PÁGINA 2: AUTOMAÇÃO, CATEGORIAS E RELATÓRIOS -->
+  <div class="page">
+    <div class="content-page">
+      <div class="section-header">
+        <div>
+          <span class="section-number">Capítulo 02</span>
+          <h2 class="section-title">Automações, Catálogo & Rastreamento</h2>
+        </div>
+        <span class="badge-user-type">Configurações Avançadas</span>
+      </div>
+
+      <p class="lead-text">
+        Gerencie a inteligência de negócios do sistema: réguas de comunicação via WhatsApp, parametrização do catálogo de serviços e atribuição de canais de marketing.
+      </p>
+
+      <h3>2.1 Automação de Mensagens e WhatsApp</h3>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Evento Gatilho</th>
+              <th>Destinatário</th>
+              <th>Ação Automática</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Novo Chamado Criado</strong></td>
+              <td>Técnicos da Região</td>
+              <td>Disparo de notificação WhatsApp com dados resumidos do serviço.</td>
+            </tr>
+            <tr>
+              <td><strong>Chamado Aceito</strong></td>
+              <td>Cliente Solicitante</td>
+              <td>Mensagem de confirmação com nome, foto e telefone do profissional.</td>
+            </tr>
+            <tr>
+              <td><strong>Início de Execução</strong></td>
+              <td>Cliente Solicitante</td>
+              <td>Aviso em tempo real de chegada e início do trabalho.</td>
+            </tr>
+            <tr>
+              <td><strong>Serviço Concluído</strong></td>
+              <td>Cliente Solicitante</td>
+              <td>Disparo do link direto para avaliação e fechamento formal.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>2.2 Gestão de Categorias e Atividades</h3>
+      <p>No menu <strong>Atividades / Serviços</strong>, o administrador cadastra novas profissões, define hierarquias (categorias primárias vs dependências secundárias) e ativa/desativa especialidades sazonais.</p>
+
+      <h3>2.3 Rastreamento Comercial & UTMs</h3>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-icon">🎯</div>
+          <h4>Origem de Tráfego</h4>
+          <p>O sistema grava automaticamente parâmetros <code>utm_source</code>, <code>utm_campaign</code> e <code>origem</code> de cada lead, indicando se a conversão veio de Google Ads, Instagram, Indicação ou Balcão.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">📈</div>
+          <h4>Relatórios de Performance</h4>
+          <p>Exportação de dados consolidados em CSV/PDF para análise de faturamento por categoria, ranking de profissionais e retenção de clientes.</p>
+        </div>
+      </div>
+
+      <div class="callout callout-success">
+        <div class="callout-icon">🛡️</div>
+        <div class="callout-body">
+          <h5>Auditoria e Segurança</h5>
+          <p>Todas as alterações de status, aprovações de cadastro e intervenções de gestores ficam registradas na base para auditoria e conformidade com a LGPD.</p>
+        </div>
+      </div>
+
+      <div class="doc-footer">
+        <span>UAI-Fix — Manual Oficial do Gestor</span>
+        <span>Página 2</span>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

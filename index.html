@@ -60,6 +60,26 @@
           scrollbar-width: none;  /* Firefox */
       }
       
+      /* Custom elegant scrollbar */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.15);
+        border-radius: 9999px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: rgba(0, 0, 0, 0.25);
+      }
+      .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+      }
+      
       /* Vitrified Glass Effect Utility */
       .vitrified {
         background: rgba(255, 255, 255, 0.75);

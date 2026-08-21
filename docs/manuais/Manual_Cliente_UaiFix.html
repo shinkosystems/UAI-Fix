@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manual do Cliente — UAI-Fix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-light: #eff6ff;
+      --navy: #0f172a;
+      --slate: #334155;
+      --slate-light: #64748b;
+      --bg-gray: #f8fafc;
+      --border: #e2e8f0;
+      --success: #10b981;
+      --success-light: #ecfdf5;
+      --warning: #f59e0b;
+      --warning-light: #fffbeb;
+      --danger: #ef4444;
+      --purple: #8b5cf6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--slate);
+      background-color: #ffffff;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    @page {
+      size: A4;
+      margin: 20mm 15mm 20mm 15mm;
+    }
+
+    .page {
+      page-break-after: always;
+      position: relative;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    /* Cover Page */
+    .cover-container {
+      height: 100vh;
+      min-height: 250mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 40px 30px;
+      background: linear-gradient(145deg, #0f172a 0%, #1e293b 60%, #1e3a8a 100%);
+      color: #ffffff;
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cover-decor-1 {
+      position: absolute;
+      top: -80px;
+      right: -80px;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(37, 99, 235, 0.4) 0%, rgba(37, 99, 235, 0) 70%);
+      border-radius: 50%;
+    }
+
+    .cover-decor-2 {
+      position: absolute;
+      bottom: -60px;
+      left: -60px;
+      width: 280px;
+      height: 280px;
+      background: radial-gradient(circle, rgba(245, 158, 11, 0.25) 0%, rgba(245, 158, 11, 0) 70%);
+      border-radius: 50%;
+    }
+
+    .cover-header {
+      position: relative;
+      z-index: 2;
+    }
+
+    .brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #93c5fd;
+    }
+
+    .brand-badge span {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #38bdf8;
+    }
+
+    .cover-body {
+      position: relative;
+      z-index: 2;
+      margin: 40px 0;
+    }
+
+    .cover-title {
+      font-size: 38px;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 16px;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+    }
+
+    .cover-title span {
+      background: linear-gradient(90deg, #60a5fa, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .cover-subtitle {
+      font-size: 17px;
+      color: #cbd5e1;
+      font-weight: 400;
+      max-width: 520px;
+      line-height: 1.5;
+    }
+
+    .cover-meta {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 20px;
+      border-radius: 12px;
+    }
+
+    .meta-item h4 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+
+    .meta-item p {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    /* Content Layout */
+    .content-page {
+      padding: 10px 0;
+    }
+
+    .section-header {
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .section-number {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .section-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.3px;
+    }
+
+    .badge-user-type {
+      background: var(--primary-light);
+      color: var(--primary);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid #bfdbfe;
+    }
+
+    /* Typography & Components */
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--navy);
+      margin: 20px 0 10px 0;
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--slate);
+      font-size: 13.5px;
+    }
+
+    .lead-text {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--slate);
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
+
+    /* Cards and Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 16px;
+      margin-bottom: 10px;
+    }
+
+    .card h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .card p {
+      font-size: 12.5px;
+      color: var(--slate-light);
+      margin-bottom: 0;
+    }
+
+    /* Step by step list */
+    .step-list {
+      margin: 16px 0;
+    }
+
+    .step-item {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 14px;
+      align-items: flex-start;
+    }
+
+    .step-number {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    .step-content h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 2px;
+    }
+
+    .step-content p {
+      font-size: 13px;
+      color: var(--slate);
+      margin-bottom: 0;
+    }
+
+    /* Alerts and Callouts */
+    .callout {
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 16px 0;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      border-left: 4px solid;
+    }
+
+    .callout-info {
+      background: var(--primary-light);
+      border-left-color: var(--primary);
+    }
+
+    .callout-success {
+      background: var(--success-light);
+      border-left-color: var(--success);
+    }
+
+    .callout-warning {
+      background: var(--warning-light);
+      border-left-color: var(--warning);
+    }
+
+    .callout-icon {
+      font-size: 18px;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .callout-body h5 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 4px;
+    }
+
+    .callout-body p {
+      font-size: 12.5px;
+      margin-bottom: 0;
+      color: var(--slate);
+    }
+
+    /* Table Styles */
+    .table-container {
+      margin: 16px 0;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      text-align: left;
+    }
+
+    th {
+      background: #f1f5f9;
+      color: var(--navy);
+      font-weight: 700;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--slate);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .status-solicitado { background: #e0f2fe; color: #0369a1; }
+    .status-aceito { background: #fef3c7; color: #b45309; }
+    .status-andamento { background: #ede9fe; color: #6d28d9; }
+    .status-concluido { background: #dcfce7; color: #15803d; }
+    .status-cancelado { background: #fee2e2; color: #b91c1c; }
+
+    /* Flow diagram */
+    .flow-diagram {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 12px;
+      margin: 18px 0;
+    }
+
+    .flow-node {
+      text-align: center;
+      flex: 1;
+      padding: 0 6px;
+    }
+
+    .flow-node-badge {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 2px solid var(--primary);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 12px;
+      margin: 0 auto 6px auto;
+    }
+
+    .flow-node.active .flow-node-badge {
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .flow-node h5 {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 2px;
+    }
+
+    .flow-node p {
+      font-size: 10.5px;
+      color: var(--slate-light);
+      margin-bottom: 0;
+    }
+
+    .flow-arrow {
+      color: #94a3b8;
+      font-size: 14px;
+      font-weight: 800;
+      padding: 0 4px;
+    }
+
+    /* Footer */
+    .doc-footer {
+      margin-top: 30px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--slate-light);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- CAPA -->
+  <div class="page">
+    <div class="cover-container">
+      <div class="cover-decor-1"></div>
+      <div class="cover-decor-2"></div>
+      
+      <div class="cover-header">
+        <div class="brand-badge">
+          <span></span> UAI-FIX PLATAFORMA OFICIAL
+        </div>
+      </div>
+
+      <div class="cover-body">
+        <h1 class="cover-title">
+          Manual do <span>Cliente</span>
+        </h1>
+        <p class="cover-subtitle">
+          Guia completo e prático para contratação de serviços residenciais e comerciais com segurança, agilidade e garantia de qualidade.
+        </p>
+      </div>
+
+      <div class="cover-meta">
+        <div class="meta-item">
+          <h4>Perfil de Acesso</h4>
+          <p>Cliente / Solicitante</p>
+        </div>
+        <div class="meta-item">
+          <h4>Versão do Sistema</h4>
+          <p>UAI-Fix 2.4.0 (2026)</p>
+        </div>
+        <div class="meta-item">
+          <h4>Status</h4>
+          <p>Documento Oficial</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PÁGINA 1: VISÃO GERAL E ACESSO -->
+  <div class="page">
+    <div class="content-page">
+      <div class="section-header">
+        <div>
+          <span class="section-number">Capítulo 01</span>
+          <h2 class="section-title">Acesso à Plataforma & Cadastro</h2>
+        </div>
+        <span class="badge-user-type">Área do Cliente</span>
+      </div>
+
+      <p class="lead-text">
+        Bem-vindo à <strong>UAI-Fix</strong>! Nossa plataforma conecta você aos melhores profissionais técnicos, eletricistas, encanadores, pintores, montadores e especialistas qualificados de sua região.
+      </p>
+
+      <h3>1.1 Criando sua Conta</h3>
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h4>Acesse o Sistema</h4>
+            <p>Entre no link oficial da UaiFix no seu celular ou computador através do navegador web ou PWA instalado.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h4>Informe seu WhatsApp e E-mail</h4>
+            <p>Seu número de WhatsApp é o canal principal de notificações, atualizações de status e contato direto com o técnico.</p>
+          </div>
+        </div>
+        <div class="step-item">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h4>Defina seu Endereço de Atendimento</h4>
+            <p>Cadastre sua rua, número, bairro e cidade. O endereço é essencial para que o sistema liste profissionais disponíveis na sua localidade.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-info">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <h5>Dica de Segurança e Agilidade</h5>
+          <p>Mantenha seu número de WhatsApp sempre atualizado. Toda confirmação de visita, chegada do profissional e fotos de execução serão sincronizadas instantaneamente com o seu aplicativo.</p>
+        </div>
+      </div>
+
+      <h3>1.2 Segurança e Verificação</h3>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-icon">🛡️</div>
+          <h4>Técnicos Verificados</h4>
+          <p>Todos os profissionais passam por triagem e validação cadastral antes de prestar atendimentos.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">🔒</div>
+          <h4>Dados Protegidos</h4>
+          <p>Seus dados de contato e endereço são compartilhados apenas com o técnico encarregado do seu chamado.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">⭐</div>
+          <h4>Avaliações Reais</h4>
+          <p>Classificação baseada em notas reais de clientes que já concluíram ordens de serviço no sistema.</p>
+        </div>
+      </div>
+
+      <div class="doc-footer">
+        <span>UAI-Fix — Manual Oficial do Usuário</span>
+        <span>Página 1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PÁGINA 2: COMO SOLICITAR E CONTRATAR -->
+  <div class="page">
+    <div class="content-page">
+      <div class="section-header">
+        <div>
+          <span class="section-number">Capítulo 02</span>
+          <h2 class="section-title">Como Contratar um Serviço</h2>
+        </div>
+        <span class="badge-user-type">Passo a Passo</span>
+      </div>
+
+      <p class="lead-text">
+        O fluxo de solicitação na UaiFix foi desenhado para ser intuitivo, transparente e rápido. Em poucos cliques você detalha seu problema e recebe propostas qualificadas.
+      </p>
+
+      <div class="flow-diagram">
+        <div class="flow-node active">
+          <div class="flow-node-badge">1</div>
+          <h5>Escolha</h5>
+          <p>Categoria / Busca</p>
+        </div>
+        <div class="flow-arrow">➔</div>
+        <div class="flow-node active">
+          <div class="flow-node-badge">2</div>
+          <h5>Detalhes</h5>
+          <p>Descreva o Serviço</p>
+        </div>
+        <div class="flow-arrow">➔</div>
+        <div class="flow-node active">
+          <div class="flow-node-badge">3</div>
+          <h5>Agendamento</h5>
+          <p>Data e Horário</p>
+        </div>
+        <div class="flow-arrow">➔</div>
+        <div class="flow-node active">
+          <div class="flow-node-badge">4</div>
+          <h5>Execução</h5>
+          <p>Visita Técnica</p>
+        </div>
+        <div class="flow-arrow">➔</div>
+        <div class="flow-node active">
+          <div class="flow-node-badge">5</div>
+          <h5>Avaliação</h5>
+          <p>Conclusão da OS</p>
+        </div>
+      </div>
+
+      <h3>2.1 Navegação por Categorias e Busca</h3>
+      <p>Você pode navegar pelas categorias principais (ex: <em>Elétrica, Hidráulica, Ar Condicionado, Pintura, Pequenos Reparos</em>) ou utilizar o campo de busca inteligente digitando palavras-chave como "troca de disjuntor", "desentupimento de pia" ou "instalação de ventilador".</p>
+
+      <h3>2.2 Preenchendo o Chamado de Serviço</h3>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-icon">📝</div>
+          <h4>Descrição Clara da Demanda</h4>
+          <p>Informe detalhes específicos do problema: sintomas, marca/modelo do aparelho e histórico de manutenções anteriores.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">📷</div>
+          <h4>Fotos e Vídeos</h4>
+          <p>Anexar fotos do local ou do equipamento permite que o especialista venha com as ferramentas e peças corretas.</p>
+        </div>
+      </div>
+
+      <div class="callout callout-warning">
+        <div class="callout-icon">⚠️</div>
+        <div class="callout-body">
+          <h5>Importante ao Agendar a Visita</h5>
+          <p>Escolha um horário em que um adulto responsável esteja presente no local para autorizar a entrada do técnico e validar o escopo acordado.</p>
+        </div>
+      </div>
+
+      <div class="doc-footer">
+        <span>UAI-Fix — Manual Oficial do Usuário</span>
+        <span>Página 2</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PÁGINA 3: ACOMPANHAMENTO E AVALIAÇÃO -->
+  <div class="page">
+    <div class="content-page">
+      <div class="section-header">
+        <div>
+          <span class="section-number">Capítulo 03</span>
+          <h2 class="section-title">Acompanhamento & Avaliação</h2>
+        </div>
+        <span class="badge-user-type">Gestão de Chamados</span>
+      </div>
+
+      <p class="lead-text">
+        Na aba <strong>Meus Pedidos / Chamados</strong>, você tem visibilidade total do status de cada solicitação em tempo real.
+      </p>
+
+      <h3>3.1 Tabela de Status da Ordem de Serviço</h3>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>O que significa</th>
+              <th>Ação Recomendada</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="status-pill status-solicitado">Solicitado</span></td>
+              <td>Seu pedido foi registrado e está sendo ofertado aos especialistas da região.</td>
+              <td>Aguarde a confirmação ou aceite de um profissional parceiro.</td>
+            </tr>
+            <tr>
+              <td><span class="status-pill status-aceito">Aceito / Agendado</span></td>
+              <td>Um técnico confirmou sua disponibilidade para a data e horário definidos.</td>
+              <td>Confirme os detalhes e endereço no chat ou WhatsApp.</td>
+            </tr>
+            <tr>
+              <td><span class="status-pill status-andamento">Em Andamento</span></td>
+              <td>O técnico realizou check-in no local e o trabalho está sendo executado.</td>
+              <td>Acompanhe o serviço e tire dúvidas diretamente com o profissional.</td>
+            </tr>
+            <tr>
+              <td><span class="status-pill status-concluido">Concluído</span></td>
+              <td>O trabalho foi finalizado pelo técnico e está pronto para sua revisão.</td>
+              <td>Inspecione o serviço realizado e faça a sua avaliação.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>3.2 Como Avaliar o Serviço</h3>
+      <p>Ao finalizar o serviço, o sistema exibirá uma tela de avaliação com pontuação de 1 a 5 estrelas e espaço para comentários:</p>
+      
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-icon">👨‍🔧</div>
+          <h4>Avaliação do Profissional</h4>
+          <p>Avalie a pontualidade, educação, limpeza do local, clareza nas explicações e qualidade técnica do reparo.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">📱</div>
+          <h4>Avaliação da Plataforma</h4>
+          <p>Ajude a UaiFix a aprimorar o aplicativo, a facilidade de navegação e o tempo de resposta geral.</p>
+        </div>
+      </div>
+
+      <div class="callout callout-success">
+        <div class="callout-icon">🎉</div>
+        <div class="callout-body">
+          <h5>Garantia de Qualidade UAI-Fix</h5>
+          <p>Caso ocorra qualquer divergência ou inconformidade durante ou após o atendimento, o suporte central da UaiFix pode ser acionado diretamente pelo botão de ajuda no aplicativo.</p>
+        </div>
+      </div>
+
+      <div class="doc-footer">
+        <span>UAI-Fix — Manual Oficial do Usuário</span>
+        <span>Página 3</span>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
