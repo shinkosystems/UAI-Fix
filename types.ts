@@ -123,12 +123,14 @@ export interface Chave {
   fotodepois?: string[];
   // Origem e Tracking
   origem?: string;
+  oculto?: boolean;
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
   // Nested data from JOINs
   geral?: { nome: string; imagem?: string };
   cidade_data?: { cidade: string; uf: number };
+  cidadeNome?: string;
   // cliente object might be injected manually or via join
   clienteData?: User;
   profissionalData?: User;
@@ -148,6 +150,33 @@ export interface WhatsappLead {
   vinculado: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface WhatsappConfig {
+  id: number;
+  instance_id: string;
+  token: string;
+  client_token?: string | null;
+  welcome_active?: boolean;
+  welcome_message?: string | null;
+  bot_active?: boolean;
+  manager_phone?: string | null;
+  webhook_url?: string | null;
+  active?: boolean;
+}
+
+export interface WhatsappChat {
+  id: string;
+  phone: string;
+  name: string;
+  last_message?: string | null;
+  last_message_time?: string | null;
+  unread_count?: number;
+  bot_step?: string | null;
+  bot_data?: any;
+  bot_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ChamadoExtended extends Chave {

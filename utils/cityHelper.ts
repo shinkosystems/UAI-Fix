@@ -96,3 +96,30 @@ export async function getOrProvisionCity(cityName: string, ufCode?: string): Pro
         return null;
     }
 }
+
+/**
+ * Realiza a busca reversa de CEP no ViaCEP a partir da cidade, UF e nome da rua/logradouro.
+ */
+export async function lookupCepFromAddress(cityName: string, ufCode: string = 'MG', streetName?: string): Promise<string | null> {
+    if (!cityName || !streetName) return null;
+    try {
+        const cleanStreet = streetName
+            .replace(/^(rua|avenida|av\.?|travessa|alameda|rodovia|estrada|praca|praça|alameda|beco)\s+/i, '')
+            .trim();
+
+        if (cleanStreet.length < 3) return null;
+
+        const cleanUf = ufCode ? ufCode.trim().toUpperCase() : 'MG';
+        const url = `https://viacep.com.br/ws/${encodeURIComponent(cleanUf)}/${encodeURIComponent(cityName.trim())}/${encodeURIComponent(cleanStreet)}/json/`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0 && data[0].cep) {
+            return data[0].cep;
+        }
+    } catch (err) {
+        console.error("Erro na busca reversa de CEP:", err);
+    }
+    return null;
+}
+

@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { UAI_FIX_LOGO_BASE64 } from './logoData';
 
 export interface OsPrintData {
   codigoOs: string;
@@ -140,14 +141,13 @@ export const printOsDocument = (data: OsPrintData) => {
       align-items: center;
       gap: 10px;
     }
-    .brand-logo {
-      background: #2563eb;
-      color: white;
-      font-weight: 900;
-      font-size: 18px;
-      padding: 6px 12px;
+    .brand-logo-img {
+      width: 44px;
+      height: 44px;
       border-radius: 8px;
-      letter-spacing: -0.5px;
+      object-fit: cover;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.06);
     }
     .brand-text h1 {
       margin: 0;
@@ -374,7 +374,7 @@ export const printOsDocument = (data: OsPrintData) => {
     <!-- CABEÇALHO -->
     <div class="header">
       <div class="brand">
-        <div class="brand-logo">UAI FIX</div>
+        <img src="${UAI_FIX_LOGO_BASE64}" alt="UAI Fix" class="brand-logo-img" />
         <div class="brand-text">
           <h1>UAI FIX SOLUÇÕES E SERVIÇOS</h1>
           <p>Plataforma Inteligente de Gestão e Execução de Serviços Residenciais e Comerciais</p>
@@ -594,21 +594,26 @@ export const downloadOsPdf = (data: OsPrintData) => {
   let y = 15;
 
   // 1. Cabeçalho
-  doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
-  doc.roundedRect(15, y, 32, 10, 2, 2, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text('UAI FIX', 18, y + 7);
+  try {
+    doc.addImage(UAI_FIX_LOGO_BASE64, 'JPEG', 15, y - 2, 13, 13);
+  } catch (err) {
+    console.warn('Erro ao inserir logo no PDF:', err);
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2]);
+    doc.roundedRect(15, y, 32, 10, 2, 2, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('UAI FIX', 18, y + 7);
+  }
 
   doc.setTextColor(darkColor[0], darkColor[1], darkColor[2]);
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text('UAI FIX SOLUÇÕES E SERVIÇOS', 52, y + 5);
+  doc.text('UAI FIX SOLUÇÕES E SERVIÇOS', 31, y + 3.5);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(grayColor[0], grayColor[1], grayColor[2]);
-  doc.text('Plataforma Inteligente de Gestão de Ordens de Serviço', 52, y + 9);
+  doc.text('Plataforma Inteligente de Gestão de Ordens de Serviço', 31, y + 8);
 
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');

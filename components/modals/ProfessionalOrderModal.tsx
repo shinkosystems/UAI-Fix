@@ -3,10 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { sendWhatsappText, sendWhatsappButtons, sendWhatsappOptionList } from '../../utils/whatsapp';
 import { notifyProfessionalNewService, notifyProfessionalBudgetApproved } from '../../utils/whatsappNotifications';
-import { getOrProvisionCity } from '../../utils/cityHelper';
+import { getOrProvisionCity, lookupCepFromAddress } from '../../utils/cityHelper';
 import {
     X, Save, Hash, Loader2, ThumbsUp, ThumbsDown,
-    Play, CheckCircle2, Star, Camera, Copy, Check, Link2, MessageSquare, Printer, Send, AlertTriangle
+    Play, CheckCircle2, Star, Camera, Copy, Check, Link2, MessageSquare, Printer, Send, AlertTriangle,
+    Trash2, EyeOff, Eye
 } from 'lucide-react';
 import StatusSection from './StatusSection';
 import PlanningSection from './PlanningSection';
@@ -56,6 +57,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const [codeCopied, setCodeCopied] = useState(false);
 
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+    const [deleteInputCode, setDeleteInputCode] = useState('');
 
     const [formData, setFormData] = useState({
         atividade: 0 as number | string,
@@ -110,6 +113,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
     const isGestor = userRole === 'gestor';
     const isPlanejista = userRole === 'planejista';
     const isOrcamentista = userRole === 'orcamentista';
+    const isAdmin = ['gestor', 'planejista', 'orcamentista', 'admin'].includes(userRole);
 
     useEffect(() => {
         if (isOpen) {
@@ -117,14 +121,28 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         }
     }, [isOpen]);
 
-    const fetchServicesAndCities = async () => {
+    const fetchServicesAndCities = async (specificCityId?: number | string) => {
         try {
-            const [servRes, cityRes] = await Promise.all([
+            const cid = specificCityId ? (typeof specificCityId === 'string' ? parseInt(specificCityId) : specificCityId) : null;
+            const promises: Promise<any>[] = [
                 supabase.from('geral').select('*').order('nome'),
-                supabase.from('cidades').select('*').order('cidade')
-            ]);
+                supabase.from('cidades').select('*').order('cidade').limit(2000)
+            ];
+
+            if (cid && !isNaN(cid) && cid > 0) {
+                promises.push(supabase.from('cidades').select('*').eq('id', cid).maybeSingle());
+            }
+
+            const [servRes, cityRes, specificCityRes] = await Promise.all(promises);
             if (servRes.data) setAllServices(servRes.data);
-            if (cityRes.data) setAllCities(cityRes.data);
+            
+            let combined = cityRes.data || [];
+            if (specificCityRes?.data) {
+                if (!combined.some((c: any) => c.id === specificCityRes.data.id)) {
+                    combined = [specificCityRes.data, ...combined];
+                }
+            }
+            setAllCities(combined.sort((a: any, b: any) => a.cidade.localeCompare(b.cidade)));
         } catch (err) {
             console.error('Erro ao buscar serviços/cidades:', err);
         }
@@ -202,22 +220,33 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
 
     useEffect(() => {
         if (order && isOpen) {
-            initializeForm(order);
             const clientUser = order.clienteData || order.chaveData?.clienteData;
             const atividadeId = order.atividade || order.chaveData?.atividade;
             const cidadeId = order.cidade || order.chaveData?.cidade || clientUser?.cidade;
-            const clientCep = clientUser?.cep;
+            const ticketId = order.chaveData?.id || order.chave || order.id;
+
+            fetchServicesAndCities(cidadeId);
 
             if (cidadeId) {
                 ensureCityInList(cidadeId);
             }
 
-            if (isGestor || isPlanejista) {
-                fetchProfessionals(atividadeId, cidadeId);
+            // Se a OS não veio com planejamento carregado no objeto, busca diretamente do banco
+            const hasPlan = !!(order.planejamentoData || (Array.isArray(order.planejamento) && order.planejamento.length > 0));
+            if (!hasPlan && ticketId) {
+                supabase.from('planejamento').select('*').eq('chave', ticketId).order('created_at', { ascending: false }).then(({ data: dbPlans }) => {
+                    const mergedOrder = {
+                        ...order,
+                        planejamento: dbPlans || []
+                    };
+                    initializeForm(mergedOrder);
+                });
+            } else {
+                initializeForm(order);
             }
 
-            if (clientCep) {
-                fetchCepData(clientCep, atividadeId);
+            if (isGestor || isPlanejista) {
+                fetchProfessionals(atividadeId, cidadeId);
             }
         }
     }, [order, isOpen]);
@@ -247,8 +276,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         formData.orcamentoDeslocamento,
         formData.orcamentoTaxaPlataforma,
         formData.orcamentoTaxaPagamento,
-        formData.orcamentoImposto,
-        formData.orcamentoLucro
+        formData.orcamentoLucro,
+        formData.orcamentoImposto
     ]);
 
     const toLocalISOString = (s: string) => {
@@ -262,7 +291,8 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         if (desc.includes(marker)) {
             const parts = desc.split(marker);
             if (parts.length > 1) {
-                return parts[1].split('\n\n[').shift()?.trim();
+                const line = parts[1].split('\n')[0]?.trim();
+                return line || null;
             }
         }
         return null;
@@ -306,14 +336,30 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         const relato = ticket.relato_problema || ticket.chaveData?.relato_problema;
         const effectiveDesc = isOriginatedFromCanceled && relato ? relato : (plan?.descricao || '');
 
+        const customRua = extractMetadata(plan?.descricao, '[RUA]:');
+        const customNumero = extractMetadata(plan?.descricao, '[NUMERO]:');
+        const customBairro = extractMetadata(plan?.descricao, '[BAIRRO]:');
+        const customComplemento = extractMetadata(plan?.descricao, '[COMPLEMENTO]:');
+        const customCep = extractMetadata(plan?.descricao, '[CEP]:');
+        const customCidade = extractMetadata(plan?.descricao, '[CIDADE]:');
+        const customEnderecoCompleto = extractMetadata(plan?.descricao, '[ENDEREÇO DO SERVIÇO]:');
+
+        const hasCustomAddress = Boolean(customRua || customNumero || customBairro || customCep || customEnderecoCompleto);
+
+        const finalRua = customRua || (hasCustomAddress ? '' : (clientUser?.rua || ''));
+        const finalNumero = customNumero || (hasCustomAddress ? '' : (clientUser?.numero || ''));
+        const finalBairro = customBairro || (hasCustomAddress ? '' : (clientUser?.bairro || ''));
+        const finalComplemento = customComplemento || (hasCustomAddress ? '' : (clientUser?.complemento || ''));
+        const finalCep = customCep || (hasCustomAddress ? '' : (clientCep || ''));
+
         setFormData({
             atividade: atividadeId,
             cidade: cidadeId,
-            clienteRua: clientUser?.rua || '',
-            clienteNumero: clientUser?.numero || '',
-            clienteBairro: clientUser?.bairro || '',
-            clienteComplemento: clientUser?.complemento || '',
-            clienteCep: clientCep,
+            clienteRua: finalRua,
+            clienteNumero: finalNumero,
+            clienteBairro: finalBairro,
+            clienteComplemento: finalComplemento,
+            clienteCep: finalCep,
             profissionalUuid: profUuid,
             status: status,
             orcamentoPreco: budget?.preco || 0,
@@ -356,8 +402,26 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             foto_problema: ticket.foto_problema || ticket.chaveData?.foto_problema || null
         });
 
-        if ((!cidadeId || cidadeId === 0) && clientCep) {
-            fetchCepData(clientCep, atividadeId);
+        // Se o CEP não foi informado diretamente, tenta descobri-lo automaticamente pela Rua e Cidade
+        if (!finalCep && finalRua && (cidadeId || customCidade)) {
+            const cityResolvedName = customCidade || allCities.find(c => String(c.id) === String(cidadeId))?.cidade || '';
+            if (cityResolvedName) {
+                lookupCepFromAddress(cityResolvedName, 'MG', finalRua).then(autoCep => {
+                    if (autoCep) {
+                        setFormData(prev => ({ ...prev, clienteCep: autoCep }));
+                    }
+                });
+            } else if (cidadeId) {
+                supabase.from('cidades').select('cidade').eq('id', cidadeId).maybeSingle().then(({ data: cData }) => {
+                    if (cData?.cidade) {
+                        lookupCepFromAddress(cData.cidade, 'MG', finalRua).then(autoCep => {
+                            if (autoCep) {
+                                setFormData(prev => ({ ...prev, clienteCep: autoCep }));
+                            }
+                        });
+                    }
+                });
+            }
         }
     };
 
@@ -1013,16 +1077,16 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 }
             }
 
-            // Regra estrita: Para aguardar aprovação do cliente, é mandatório orçamento fechado (> 0) e profissional
-            if (finalStatus === 'aguardando_aprovacao') {
+            if (targetStatus === 'aguardando_aprovacao') {
                 if (!formData.orcamentoPreco || formData.orcamentoPreco <= 0) {
                     alert("Atenção: O chamado só pode ser enviado para aprovação do cliente com o orçamento calculado e preço fechado (maior que zero).");
                     setSaving(false);
                     return;
                 }
-                const hasProf = formData.profissionalUuid || order.profissional || normalizedItem.profissional;
-                if (!hasProf) {
-                    alert("Atenção: É obrigatório que haja um profissional responsável atribuído antes de liberar para aprovação do cliente.");
+                finalStatus = 'aguardando_aprovacao';
+            } else if (finalStatus === 'aguardando_aprovacao') {
+                if (!formData.orcamentoPreco || formData.orcamentoPreco <= 0) {
+                    alert("Atenção: O chamado só pode ser enviado para aprovação do cliente com o orçamento calculado e preço fechado (maior que zero).");
                     setSaving(false);
                     return;
                 }
@@ -1189,7 +1253,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     }
                     const msg = `Olá, seu chamado foi planejado!\n\nProfissional Alocado: ${profName}\nVisita Técnica: ${formatBRDate(formData.planejamentoVisita)}\nExecução Prevista: ${formatBRDate(formData.planejamentoData)}\n${justText}\nO seu chamado agora foi enviado para o setor de orçamento. Em breve você receberá os valores.`;
                     await sendWhatsappText(clientPhone, msg);
-                } else if ((formData.status === 'recusado' || formData.status === 'reprovado') && finalStatus === 'aguardando_aprovacao') {
+                } else if (finalStatus === 'aguardando_aprovacao') {
                     await sendBudgetButtons(clientPhone, formData, ticketId);
                 } else if (formData.status !== 'concluido' && finalStatus === 'concluido') {
                     const msg = `Seu serviço foi concluído com sucesso! ✅\n\nGostaríamos muito de saber como foi sua experiência. Por favor, acesse a plataforma UaiFix para avaliar o serviço prestado pelo profissional.\n\nSua opinião é muito importante para mantermos a qualidade do nosso atendimento!`;
@@ -1209,6 +1273,31 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
             alert(`Salvo com sucesso${statusMsg}!`);
         } catch (error: any) { alert(error.message);        } finally {
             setSaving(false);
+        }
+    };
+
+    const handleManualNotifyClient = async () => {
+        const clientPhone = normalizedItem.clienteData?.whatsapp;
+        if (!clientPhone) {
+            alert('Cliente não possui WhatsApp cadastrado.');
+            return;
+        }
+        if (!formData.orcamentoPreco || formData.orcamentoPreco <= 0) {
+            alert('Atenção: Calcule o orçamento (com preço maior que zero) antes de enviar a proposta ao cliente.');
+            return;
+        }
+        setNotifyingWa(true);
+        try {
+            const ticketId = String(order.chaveData?.id || order.chave || order.id);
+            await sendBudgetButtons(clientPhone, formData, ticketId);
+            await supabase.from('chaves').update({ status: 'aguardando_aprovacao' }).eq('id', ticketId);
+            setFormData(prev => ({ ...prev, status: 'aguardando_aprovacao' }));
+            await onUpdate();
+            alert(`Orçamento de R$ ${formData.orcamentoPreco.toFixed(2)} enviado com sucesso para o WhatsApp do cliente!`);
+        } catch (err: any) {
+            alert(`Erro ao enviar orçamento ao cliente: ${err.message}`);
+        } finally {
+            setNotifyingWa(false);
         }
     };
 
@@ -1269,6 +1358,60 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         orcamentos: order.orcamentos || (order.orcamentoData ? [order.orcamentoData] : []),
         planejamento: order.planejamento || (order.planejamentoData ? [order.planejamentoData] : []),
         agenda: order.agenda || (order.execucao ? [order] : [])
+    };
+
+    const isOnlyInitialRequest = Boolean(
+        !order.profissional &&
+        !order.chaveData?.profissional &&
+        (!order.orcamentos || order.orcamentos.length === 0 || (((order.orcamentos[0]?.preco || 0) === 0) && ((order.orcamentos[0]?.custofixo || 0) === 0))) &&
+        ['pendente', 'solicitado', 'novo', 'cancelado', 'recusado'].includes((formData.status || order.status || order.chaveData?.status || '').toLowerCase())
+    );
+
+    const isOrderHidden = Boolean(order.oculto || order.chaveData?.oculto || normalizedItem.oculto);
+
+    const handleDeleteOrder = async () => {
+        const chaveId = order.id || order.chaveData?.id || order.chave;
+        if (!chaveId) return;
+        setSaving(true);
+        try {
+            await Promise.all([
+                supabase.from('planejamento').delete().eq('chave', chaveId),
+                supabase.from('orcamentos').delete().eq('chave', chaveId),
+                supabase.from('avaliacoes').delete().eq('chave', chaveId),
+                supabase.from('agenda').delete().eq('chave', chaveId)
+            ]);
+            const { error } = await supabase.from('chaves').delete().eq('id', chaveId);
+            if (error) throw error;
+            setIsDeleteModalOpen(false);
+            await onUpdate();
+            onClose();
+        } catch (err: any) {
+            console.error('Erro ao excluir pedido:', err);
+            alert('Erro ao excluir pedido: ' + (err.message || err));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleToggleHideOrder = async () => {
+        const chaveId = order.id || order.chaveData?.id || order.chave;
+        if (!chaveId) return;
+        const nextState = !isOrderHidden;
+        setSaving(true);
+        try {
+            const { error } = await supabase
+                .from('chaves')
+                .update({ oculto: nextState })
+                .eq('id', chaveId);
+            if (error) throw error;
+            await onUpdate();
+            onClose();
+        } catch (err: any) {
+            console.error('Erro ao alternar ocultação do chamado:', err);
+            alert('Erro ao alterar ocultação: ' + (err.message || err));
+        } finally {
+            setSaving(false);
+        }
     };
 
     const buildOsPrintData = (): OsPrintData => {
@@ -1368,16 +1511,31 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                         </button>
 
                         {(isGestor || isPlanejista || isOrcamentista) && (
-                            <button
-                                type="button"
-                                onClick={handleManualNotifyProfessional}
-                                disabled={notifyingWa}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 transition-all shadow-xs disabled:opacity-50"
-                                title="Enviar notificação no WhatsApp do profissional"
-                            >
-                                {notifyingWa ? <Loader2 className="animate-spin" size={14} /> : <MessageSquare size={14} />}
-                                <span className="hidden sm:inline">Notificar WhatsApp</span>
-                            </button>
+                            <>
+                                {normalizedItem.clienteData?.whatsapp && (
+                                    <button
+                                        type="button"
+                                        onClick={handleManualNotifyClient}
+                                        disabled={notifyingWa || !formData.orcamentoPreco || formData.orcamentoPreco <= 0}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                                        title="Enviar proposta de orçamento com botões interativos no WhatsApp do cliente"
+                                    >
+                                        {notifyingWa ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                                        <span className="hidden sm:inline">Enviar ao Cliente</span>
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={handleManualNotifyProfessional}
+                                    disabled={notifyingWa}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                                    title="Enviar notificação no WhatsApp do profissional"
+                                >
+                                    {notifyingWa ? <Loader2 className="animate-spin" size={14} /> : <MessageSquare size={14} />}
+                                    <span className="hidden sm:inline">Notificar Profissional</span>
+                                </button>
+                            </>
                         )}
                         <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
                     </div>
@@ -1488,8 +1646,37 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                     )}
                 </div>
 
-                <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto flex gap-3">
-                    <button onClick={onClose} className="flex-1 bg-white border border-gray-200 text-gray-500 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95">Voltar</button>
+                <div className="p-6 border-t border-gray-100 bg-gray-50 mt-auto flex flex-wrap sm:flex-nowrap gap-3 items-center">
+                    <button onClick={onClose} className="px-6 py-4 bg-white border border-gray-200 text-gray-600 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 hover:bg-gray-100 shadow-xs">Voltar</button>
+
+                    {(isGestor || isPlanejista || userRole === 'admin') && (
+                        isOnlyInitialRequest ? (
+                            <button
+                                type="button"
+                                onClick={() => setIsDeleteModalOpen(true)}
+                                disabled={saving}
+                                className="px-4 py-4 rounded-2xl bg-red-50 hover:bg-red-100 text-red-600 font-black text-xs uppercase tracking-wider border border-red-200 transition-all flex items-center gap-1.5 active:scale-95 shadow-xs"
+                                title="Excluir este pedido inicial permanentemente da base de dados"
+                            >
+                                <Trash2 size={16} />
+                                <span className="hidden sm:inline">Excluir Pedido</span>
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={handleToggleHideOrder}
+                                disabled={saving}
+                                className={`px-4 py-4 rounded-2xl font-black text-xs uppercase tracking-wider border transition-all flex items-center gap-1.5 active:scale-95 shadow-xs ${
+                                    isOrderHidden
+                                        ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
+                                        : 'bg-white hover:bg-gray-100 text-gray-600 border-gray-200'
+                                }`}
+                                title={isOrderHidden ? "Restaurar visibilidade no painel" : "Ocultar este chamado do painel principal"}
+                            >
+                                {isOrderHidden ? <><Eye size={16} /><span className="hidden sm:inline">Desocultar</span></> : <><EyeOff size={16} /><span className="hidden sm:inline">Ocultar Chamado</span></>}
+                            </button>
+                        )
+                    )}
 
                     {isProfessional && formData.status === 'aguardando_profissional' ? (
                         <>
@@ -1558,7 +1745,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Finalizar Tarefa</span></>}
                             </button>
                         </>
-                    ) : isGestor && formData.status === 'aguardando_gestor' ? (
+                    ) : (isGestor || isAdmin) && formData.status === 'aguardando_gestor' ? (
                         <>
                             <button
                                 onClick={handleRelatarProblema}
@@ -1575,7 +1762,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 {saving ? <Loader2 className="animate-spin" size={18} /> : <span>Concluir Revisão</span>}
                             </button>
                         </>
-                    ) : isGestor && formData.status === 'erro' ? (
+                    ) : (isGestor || isAdmin) && formData.status === 'erro' ? (
                         <>
                             <button
                                 onClick={() => setIsCancelModalOpen(true)}
@@ -1592,13 +1779,17 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 {saving ? <Loader2 className="animate-spin" size={18} /> : <><CheckCircle2 size={18} /><span>Concluir Serviço</span></>}
                             </button>
                         </>
+                    ) : isProfessional && formData.status === 'aguardando_gestor' ? (
+                        <button disabled className="flex-[2] bg-gray-200 text-gray-500 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed">
+                            <CheckCircle2 size={18} /><span>Aguardando Gestor</span>
+                        </button>
                     ) : formData.status === 'concluido' ? (
                         <button disabled className="flex-[2] bg-gray-200 text-gray-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed">
                             <CheckCircle2 size={18} /><span>Concluído</span>
                         </button>
-                    ) : formData.status === 'aprovado' ? (
-                        <button disabled className="flex-[2] bg-gray-200 text-gray-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed">
-                            <CheckCircle2 size={18} /><span>Aguardando Execução</span>
+                    ) : !isAdmin ? (
+                        <button disabled className="flex-[2] bg-gray-100 text-gray-400 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex justify-center items-center gap-2 cursor-not-allowed">
+                            <span>Aguardando Andamento</span>
                         </button>
                     ) : (
                         <div className="flex-[2] flex flex-wrap sm:flex-nowrap gap-2">
@@ -1606,19 +1797,40 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                             <button 
                                 onClick={() => handleSave()} 
                                 disabled={saving} 
-                                className="flex-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2 shadow-xs"
+                                className="flex-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 disabled:opacity-50 flex justify-center items-center gap-2 shadow-xs cursor-pointer"
                             >
                                 {saving ? <Loader2 className="animate-spin" size={16} /> : <><Save size={16} /><span>Salvar Rascunho</span></>}
+                            </button>
+
+                            {/* Botão: Enviar Orçamento para o Cliente */}
+                            <button
+                                onClick={() => handleSave('aguardando_aprovacao')}
+                                disabled={saving || !formData.orcamentoPreco || formData.orcamentoPreco <= 0}
+                                className="flex-[1.2] bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                                title="Salvar e enviar proposta de orçamento com botões interativos para o WhatsApp do cliente"
+                            >
+                                {saving ? (
+                                    <Loader2 className="animate-spin" size={16} />
+                                ) : (
+                                    <>
+                                        <Send size={16} />
+                                        <span>
+                                            {formData.status === 'aguardando_aprovacao'
+                                                ? 'Reenviar ao Cliente'
+                                                : 'Enviar ao Cliente'}
+                                        </span>
+                                    </>
+                                )}
                             </button>
 
                             {/* Botão Principal: Disparar para o Profissional Aprovar */}
                             <button 
                                 onClick={() => handleSave('aguardando_profissional')} 
                                 disabled={saving} 
-                                className="flex-[1.5] bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                                className="flex-[1.2] bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                             >
                                 {saving ? (
-                                    <Loader2 className="animate-spin" size={18} />
+                                    <Loader2 className="animate-spin" size={16} />
                                 ) : (
                                     <>
                                         <Send size={16} />
@@ -1751,6 +1963,45 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                                 className="w-full bg-gray-100 text-gray-600 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all active:scale-95"
                             >
                                 Voltar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 z-[75] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl flex flex-col p-6 space-y-5 border border-gray-100">
+                        <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                            <div className="flex items-center gap-2 text-red-600">
+                                <Trash2 size={20} />
+                                <h3 className="font-black text-gray-900 text-lg">Excluir Pedido</h3>
+                            </div>
+                            <button onClick={() => { setIsDeleteModalOpen(false); setDeleteInputCode(''); }} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100"><X size={20} /></button>
+                        </div>
+
+                        <div className="bg-red-50 border border-red-200/60 p-4 rounded-2xl space-y-2">
+                            <p className="text-xs font-bold text-red-800 leading-relaxed">
+                                Este item é apenas um <span className="font-black">pedido inicial</span> e ainda não possui profissional atribuído nem orçamento preenchido.
+                            </p>
+                            <p className="text-[11px] text-red-600">
+                                Ao confirmar, este pedido será <span className="font-black">excluído permanentemente</span> da base de dados.
+                            </p>
+                        </div>
+
+                        <div className="pt-2 flex gap-3">
+                            <button
+                                onClick={() => { setIsDeleteModalOpen(false); setDeleteInputCode(''); }}
+                                className="flex-1 bg-gray-100 text-gray-700 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-200 transition-all active:scale-95"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleDeleteOrder}
+                                disabled={saving}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 flex justify-center items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                            >
+                                {saving ? <Loader2 className="animate-spin" size={16} /> : <><Trash2 size={16} /><span>Confirmar Exclusão</span></>}
                             </button>
                         </div>
                     </div>

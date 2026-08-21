@@ -29,6 +29,7 @@ import AdminImportOrcamentos from './pages/admin/AdminImportOrcamentos';
 import AdminLinks from './pages/admin/AdminLinks';
 import AdminFluxoServico from './pages/admin/AdminFluxoServico';
 import AdminAtividades from './pages/admin/AdminAtividades';
+import AdminWhatsappConfig from './pages/admin/AdminWhatsappConfig';
 import { Loader2 } from 'lucide-react';
 import { initTrackingCapture } from './utils/tracking';
 
@@ -116,6 +117,7 @@ const App: React.FC = () => {
                   <Route path="importar-orcamentos" element={<AdminImportOrcamentos />} />
                   <Route path="users" element={<AdminUsers />} />
                   <Route path="whatsapp" element={<Whatsapp />} />
+                  <Route path="whatsapp-config" element={<AdminWhatsappConfig />} />
                   <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
                 </Routes>
               </AdminLayout>

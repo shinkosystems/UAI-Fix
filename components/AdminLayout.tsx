@@ -196,6 +196,17 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
               <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
             </button>
 
+            <button
+              onClick={() => { navigate('/admin/whatsapp-config'); setIsSidebarOpen(false); }}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/whatsapp-config')}`}
+            >
+              <div className="flex items-center space-x-3 truncate">
+                <Settings size={18} className="flex-shrink-0" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Configurações WhatsApp</span>
+              </div>
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
+            </button>
+
             <p className="px-3 text-[10px] font-extrabold uppercase text-slate-500 tracking-wider mb-2 pt-4">Navegação Geral</p>
 
             <button

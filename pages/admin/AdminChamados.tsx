@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
 import { 
   Search, Filter, Eye, Clock, CheckCircle2, AlertTriangle, 
-  RefreshCw, User, Calendar, MapPin, Tag, ChevronRight, X
+  RefreshCw, User, Calendar, MapPin, Tag, ChevronRight, X,
+  Trash2, EyeOff, Loader2
 } from 'lucide-react';
 import { ChamadoExtended, getOriginBadgeConfig } from '../../types';
 import ProfessionalOrderModal from '../../components/modals/ProfessionalOrderModal';
@@ -15,6 +16,8 @@ const AdminChamados: React.FC = () => {
   const [selectedTicket, setSelectedTicket] = useState<ChamadoExtended | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<string>('gestor');
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [ticketToDelete, setTicketToDelete] = useState<ChamadoExtended | null>(null);
+  const [deletingTicket, setDeletingTicket] = useState(false);
 
   const fetchUserRole = async () => {
     try {
@@ -49,11 +52,14 @@ const AdminChamados: React.FC = () => {
       const chaveIds = chaves.map(c => c.id);
       const userUuids = new Set<string>();
       const serviceIds = new Set<number>();
+      const cityIds = new Set<number>();
+
       chaves.forEach(c => {
         if (c.cliente) userUuids.add(c.cliente);
         if (c.profissional) userUuids.add(c.profissional);
         if (c.gestor_responsavel) userUuids.add(c.gestor_responsavel);
         if (c.atividade) serviceIds.add(c.atividade);
+        if (c.cidade) cityIds.add(Number(c.cidade));
       });
 
       const [usersRes, servicesRes, orcRes, planRes, avalRes, agendaRes] = await Promise.all([
@@ -66,7 +72,26 @@ const AdminChamados: React.FC = () => {
       ]);
 
       const usersMap: Record<string, any> = {};
-      usersRes.data?.forEach((u: any) => usersMap[u.uuid] = u);
+      usersRes.data?.forEach((u: any) => {
+        usersMap[u.uuid] = u;
+        if (u.cidade) cityIds.add(Number(u.cidade));
+      });
+
+      // Busca apenas as cidades referenciadas para evitar limite de 1000 linhas do Supabase
+      const { data: citiesData } = cityIds.size > 0
+        ? await supabase.from('cidades').select('id, cidade, uf, estados (id, uf)').in('id', Array.from(cityIds))
+        : { data: [] };
+
+      const citiesMap: Record<number, { id: number; cidade: string; uf: number; ufName?: string }> = {};
+      citiesData?.forEach((ct: any) => {
+        const ufName = (ct.estados as any)?.uf || '';
+        citiesMap[ct.id] = {
+          id: ct.id,
+          cidade: ct.cidade,
+          uf: ct.uf,
+          ufName
+        };
+      });
 
       const servicesMap: Record<number, any> = {};
       servicesRes.data?.forEach((s: any) => servicesMap[s.id] = s);
@@ -94,17 +119,37 @@ const AdminChamados: React.FC = () => {
         agendaMap[ag.chave].push(ag);
       });
 
-      const enrichedTickets: ChamadoExtended[] = chaves.map(c => ({
-        ...c,
-        clienteData: usersMap[c.cliente],
-        profissionalData: usersMap[c.profissional],
-        gestorData: c.gestor_responsavel ? usersMap[c.gestor_responsavel] : undefined,
-        geral: servicesMap[c.atividade],
-        orcamentos: orcMap[c.id] || [],
-        planejamento: planMap[c.id] || [],
-        avaliacao: avalMap[c.id],
-        agenda: agendaMap[c.id] || []
-      }));
+      const extractMeta = (desc: string | undefined | null, marker: string) => {
+        if (!desc || !desc.includes(marker)) return null;
+        const parts = desc.split(marker);
+        return parts.length > 1 ? (parts[1].split('\n')[0]?.trim() || null) : null;
+      };
+
+      const enrichedTickets: ChamadoExtended[] = chaves.map(c => {
+        const cityObj = citiesMap[c.cidade];
+        const clientCityId = usersMap[c.cliente]?.cidade;
+        const resolvedCity = cityObj || (clientCityId ? citiesMap[clientCityId] : undefined);
+        const planDesc = planMap[c.id]?.[0]?.descricao;
+        const metaCity = extractMeta(planDesc, '[CIDADE]:');
+
+        const cityDisplayName = resolvedCity 
+          ? `${resolvedCity.cidade}${resolvedCity.ufName ? ` / ${resolvedCity.ufName}` : ''}`
+          : (metaCity || (c.cidade ? `Cidade #${c.cidade}` : '-'));
+
+        return {
+          ...c,
+          cidadeNome: cityDisplayName,
+          cidade_data: resolvedCity,
+          clienteData: usersMap[c.cliente],
+          profissionalData: usersMap[c.profissional],
+          gestorData: c.gestor_responsavel ? usersMap[c.gestor_responsavel] : undefined,
+          geral: servicesMap[c.atividade],
+          orcamentos: orcMap[c.id] || [],
+          planejamento: planMap[c.id] || [],
+          avaliacao: avalMap[c.id],
+          agenda: agendaMap[c.id] || []
+        };
+      });
 
       setTickets(enrichedTickets);
     } catch (err) {
@@ -119,6 +164,58 @@ const AdminChamados: React.FC = () => {
     fetchChamados();
   }, []);
 
+  const isTicketOnlyInitialRequest = (t: ChamadoExtended) => {
+    const hasProf = Boolean(t.profissional || t.profissionalData);
+    const hasBudget = Boolean(
+      t.orcamentos && 
+      t.orcamentos.length > 0 && 
+      ((t.orcamentos[0]?.preco || 0) > 0 || (t.orcamentos[0]?.custofixo || 0) > 0)
+    );
+    const s = (t.status || '').toLowerCase();
+    const isInitialStatus = ['pendente', 'solicitado', 'novo', 'cancelado', 'recusado'].includes(s);
+    return !hasProf && !hasBudget && isInitialStatus;
+  };
+
+  const handleDeleteTicket = async (ticket: ChamadoExtended) => {
+    if (!ticket?.id) return;
+    setDeletingTicket(true);
+    try {
+      await Promise.all([
+        supabase.from('planejamento').delete().eq('chave', ticket.id),
+        supabase.from('orcamentos').delete().eq('chave', ticket.id),
+        supabase.from('avaliacoes').delete().eq('chave', ticket.id),
+        supabase.from('agenda').delete().eq('chave', ticket.id)
+      ]);
+      const { error } = await supabase.from('chaves').delete().eq('id', ticket.id);
+      if (error) throw error;
+      setTicketToDelete(null);
+      await fetchChamados();
+    } catch (err: any) {
+      console.error('Erro ao deletar chamado:', err);
+      alert('Erro ao excluir chamado: ' + (err.message || err));
+    } finally {
+      setDeletingTicket(false);
+    }
+  };
+
+  const handleToggleHideTicket = async (ticket: ChamadoExtended) => {
+    if (!ticket?.id) return;
+    const nextState = !ticket.oculto;
+    try {
+      const { error } = await supabase
+        .from('chaves')
+        .update({ oculto: nextState })
+        .eq('id', ticket.id);
+      if (error) throw error;
+      await fetchChamados();
+    } catch (err: any) {
+      console.error('Erro ao alterar visibilidade:', err);
+      alert('Erro ao alterar visibilidade: ' + (err.message || err));
+    }
+  };
+
+  const hiddenCount = tickets.filter(t => t.oculto === true).length;
+
   const filteredTickets = tickets.filter(t => {
     const term = searchTerm.toLowerCase().trim();
     const matchesSearch = term === '' || 
@@ -126,8 +223,19 @@ const AdminChamados: React.FC = () => {
       t.chaveunica?.toLowerCase().includes(term) ||
       t.clienteData?.nome?.toLowerCase().includes(term) ||
       t.profissionalData?.nome?.toLowerCase().includes(term) ||
-      t.geral?.nome?.toLowerCase().includes(term);
+      t.geral?.nome?.toLowerCase().includes(term) ||
+      t.cidadeNome?.toLowerCase().includes(term);
     
+    const isHidden = t.oculto === true;
+
+    // Se estiver na aba Ocultos, filtra somente os ocultos
+    if (selectedStatus === 'ocultos') {
+      return matchesSearch && isHidden;
+    }
+
+    // Nas outras abas, esconde chamados ocultos
+    if (isHidden) return false;
+
     const status = (t.status || '').toLowerCase();
     let matchesStatus = true;
 
@@ -214,7 +322,8 @@ const AdminChamados: React.FC = () => {
             { id: 'orcamento', label: 'Orçamento' },
             { id: 'execucao', label: 'Execução' },
             { id: 'concluido', label: 'Concluído' },
-            { id: 'recusado', label: 'Recusado' }
+            { id: 'recusado', label: 'Recusado' },
+            { id: 'ocultos', label: `Ocultos ${hiddenCount > 0 ? `(${hiddenCount})` : ''}` }
           ].map((st) => (
             <button
               key={st.id}
@@ -268,7 +377,14 @@ const AdminChamados: React.FC = () => {
                     onClick={() => setSelectedTicket(t)} 
                     className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                   >
-                    <td className="p-4 font-bold text-slate-900">{t.chaveunica ? `#${t.chaveunica}` : `#${t.id}`}</td>
+                    <td className="p-4 font-bold text-slate-900 flex items-center gap-1.5">
+                      <span>{t.chaveunica ? `#${t.chaveunica}` : `#${t.id}`}</span>
+                      {t.oculto && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                          Oculto
+                        </span>
+                      )}
+                    </td>
                     <td className="p-4">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${originCfg.badgeBg}`}>
                         <span>{originCfg.icon}</span>
@@ -277,17 +393,38 @@ const AdminChamados: React.FC = () => {
                     </td>
                     <td className="p-4 text-slate-500">{t.created_at ? new Date(t.created_at).toLocaleDateString('pt-BR') : (t.data ? new Date(t.data).toLocaleDateString('pt-BR') : '-')}</td>
                     <td className="p-4">{getStatusBadge(t.status)}</td>
-                    <td className="p-4 font-medium text-slate-700">{t.cidade || 'Uberlândia / MG'}</td>
+                    <td className="p-4 font-medium text-slate-700">{t.cidadeNome || '-'}</td>
                     <td className="p-4 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTicket(t);
-                        }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-semibold rounded-lg transition-all text-xs cursor-pointer"
-                      >
-                        <Eye size={14} /> Detalhes
-                      </button>
+                      <div className="inline-flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => setSelectedTicket(t)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-semibold rounded-lg transition-all text-xs cursor-pointer"
+                        >
+                          <Eye size={14} /> Detalhes
+                        </button>
+
+                        {isTicketOnlyInitialRequest(t) ? (
+                          <button
+                            onClick={() => setTicketToDelete(t)}
+                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-all text-xs cursor-pointer"
+                            title="Excluir Pedido Inicial"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleToggleHideTicket(t)}
+                            className={`p-1.5 rounded-lg transition-all text-xs cursor-pointer ${
+                              t.oculto
+                                ? 'bg-amber-50 hover:bg-amber-100 text-amber-700'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-500'
+                            }`}
+                            title={t.oculto ? "Restaurar Chamado" : "Ocultar Chamado"}
+                          >
+                            {t.oculto ? <Eye size={14} /> : <EyeOff size={14} />}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );})
@@ -296,6 +433,51 @@ const AdminChamados: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Modal Confirm Delete */}
+      {ticketToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 space-y-4 shadow-2xl border border-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-red-600 font-bold">
+                <Trash2 size={20} />
+                <h3 className="text-lg font-black text-slate-900">Excluir Pedido Inicial</h3>
+              </div>
+              <button 
+                onClick={() => setTicketToDelete(null)}
+                className="p-1.5 rounded-full text-slate-400 hover:bg-slate-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-red-50 p-4 rounded-2xl space-y-2 border border-red-100">
+              <p className="text-xs font-bold text-red-800 leading-relaxed">
+                Tem certeza que deseja excluir o pedido <span className="font-mono font-black">#{ticketToDelete.chaveunica || ticketToDelete.id}</span>?
+              </p>
+              <p className="text-[11px] text-red-600">
+                Este item é apenas uma solicitação inicial do cliente e será removido permanentemente.
+              </p>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setTicketToDelete(null)}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDeleteTicket(ticketToDelete)}
+                disabled={deletingTicket}
+                className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 disabled:opacity-50 shadow-md shadow-red-200 cursor-pointer"
+              >
+                {deletingTicket ? <Loader2 className="animate-spin" size={16} /> : <><Trash2 size={16} /><span>Confirmar Exclusão</span></>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal Quick View */}
       {selectedTicket && (

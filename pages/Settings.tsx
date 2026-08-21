@@ -68,6 +68,8 @@ const Settings: React.FC = () => {
     clientToken: '',
     welcomeActive: false,
     welcomeMessage: '',
+    botActive: true,
+    managerPhone: '',
     status: 'Aguardando Configuração',
     webhook: `${SUPABASE_URL}/functions/v1/zapi-webhook`
   });
@@ -85,6 +87,8 @@ const Settings: React.FC = () => {
         client_token: whatsappConfig.clientToken,
         welcome_active: whatsappConfig.welcomeActive,
         welcome_message: whatsappConfig.welcomeMessage,
+        bot_active: whatsappConfig.botActive,
+        manager_phone: whatsappConfig.managerPhone,
         webhook_url: whatsappConfig.webhook,
         active: true
       };
@@ -152,11 +156,13 @@ const Settings: React.FC = () => {
         if (data) {
           setWhatsappConfig({
             ...whatsappConfig,
-            instanceId: data.instance_id,
-            token: data.token,
+            instanceId: data.instance_id || '',
+            token: data.token || '',
             clientToken: data.client_token || '',
             welcomeActive: data.welcome_active || false,
             welcomeMessage: data.welcome_message || '',
+            botActive: data.bot_active !== false,
+            managerPhone: data.manager_phone || '',
             webhook: data.webhook_url || whatsappConfig.webhook
           });
         }
@@ -757,7 +763,41 @@ const Settings: React.FC = () => {
                     </div>
 
                     <div className="pt-4 border-t border-gray-100 space-y-4">
+                      {/* Bot de Autoatendimento Toggle */}
                       <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-bold text-gray-900">Bot de Agendamento Automático</h4>
+                          <p className="text-xs text-gray-500">Conduz o autoatendimento e registra a OS no banco.</p>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            className="sr-only peer"
+                            checked={whatsappConfig.botActive}
+                            onChange={(e) => setWhatsappConfig({...whatsappConfig, botActive: e.target.checked})}
+                          />
+                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                        </label>
+                      </div>
+
+                      {/* Telefone do Gestor para Notificações */}
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">WhatsApp do Gestor (Notificações de Novas OS)</label>
+                        <div className="relative">
+                          <MessageSquare size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500" />
+                          <input 
+                            type="text"
+                            placeholder="Ex: 35999998888 ou (35) 99999-8888"
+                            className="w-full bg-gray-50 border border-gray-100 rounded-2xl p-4 pl-12 text-sm font-bold text-gray-900 outline-none focus:ring-2 focus:ring-orange-100 transition-all"
+                            value={whatsappConfig.managerPhone}
+                            onChange={(e) => setWhatsappConfig({...whatsappConfig, managerPhone: e.target.value})}
+                          />
+                        </div>
+                        <p className="text-[10px] text-gray-400 ml-1">O gestor receberá alertas imediatos via WhatsApp a cada novo agendamento feito pelo bot.</p>
+                      </div>
+
+                      {/* Mensagem de Boas-Vindas */}
+                      <div className="flex items-center justify-between pt-2 border-t border-gray-50">
                         <div>
                           <h4 className="text-sm font-bold text-gray-900">Mensagem de Boas-Vindas</h4>
                           <p className="text-xs text-gray-500">Responder automaticamente a novos contatos.</p>

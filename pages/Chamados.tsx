@@ -128,7 +128,8 @@ const Chamados: React.FC = () => {
         if (desc.includes(marker)) {
             const parts = desc.split(marker);
             if (parts.length > 1) {
-                return parts[1].split('\n\n[').shift()?.trim();
+                const line = parts[1].split('\n')[0]?.trim();
+                return line || null;
             }
         }
         return null;
