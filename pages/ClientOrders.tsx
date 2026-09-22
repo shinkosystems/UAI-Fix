@@ -197,6 +197,34 @@ const ClientOrders: React.FC = () => {
         }
     }
 
+    const isProfessionalVisible = (status: string) => {
+        const s = (status || '').toLowerCase();
+        return ['aprovado', 'executando', 'concluido'].includes(s);
+    };
+
+    const getProfessionalDisplay = (order: OrderExtended) => {
+        const isVisible = isProfessionalVisible(order.status);
+        if (isVisible && order.profissional) {
+            return {
+                photo: order.profissional.fotoperfil || `https://ui-avatars.com/api/?name=${encodeURIComponent(order.profissional.nome || 'P')}`,
+                name: order.profissional.nome,
+                isPlaceholder: false
+            };
+        }
+        const status = (order.status || '').toLowerCase();
+        let label = 'A definir após confirmação';
+        if (status === 'aguardando_profissional') {
+            label = 'Aguardando aceite do profissional';
+        } else if (status === 'reprovado' || status === 'recusado' || status === 'cancelado') {
+            label = 'Não atribuído';
+        }
+        return {
+            photo: null,
+            name: label,
+            isPlaceholder: true
+        };
+    };
+
     const filterButtons = [
         { id: 'aberto', label: 'Em Análise', icon: ListChecks },
         { id: 'agendados', label: 'Agendados', icon: CalendarCheck },
@@ -318,8 +346,26 @@ const ClientOrders: React.FC = () => {
                                 </div>
                                 <div className="flex justify-between items-center bg-gray-50/50 p-4 rounded-2xl border border-gray-100">
                                     <div className="flex items-center space-x-3">
-                                        <div className="w-8 h-8 rounded-full bg-white border border-gray-200 overflow-hidden"><img src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`} className="w-full h-full object-cover" /></div>
-                                        <div className="min-w-0"><p className="text-[9px] font-black text-gray-400 uppercase leading-none mb-1">Profissional</p><p className="text-xs font-bold text-gray-900 truncate">{order.profissional?.nome || 'Não definido'}</p></div>
+                                        {(() => {
+                                            const proDisplay = getProfessionalDisplay(order);
+                                            return (
+                                                <>
+                                                    <div className="w-8 h-8 rounded-full bg-white border border-gray-200 overflow-hidden flex items-center justify-center">
+                                                        {proDisplay.photo ? (
+                                                            <img src={proDisplay.photo} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
+                                                                <Clock size={14} />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-[9px] font-black text-gray-400 uppercase leading-none mb-1">Profissional</p>
+                                                        <p className={`text-xs font-bold truncate ${proDisplay.isPlaceholder ? 'text-gray-500 italic' : 'text-gray-900'}`}>{proDisplay.name}</p>
+                                                    </div>
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                     <div className="text-right">
                                         {order.orcamentos?.length > 0 && order.status.toLowerCase() !== 'aguardando_profissional' ? (

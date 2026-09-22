@@ -178,9 +178,10 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
             if (approved && budget) {
                 const finalType = paymentChoice === 'suggested' ? budget.tipopagmto_sugerido : budget.tipopagmto;
                 const finalParcelas = paymentChoice === 'suggested' ? budget.parcelas_sugerido : budget.parcelas;
+                const discount = budget.desconto || budget.desconto_sugerido || 0;
                 let finalPrice = budget.preco;
-                if (paymentChoice === 'suggested' && (budget.desconto_sugerido || 0) > 0) {
-                    finalPrice = budget.preco * (1 - (budget.desconto_sugerido || 0) / 100);
+                if (paymentChoice === 'suggested' && discount > 0) {
+                    finalPrice = budget.preco * (1 - discount / 100);
                 }
                 const updateOrcData: any = {
                     tipopagmto: finalType,
@@ -344,64 +345,109 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-[0.15em] mb-4 block">Status do Pedido</label>
                                 <div className={`inline-flex px-5 py-2 rounded-xl text-xs font-black border uppercase mb-6 ${getStatusColor(order.status)}`}>{getStatusLabel(order.status)}</div>
 
-                                <div className="mt-4 p-5 bg-white rounded-3xl border border-gray-100 shadow-sm flex items-center justify-between">
-                                    <div className="flex items-center gap-4 min-w-0">
-                                        <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 overflow-hidden shadow-inner flex-shrink-0">
-                                            <img
-                                                src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${order.profissional?.nome || 'U'}`}
-                                                className="w-full h-full object-cover"
-                                                alt={order.profissional?.nome}
-                                            />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Profissional Responsável</p>
-                                            <h4 className="text-sm font-bold text-gray-900 truncate">
-                                                {order.profissional?.nome || 'Aguardando atribuição'}
-                                            </h4>
-                                            {order.profissional && (
-                                                <div className="flex flex-col gap-1 mt-1">
-                                                    <div className="flex items-center gap-1">
-                                                        <Star size={12} className="fill-yellow-400 text-yellow-400" />
-                                                        <span className="text-xs font-black text-gray-700">
-                                                            {proStats.rating ? proStats.rating.toFixed(1) : 'Novo'}
-                                                        </span>
+                                {(() => {
+                                    const isProConfirmed = ['aprovado', 'executando', 'concluido'].includes((order.status || '').toLowerCase());
+                                    const discountPercent = order.orcamentos?.[0]?.desconto || order.orcamentos?.[0]?.desconto_sugerido || 0;
+                                    const finalPrice = (() => {
+                                        if (!order.orcamentos?.[0]?.preco) return 0;
+                                        const base = order.orcamentos[0].preco;
+                                        if (order.status === 'aguardando_aprovacao' && paymentChoice === 'suggested' && discountPercent > 0) {
+                                            return base * (1 - discountPercent / 100);
+                                        }
+                                        return base;
+                                    })();
+
+                                    return (
+                                        <>
+                                            <div className="mt-4 p-5 bg-white rounded-3xl border border-gray-100 shadow-sm flex items-center justify-between">
+                                                <div className="flex items-center gap-4 min-w-0">
+                                                    <div className="w-14 h-14 rounded-2xl bg-gray-50 border border-gray-100 overflow-hidden shadow-inner flex-shrink-0 flex items-center justify-center">
+                                                        {isProConfirmed && order.profissional ? (
+                                                            <img
+                                                                src={order.profissional?.fotoperfil || `https://ui-avatars.com/api/?name=${encodeURIComponent(order.profissional?.nome || 'P')}`}
+                                                                className="w-full h-full object-cover"
+                                                                alt={order.profissional?.nome}
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
+                                                                <Clock size={24} />
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="flex items-center gap-1 opacity-60">
-                                                        <Briefcase size={10} className="text-gray-500" />
-                                                        <span className="text-[10px] font-bold text-gray-600">
-                                                            {proStats.serviceCount} {proStats.serviceCount === 1 ? 'atendimento' : 'atendimentos'}
-                                                        </span>
+                                                    <div className="min-w-0">
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Profissional Responsável</p>
+                                                        <h4 className={`text-sm font-bold truncate ${isProConfirmed && order.profissional ? 'text-gray-900' : 'text-gray-500 italic'}`}>
+                                                            {isProConfirmed && order.profissional
+                                                                ? order.profissional.nome
+                                                                : order.status === 'aguardando_profissional'
+                                                                    ? 'Aguardando aceite do profissional'
+                                                                    : 'A ser confirmado após aprovação'}
+                                                        </h4>
+                                                        {isProConfirmed && order.profissional && (
+                                                            <div className="flex flex-col gap-1 mt-1">
+                                                                <div className="flex items-center gap-1">
+                                                                    <Star size={12} className="fill-yellow-400 text-yellow-400" />
+                                                                    <span className="text-xs font-black text-gray-700">
+                                                                        {proStats.rating ? proStats.rating.toFixed(1) : 'Novo'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1 opacity-60">
+                                                                    <Briefcase size={10} className="text-gray-500" />
+                                                                    <span className="text-[10px] font-bold text-gray-600">
+                                                                        {proStats.serviceCount} {proStats.serviceCount === 1 ? 'atendimento' : 'atendimentos'}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {!order.profissional && <div className="p-2 bg-blue-50 text-ios-blue rounded-xl"><UserCheck size={20} /></div>}
-                                </div>
+                                                {(!isProConfirmed || !order.profissional) && <div className="p-2 bg-blue-50 text-ios-blue rounded-xl"><UserCheck size={20} /></div>}
+                                            </div>
 
-                                <div className="grid grid-cols-1 gap-6 mt-6">
-                                    <div className="flex items-start gap-4">
-                                        <div className="p-3 bg-blue-50 rounded-2xl text-ios-blue shadow-sm border border-blue-100"><Calendar size={20} /></div>
-                                        <div className="flex-1">
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Visita Técnica</p>
-                                            <p className="text-sm font-bold text-gray-900">{order.planejamento?.[0]?.visita ? new Date(order.planejamento[0].visita).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Não agendada'}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-4">
-                                        <div className="p-3 bg-purple-50 rounded-2xl text-purple-600 shadow-sm border border-purple-100"><Clock size={20} /></div>
-                                        <div className="flex-1">
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Execução Prevista</p>
-                                            <p className="text-sm font-bold text-gray-900">{order.planejamento?.[0]?.execucao ? new Date(order.planejamento[0].execucao).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'A definir'}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-4 pt-4 border-t border-gray-100">
-                                        <div className="p-3 bg-green-50 rounded-2xl text-green-600 shadow-sm border border-green-100"><Banknote size={20} /></div>
-                                        <div className="flex-1">
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Valor Total</p>
-                                            <p className="text-base font-black text-gray-900">{order.orcamentos?.[0]?.preco && order.status.toLowerCase() !== 'aguardando_profissional' ? `R$ ${order.orcamentos[0].preco.toFixed(2)}` : 'Calculando...'}</p>
-                                        </div>
-                                    </div>
-                                </div>
+                                            <div className="grid grid-cols-1 gap-6 mt-6">
+                                                <div className="flex items-start gap-4">
+                                                    <div className="p-3 bg-blue-50 rounded-2xl text-ios-blue shadow-sm border border-blue-100"><Calendar size={20} /></div>
+                                                    <div className="flex-1">
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Visita Técnica</p>
+                                                        <p className="text-sm font-bold text-gray-900">{order.planejamento?.[0]?.visita ? new Date(order.planejamento[0].visita).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Não agendada'}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-start gap-4">
+                                                    <div className="p-3 bg-purple-50 rounded-2xl text-purple-600 shadow-sm border border-purple-100"><Clock size={20} /></div>
+                                                    <div className="flex-1">
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Execução Prevista</p>
+                                                        <p className="text-sm font-bold text-gray-900">{order.planejamento?.[0]?.execucao ? new Date(order.planejamento[0].execucao).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'A definir'}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-start gap-4 pt-4 border-t border-gray-100">
+                                                    <div className="p-3 bg-green-50 rounded-2xl text-green-600 shadow-sm border border-green-100"><Banknote size={20} /></div>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Valor Total</p>
+                                                            {order.status === 'aguardando_aprovacao' && paymentChoice === 'suggested' && discountPercent > 0 && (
+                                                                <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-md text-[8px] font-black uppercase inline-block">
+                                                                    -{discountPercent}% OFF aplicado
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-baseline gap-2">
+                                                            <p className="text-base font-black text-gray-900">
+                                                                {order.orcamentos?.[0]?.preco && order.status.toLowerCase() !== 'aguardando_profissional' 
+                                                                    ? `R$ ${finalPrice.toFixed(2)}` 
+                                                                    : 'Calculando...'}
+                                                            </p>
+                                                            {order.status === 'aguardando_aprovacao' && paymentChoice === 'suggested' && discountPercent > 0 && (
+                                                                <span className="text-xs font-bold text-gray-400 line-through">
+                                                                    R$ {order.orcamentos[0].preco.toFixed(2)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
 
                                  {order.orcamentos?.[0]?.assinatura_cliente && (
                                      <div className="mt-6 p-4 bg-white rounded-3xl border border-gray-100 space-y-3 shadow-sm">
@@ -487,49 +533,61 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                                                                  {order.orcamentos[0].tipopagmto_sugerido === 'Cartão de Crédito' && <p className="text-[10px] font-bold text-gray-400">{order.orcamentos[0].parcelas_sugerido}x no cartão</p>}
                                                              </div>
                                                          </div>
-                                                         <div className="text-right">
-                                                             {(order.orcamentos[0].desconto_sugerido || 0) > 0 ? (
-                                                                 <div className="space-y-0.5">
-                                                                     <p className="text-[10px] text-gray-400 line-through">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
-                                                                     <p className="text-sm font-black text-green-600">R$ {(order.orcamentos[0].preco * (1 - (order.orcamentos[0].desconto_sugerido || 0) / 100)).toFixed(2)}</p>
-                                                                     <div className="bg-green-100 text-green-700 px-2 py-0.5 rounded-md text-[8px] font-black uppercase inline-block">-{(order.orcamentos[0].desconto_sugerido || 0)}% OFF</div>
-                                                                 </div>
-                                                             ) : (
-                                                                 <p className="text-xs font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
-                                                             )}
-                                                             {paymentChoice === 'suggested' && <div className="inline-block bg-blue-600 text-white p-1 rounded-full mt-2"><Check size={12} /></div>}
-                                                         </div>
-                                                     </div>
-                                                     {order.orcamentos[0].justificativa_sugerido && (
-                                                         <div className="mt-4 p-3 bg-blue-100/50 rounded-2xl border border-blue-200">
-                                                             <p className="text-[9px] font-black text-blue-600 uppercase mb-1 flex items-center gap-1"><MessageSquare size={10} /> Por que sugerimos?</p>
-                                                             <p className="text-xs font-bold text-blue-900 italic leading-relaxed">"{order.orcamentos[0].justificativa_sugerido}"</p>
-                                                         </div>
-                                                     )}
-                                                 </button>
-                                             )}
-                                         </div>
-
-                                         {order.orcamentos?.[0].observacaocliente && (
-                                             <div className="mt-6 p-5 bg-blue-600 rounded-3xl text-white shadow-xl relative animate-in slide-in-from-left-4">
-                                                 <div className="flex items-center gap-2 mb-2"><MessageSquare size={14} className="text-blue-100" /><p className="text-[10px] font-black uppercase tracking-widest text-blue-100">Mensagem do Orçamentista</p></div>
-                                                 <p className="text-sm font-medium leading-relaxed italic">"{order.orcamentos[0].observacaocliente}"</p>
-                                                 <div className="absolute -top-2 left-8 w-4 h-4 bg-blue-600 rotate-45"></div>
-                                             </div>
-                                         )}
-                                     </div>
-                                 )}
-
-                                  {/* Botões de Ação do Cliente - Estritamente apenas após orçamento fechado e aceite do profissional */}
-                                  {order.status === 'aguardando_aprovacao' && order.orcamentos?.[0] && order.orcamentos[0].preco > 0 && (
-                                      <div className="mt-8 p-6 bg-white rounded-3xl border border-orange-100 space-y-5 shadow-sm animate-in slide-in-from-bottom-4">
-                                          <div className="flex items-center gap-3 text-orange-700"><AlertCircle size={20} className="flex-shrink-0" /><p className="text-xs font-bold leading-tight">Ao aprovar, o serviço será oficialmente agendado com a forma de pagamento e valor escolhidos mediante assinatura digital.</p></div>
-                                          <div className="flex flex-col gap-2">
-                                              <button onClick={() => setIsSignatureModalOpen(true)} disabled={processingAction} className="w-full bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">{processingAction ? <Loader2 className="animate-spin" size={18} /> : <><ThumbsUp size={18} /><span>Assinar e Aprovar Orçamento</span></>}</button>
-                                              <button onClick={() => setIsRejectionModalOpen(true)} disabled={processingAction} className="w-full bg-white border border-red-100 text-red-500 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"><ThumbsDown size={14} /><span>Recusar Proposta</span></button>
+                                                          <div className="text-right">
+                                                              {(() => {
+                                                                  const discount = order.orcamentos[0].desconto || order.orcamentos[0].desconto_sugerido || 0;
+                                                                  return discount > 0 ? (
+                                                                      <div className="space-y-0.5">
+                                                                          <p className="text-[10px] text-gray-400 line-through">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
+                                                                          <p className="text-sm font-black text-green-600">R$ {(order.orcamentos[0].preco * (1 - discount / 100)).toFixed(2)}</p>
+                                                                          <div className="bg-green-100 text-green-700 px-2 py-0.5 rounded-md text-[8px] font-black uppercase inline-block">-{discount}% OFF</div>
+                                                                      </div>
+                                                                  ) : (
+                                                                      <p className="text-xs font-black text-gray-900">R$ {order.orcamentos[0].preco.toFixed(2)}</p>
+                                                                  );
+                                                              })()}
+                                                              {paymentChoice === 'suggested' && <div className="inline-block bg-blue-600 text-white p-1 rounded-full mt-2"><Check size={12} /></div>}
+                                                          </div>
+                                                      </div>
+                                                      {order.orcamentos[0].justificativa_sugerido && (
+                                                          <div className="mt-4 p-3 bg-blue-100/50 rounded-2xl border border-blue-200">
+                                                              <p className="text-[9px] font-black text-blue-600 uppercase mb-1 flex items-center gap-1"><MessageSquare size={10} /> Por que sugerimos?</p>
+                                                              <p className="text-xs font-bold text-blue-900 italic leading-relaxed">"{order.orcamentos[0].justificativa_sugerido}"</p>
+                                                          </div>
+                                                      )}
+                                                  </button>
+                                              )}
                                           </div>
+
+                                          {order.orcamentos?.[0].observacaocliente && (
+                                              <div className="mt-6 p-5 bg-blue-600 rounded-3xl text-white shadow-xl relative animate-in slide-in-from-left-4">
+                                                  <div className="flex items-center gap-2 mb-2"><MessageSquare size={14} className="text-blue-100" /><p className="text-[10px] font-black uppercase tracking-widest text-blue-100">Mensagem do Orçamentista</p></div>
+                                                  <p className="text-sm font-medium leading-relaxed italic">"{order.orcamentos[0].observacaocliente}"</p>
+                                                  <div className="absolute -top-2 left-8 w-4 h-4 bg-blue-600 rotate-45"></div>
+                                              </div>
+                                          )}
                                       </div>
                                   )}
+
+                                   {/* Botões de Ação do Cliente - Estritamente apenas após orçamento fechado e aceite do profissional */}
+                                   {order.status === 'aguardando_aprovacao' && order.orcamentos?.[0] && order.orcamentos[0].preco > 0 && (
+                                       <div className="mt-8 p-6 bg-white rounded-3xl border border-orange-100 space-y-5 shadow-sm animate-in slide-in-from-bottom-4">
+                                           <div className="flex items-center gap-3 text-orange-700"><AlertCircle size={20} className="flex-shrink-0" /><p className="text-xs font-bold leading-tight">Ao aprovar, o serviço será oficialmente agendado com a forma de pagamento e valor escolhidos mediante assinatura digital.</p></div>
+                                           <div className="flex flex-col gap-2">
+                                               <button onClick={() => setIsSignatureModalOpen(true)} disabled={processingAction} className="w-full bg-black text-white py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all">
+                                                   {processingAction ? <Loader2 className="animate-spin" size={18} /> : <>
+                                                       <ThumbsUp size={18} />
+                                                       <span>Assinar e Aprovar Orçamento {(() => {
+                                                           const disc = order.orcamentos[0].desconto || order.orcamentos[0].desconto_sugerido || 0;
+                                                           const pr = paymentChoice === 'suggested' && disc > 0 ? order.orcamentos[0].preco * (1 - disc / 100) : order.orcamentos[0].preco;
+                                                           return pr > 0 ? `(R$ ${pr.toFixed(2)})` : '';
+                                                       })()}</span>
+                                                   </>}
+                                               </button>
+                                               <button onClick={() => setIsRejectionModalOpen(true)} disabled={processingAction} className="w-full bg-white border border-red-100 text-red-500 py-3 rounded-2xl font-black text-xs flex items-center justify-center gap-2 active:scale-95 transition-all"><ThumbsDown size={14} /><span>Recusar Proposta</span></button>
+                                           </div>
+                                       </div>
+                                   )}
                             </div>
                         </div>
                     )}
