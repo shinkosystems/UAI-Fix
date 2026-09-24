@@ -52,6 +52,8 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
     const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
     const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
+    const isContractClosed = ['aprovado', 'executando', 'aguardando_gestor', 'concluido'].includes((order?.status || '').toLowerCase().trim());
+
     const buildOsPrintData = (): OsPrintData => {
         const plan = order.planejamento?.[0] || order.planejamentoData;
         const budget = order.orcamento || order.orcamentos?.[0] || order.orcamentoData;
@@ -318,15 +320,17 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                         <p className="text-xs font-mono font-black text-gray-400 uppercase tracking-wider">#{order.chaveunica}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setIsPrintModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all active:scale-95 shadow-xs"
-                            title="Imprimir ou Salvar Ordem de Serviço em PDF"
-                        >
-                            <Printer size={14} />
-                            <span className="hidden sm:inline">Imprimir OS</span>
-                        </button>
+                        {isContractClosed && (
+                            <button
+                                type="button"
+                                onClick={() => setIsPrintModalOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all active:scale-95 shadow-xs"
+                                title="Imprimir ou Salvar Ordem de Serviço em PDF"
+                            >
+                                <Printer size={14} />
+                                <span className="hidden sm:inline">Imprimir OS</span>
+                            </button>
+                        )}
                         <button onClick={onClose} className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"><X size={20} /></button>
                     </div>
                 </div>
@@ -750,11 +754,13 @@ const ConsumerOrderModal: React.FC<ConsumerOrderModalProps> = ({
                 loading={processingAction}
             />
 
-            <PrintOsModal
-                isOpen={isPrintModalOpen}
-                onClose={() => setIsPrintModalOpen(false)}
-                osData={buildOsPrintData()}
-            />
+            {isContractClosed && (
+                <PrintOsModal
+                    isOpen={isPrintModalOpen}
+                    onClose={() => setIsPrintModalOpen(false)}
+                    osData={buildOsPrintData()}
+                />
+            )}
         </div>
     );
 };

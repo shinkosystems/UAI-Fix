@@ -109,7 +109,7 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
         solucao_problema: ''
     });
 
-    const isProfessional = userRole === 'profissional';
+    const isProfessional = (userRole || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() === 'profissional';
     const isGestor = userRole === 'gestor';
     const isPlanejista = userRole === 'planejista';
     const isOrcamentista = userRole === 'orcamentista';
@@ -1500,15 +1500,17 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setIsPrintModalOpen(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all shadow-xs active:scale-95"
-                            title="Visualizar e Imprimir Ordem de Serviço em A4"
-                        >
-                            <Printer size={14} />
-                            <span className="hidden sm:inline">Imprimir OS</span>
-                        </button>
+                        {!isProfessional && (
+                            <button
+                                type="button"
+                                onClick={() => setIsPrintModalOpen(true)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs border border-blue-200 transition-all shadow-xs active:scale-95"
+                                title="Visualizar e Imprimir Ordem de Serviço em A4"
+                            >
+                                <Printer size={14} />
+                                <span className="hidden sm:inline">Imprimir OS</span>
+                            </button>
+                        )}
 
                         {(isGestor || isPlanejista || isOrcamentista) && (
                             <>
@@ -2007,11 +2009,13 @@ const ProfessionalOrderModal: React.FC<ProfessionalOrderModalProps> = ({
                 </div>
             )}
 
-            <PrintOsModal
-                isOpen={isPrintModalOpen}
-                onClose={() => setIsPrintModalOpen(false)}
-                osData={buildOsPrintData()}
-            />
+            {!isProfessional && (
+                <PrintOsModal
+                    isOpen={isPrintModalOpen}
+                    onClose={() => setIsPrintModalOpen(false)}
+                    osData={buildOsPrintData()}
+                />
+            )}
         </div>
     );
 };
