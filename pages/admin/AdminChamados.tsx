@@ -172,6 +172,20 @@ const AdminChamados: React.FC = () => {
   useEffect(() => {
     fetchUserRole();
     fetchChamados();
+
+    const handleViewModeChange = (e: any) => {
+      const { viewMode, orgId } = e.detail || {};
+      if (viewMode === 'tenant_admin' && orgId) {
+        setSelectedOrgFilter(orgId);
+      } else if (viewMode === 'super_admin') {
+        setSelectedOrgFilter('todas');
+      }
+    };
+
+    window.addEventListener('admin_view_mode_changed', handleViewModeChange);
+    return () => {
+      window.removeEventListener('admin_view_mode_changed', handleViewModeChange);
+    };
   }, []);
 
   const isTicketOnlyInitialRequest = (t: ChamadoExtended) => {
@@ -260,6 +274,9 @@ const AdminChamados: React.FC = () => {
     } else if (selectedStatus === 'recusado') {
       matchesStatus = ['recusado', 'reprovado', 'cancelado'].includes(status);
     } else if (selectedStatus !== 'todos') {
+      matchesStatus = status === selectedStatus;
+    }
+
     const matchesOrg = selectedOrgFilter === 'todas' || t.organization_id === selectedOrgFilter;
 
     return matchesSearch && matchesStatus && matchesOrg;

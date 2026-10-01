@@ -11,7 +11,10 @@ const AdminUsers: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRole, setSelectedRole] = useState<string>('todos');
-  const [selectedOrgFilter, setSelectedOrgFilter] = useState<string>('todas');
+  const [selectedOrgFilter, setSelectedOrgFilter] = useState<string>(() => {
+    const mode = localStorage.getItem('uai_admin_view_mode');
+    return mode === 'tenant_admin' ? (localStorage.getItem('active_tenant_filter') || 'todas') : 'todas';
+  });
 
   // Modal State
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -39,6 +42,20 @@ const AdminUsers: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+
+    const handleViewModeChange = (e: any) => {
+      const { viewMode, orgId } = e.detail || {};
+      if (viewMode === 'tenant_admin' && orgId) {
+        setSelectedOrgFilter(orgId);
+      } else if (viewMode === 'super_admin') {
+        setSelectedOrgFilter('todas');
+      }
+    };
+
+    window.addEventListener('admin_view_mode_changed', handleViewModeChange);
+    return () => {
+      window.removeEventListener('admin_view_mode_changed', handleViewModeChange);
+    };
   }, []);
 
   const handleCardClick = (u: User) => {

@@ -25,71 +25,98 @@ const AdminDashboard: React.FC = () => {
     origens: {} as Record<string, number>
   });
 
-  useEffect(() => {
-    const fetchDashboardStats = async () => {
-      try {
-        setLoading(true);
-        
-        // Count chamados by status and origin
-        const { data: chaves } = await supabase.from('chaves').select('id, status, origem');
-        const { data: users } = await supabase.from('users').select('uuid, tipo');
+  const [activeOrgId, setActiveOrgId] = useState<string>(() => {
+    const mode = localStorage.getItem('uai_admin_view_mode');
+    return mode === 'tenant_admin' ? (localStorage.getItem('active_tenant_filter') || '') : '';
+  });
 
-        if (chaves) {
-          const total = chaves.length;
-          const novos = chaves.filter(c => ['pendente', 'solicitado', 'novo'].includes((c.status || '').toLowerCase())).length;
-          const orc = chaves.filter(c => ['analise', 'aguardando_profissional', 'aguardando_aprovacao', 'orcamento', 'planejamento'].includes((c.status || '').toLowerCase())).length;
-          const exec = chaves.filter(c => ['aprovado', 'executando', 'execucao', 'agendado'].includes((c.status || '').toLowerCase())).length;
-          const conc = chaves.filter(c => ['concluido', 'aguardando_gestor'].includes((c.status || '').toLowerCase())).length;
-          const rec = chaves.filter(c => ['recusado', 'reprovado', 'cancelado'].includes((c.status || '').toLowerCase())).length;
-
-          const origensCount: Record<string, number> = {};
-          chaves.forEach(c => {
-            const orig = (c.origem || 'organico').toLowerCase();
-            origensCount[orig] = (origensCount[orig] || 0) + 1;
-          });
-
-          setStats(prev => ({
-            ...prev,
-            totalChamados: total,
-            novosChamados: novos,
-            orcamentos: orc,
-            execucao: exec,
-            concluidos: conc,
-            recusados: rec,
-            origens: origensCount
-          }));
-        }
-
-        if (users) {
-          const totalU = users.length;
-          const totalP = users.filter(u => {
-            const normTipo = (u.tipo || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            return normTipo === 'profissional' || normTipo === 'prestador';
-          }).length;
-          setStats(prev => ({
-            ...prev,
-            totalUsers: totalU,
-            totalProfessionals: totalP
-          }));
-        }
-
-        // Buscar total de organizações
-        const { data: orgs } = await supabase.from('organizations').select('id, ativo');
-        if (orgs) {
-          setStats(prev => ({
-            ...prev,
-            totalOrganizations: orgs.length
-          }));
-        }
-
-      } catch (err) {
-        console.error('Erro ao carregar estatísticas do Admin Dashboard:', err);
-      } finally {
-        setLoading(false);
+  const fetchDashboardStats = async (orgFilterId?: string) => {
+    try {
+      setLoading(true);
+      const effectiveOrg = orgFilterId !== undefined ? orgFilterId : activeOrgId;
+      
+      // Count chamados by status, origin and organization
+      let chavesQuery = supabase.from('chaves').select('id, status, origem, organization_id');
+      if (effectiveOrg) {
+        chavesQuery = chavesQuery.eq('organization_id', effectiveOrg);
       }
+      const { data: chaves } = await chavesQuery;
+
+      let usersQuery = supabase.from('users').select('uuid, tipo, organization_id');
+      if (effectiveOrg) {
+        usersQuery = usersQuery.eq('organization_id', effectiveOrg);
+      }
+      const { data: users } = await usersQuery;
+
+      if (chaves) {
+        const total = chaves.length;
+        const novos = chaves.filter(c => ['pendente', 'solicitado', 'novo'].includes((c.status || '').toLowerCase())).length;
+        const orc = chaves.filter(c => ['analise', 'aguardando_profissional', 'aguardando_aprovacao', 'orcamento', 'planejamento'].includes((c.status || '').toLowerCase())).length;
+        const exec = chaves.filter(c => ['aprovado', 'executando', 'execucao', 'agendado'].includes((c.status || '').toLowerCase())).length;
+        const conc = chaves.filter(c => ['concluido', 'aguardando_gestor'].includes((c.status || '').toLowerCase())).length;
+        const rec = chaves.filter(c => ['recusado', 'reprovado', 'cancelado'].includes((c.status || '').toLowerCase())).length;
+
+        const origensCount: Record<string, number> = {};
+        chaves.forEach(c => {
+          const orig = (c.origem || 'organico').toLowerCase();
+          origensCount[orig] = (origensCount[orig] || 0) + 1;
+        });
+
+        setStats(prev => ({
+          ...prev,
+          totalChamados: total,
+          novosChamados: novos,
+          orcamentos: orc,
+          execucao: exec,
+          concluidos: conc,
+          recusados: rec,
+          origens: origensCount
+        }));
+      }
+
+      if (users) {
+        const totalU = users.length;
+        const totalP = users.filter(u => {
+          const normTipo = (u.tipo || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          return normTipo === 'profissional' || normTipo === 'prestador';
+        }).length;
+        setStats(prev => ({
+          ...prev,
+          totalUsers: totalU,
+          totalProfessionals: totalP
+        }));
+      }
+
+      // Buscar total de organizações
+      const { data: orgs } = await supabase.from('organizations').select('id, ativo');
+      if (orgs) {
+        setStats(prev => ({
+          ...prev,
+          totalOrganizations: orgs.length
+        }));
+      }
+
+    } catch (err) {
+      console.error('Erro ao carregar estatísticas do Admin Dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardStats();
+
+    const handleViewModeChange = (e: any) => {
+      const { viewMode, orgId } = e.detail || {};
+      const newOrgId = viewMode === 'tenant_admin' ? (orgId || '') : '';
+      setActiveOrgId(newOrgId);
+      fetchDashboardStats(newOrgId);
     };
 
-    fetchDashboardStats();
+    window.addEventListener('admin_view_mode_changed', handleViewModeChange);
+    return () => {
+      window.removeEventListener('admin_view_mode_changed', handleViewModeChange);
+    };
   }, []);
 
   return (
