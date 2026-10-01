@@ -74,8 +74,13 @@ export const AdminOrganizations: React.FC = () => {
 
       setOrganizations(enriched);
     } catch (err: any) {
-      console.error('Erro ao carregar organizações:', err);
-      setErrorMsg(err.message || 'Falha ao buscar organizações.');
+      console.warn('Informação sobre tabela de organizações:', err);
+      if (err?.code === 'PGRST205' || err?.message?.includes('organizations')) {
+        setErrorMsg('A tabela "organizations" está aguardando a execução do script SQL de migration no Supabase.');
+      } else {
+        setErrorMsg(err.message || 'Falha ao buscar organizações.');
+      }
+      setOrganizations([]);
     } finally {
       setLoading(false);
     }

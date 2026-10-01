@@ -33,28 +33,39 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({ children }) => {
         const userEmail = (session.user.email || '').toLowerCase().trim();
         const isCanonicalSuperAdmin = SUPER_ADMIN_EMAILS.includes(userEmail);
 
-        const { data, error } = await supabase
+        // Se o usuário autenticado for peboorba@gmail.com, concede acesso direto como Super Admin Canônico
+        if (isCanonicalSuperAdmin) {
+          if (isMounted) {
+            setIsAuthenticated(true);
+            setIsAuthorized(true);
+            setLoading(false);
+          }
+          return;
+        }
+
+        // Caso contrário, busca na tabela users com fallback caso a coluna is_super_admin ainda não exista
+        let userData: any = null;
+        const { data: primaryData, error: primaryErr } = await supabase
           .from('users')
-          .select('tipo, is_super_admin, email')
+          .select('tipo, email')
           .eq('uuid', session.user.id)
           .maybeSingle();
 
-        if (error) {
-          console.error('Erro ao verificar permissões de admin:', error);
+        if (primaryErr) {
+          console.warn('Erro ao consultar tipo/email de usuário:', primaryErr);
+        } else {
+          userData = primaryData;
         }
 
-        const roleRaw = data?.tipo || '';
+        const roleRaw = userData?.tipo || '';
         const normRole = roleRaw
           .toLowerCase()
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
           .trim();
 
-        const dbUserEmail = (data?.email || userEmail).toLowerCase().trim();
-        const isSuperAdminUser = (data?.is_super_admin === true || normRole === 'super_admin') && SUPER_ADMIN_EMAILS.includes(dbUserEmail);
-
-        // Acesso ao portal /admin restrito ao Super Admin autorizado (peboorba@gmail.com) ou gestores autorizados
-        const hasAccess = isCanonicalSuperAdmin || isSuperAdminUser || normRole === 'gestor' || normRole === 'admin';
+        const dbUserEmail = (userData?.email || userEmail).toLowerCase().trim();
+        const hasAccess = SUPER_ADMIN_EMAILS.includes(dbUserEmail) || normRole === 'gestor' || normRole === 'admin' || normRole === 'super_admin';
 
         if (isMounted) {
           setIsAuthenticated(true);
