@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, ClipboardList, Users, Settings, LogOut, 
-  ChevronRight, Shield, Menu, X, ArrowLeft, Bell, Sparkles, MessageSquare, BarChart3, FileSpreadsheet, Link2, GitFork, Layers
+  ChevronRight, Shield, Menu, X, ArrowLeft, Bell, Sparkles, MessageSquare, BarChart3, FileSpreadsheet, Link2, GitFork, Layers, Building2
 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
@@ -102,6 +102,17 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
               <div className="flex items-center space-x-3 truncate">
                 <LayoutDashboard size={18} className="flex-shrink-0" />
                 <span className="text-xs font-bold tracking-tight whitespace-nowrap">Dashboard</span>
+              </div>
+              <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
+            </button>
+
+            <button
+              onClick={() => { navigate('/admin/organizations'); setIsSidebarOpen(false); }}
+              className={`w-full h-11 flex items-center justify-between px-3.5 rounded-xl transition-all ${isActive('/admin/organizations')}`}
+            >
+              <div className="flex items-center space-x-3 truncate">
+                <Building2 size={18} className="flex-shrink-0 text-amber-500" />
+                <span className="text-xs font-bold tracking-tight whitespace-nowrap">Organizações & Empresas</span>
               </div>
               <ChevronRight size={14} className="opacity-50 flex-shrink-0" />
             </button>

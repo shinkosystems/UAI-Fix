@@ -3,7 +3,7 @@ import { supabase } from '../../supabaseClient';
 import { 
   ClipboardList, Users, DollarSign, CheckCircle2, Clock, 
   AlertTriangle, TrendingUp, Star, ShieldCheck, ArrowUpRight,
-  Share2, BarChart2, Link2, GitFork
+  Share2, BarChart2, Link2, GitFork, Building2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ORIGIN_CHANNELS } from '../../types';
@@ -20,6 +20,7 @@ const AdminDashboard: React.FC = () => {
     recusados: 0,
     totalUsers: 0,
     totalProfessionals: 0,
+    totalOrganizations: 0,
     mediaSatisfacao: '4.9',
     origens: {} as Record<string, number>
   });
@@ -72,6 +73,15 @@ const AdminDashboard: React.FC = () => {
           }));
         }
 
+        // Buscar total de organizações
+        const { data: orgs } = await supabase.from('organizations').select('id, ativo');
+        if (orgs) {
+          setStats(prev => ({
+            ...prev,
+            totalOrganizations: orgs.length
+          }));
+        }
+
       } catch (err) {
         console.error('Erro ao carregar estatísticas do Admin Dashboard:', err);
       } finally {
@@ -86,20 +96,50 @@ const AdminDashboard: React.FC = () => {
     <div className="space-y-8">
 
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
-        <div className="relative z-10 space-y-2 max-w-2xl">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-bold uppercase tracking-wider border border-blue-400/30">
-            Painel Executivo UAI Fix
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Visão Geral da Operação</h1>
-          <p className="text-sm text-slate-300">
-            Acompanhe em tempo real os indicadores de atendimento, taxa de conclusão de serviços e volume de usuários cadastrados.
-          </p>
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-amber-950 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden border border-amber-500/20">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-2 max-w-2xl">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold uppercase tracking-wider border border-amber-500/30">
+              <Building2 size={13} className="text-amber-400" />
+              Super Admin Multi-Tenant UAI Fix
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Visão Geral da Operação</h1>
+            <p className="text-sm text-slate-300">
+              Acompanhe em tempo real os indicadores de atendimento, empresas ativas, equipes e volume de ordens de serviço.
+            </p>
+          </div>
+
+          <button
+            onClick={() => navigate('/admin/organizations')}
+            className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 flex-shrink-0"
+          >
+            <Building2 size={15} />
+            Gerenciar Empresas ({stats.totalOrganizations})
+          </button>
         </div>
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+        
+        {/* Card Empresas / Organizações */}
+        <div 
+          onClick={() => navigate('/admin/organizations')}
+          className="bg-white p-6 rounded-2xl border border-slate-200 hover:border-amber-400/80 shadow-xs hover:shadow-md transition-all cursor-pointer group"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 group-hover:text-amber-600 transition-colors">Empresas</span>
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+              <Building2 size={20} />
+            </div>
+          </div>
+          <div className="mt-4 flex items-baseline justify-between">
+            <span className="text-2xl sm:text-3xl font-extrabold text-slate-900">{stats.totalOrganizations}</span>
+            <span className="text-xs font-medium text-amber-600 flex items-center gap-0.5">
+              Multi-Tenant
+            </span>
+          </div>
+        </div>
         
         {/* Card Total Chamados */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all">

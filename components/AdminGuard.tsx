@@ -30,7 +30,7 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({ children }) => {
 
         const { data, error } = await supabase
           .from('users')
-          .select('tipo')
+          .select('tipo, is_super_admin')
           .eq('uuid', session.user.id)
           .maybeSingle();
 
@@ -45,8 +45,8 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({ children }) => {
           .replace(/[\u0300-\u036f]/g, '')
           .trim();
 
-        // Apenas 'gestor' ou 'admin' possuem acesso ao painel administrativo
-        const hasAccess = normRole === 'gestor' || normRole === 'admin';
+        // Gestores, Admins ou Super Administradores da UAI Fix possuem acesso ao painel
+        const hasAccess = data?.is_super_admin === true || normRole === 'gestor' || normRole === 'admin' || normRole === 'super_admin';
 
         if (isMounted) {
           setIsAuthenticated(true);

@@ -22,6 +22,7 @@ import Execution from './pages/Execution';
 import LandingPage from './pages/LandingPage';
 import Whatsapp from './pages/Whatsapp';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminOrganizations from './pages/admin/AdminOrganizations';
 import AdminChamados from './pages/admin/AdminChamados';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminRelatorios from './pages/admin/AdminRelatorios';
@@ -109,6 +110,7 @@ const App: React.FC = () => {
               <AdminLayout>
                 <Routes>
                   <Route path="dashboard" element={<AdminDashboard />} />
+                  <Route path="organizations" element={<AdminOrganizations />} />
                   <Route path="fluxo" element={<AdminFluxoServico />} />
                   <Route path="chamados" element={<AdminChamados />} />
                   <Route path="atividades" element={<AdminAtividades />} />
