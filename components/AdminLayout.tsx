@@ -114,7 +114,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     navigate('/login');
   };
 
-  const isSuperAdminView = viewMode === 'super_admin';
+  const isMasterProgrammer = userEmail === 'peboorba@gmail.com';
+  const isSuperAdminView = isMasterProgrammer ? (viewMode === 'super_admin') : true;
 
   return (
     <div className="h-screen max-h-screen bg-slate-50 flex flex-col md:flex-row text-slate-800 overflow-hidden">
@@ -127,7 +128,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           </div>
           <div>
             <h1 className="text-base font-bold tracking-tight text-white flex items-center gap-1.5">
-              UAI Fix <span className="bg-blue-500 text-white text-[10px] uppercase font-black px-1.5 py-0.5 rounded">Admin</span>
+              UAI Fix <span className="bg-amber-500 text-slate-950 text-[10px] uppercase font-black px-1.5 py-0.5 rounded">Admin</span>
             </h1>
           </div>
         </div>
@@ -158,63 +159,68 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                   <span className={`text-[9px] uppercase font-black px-1.5 py-0.5 rounded tracking-wider ${
                     isSuperAdminView ? 'bg-amber-500 text-slate-950' : 'bg-blue-500 text-white'
                   }`}>
-                    {isSuperAdminView ? 'Super Admin' : 'Admin Comum'}
+                    {isMasterProgrammer ? (isSuperAdminView ? 'Super Admin' : 'Admin Comum') : 'Super Admin'}
                   </span>
                 </h1>
                 <p className="text-xs text-slate-400">
-                  {isSuperAdminView ? 'Governança Global 360º' : (currentSimulatedOrg?.nome || 'Visão Empresa')}
+                  {isMasterProgrammer
+                    ? (isSuperAdminView ? 'Governança Global 360º' : (currentSimulatedOrg?.nome || 'Visão Empresa'))
+                    : 'Gestão Central UAI Fix'
+                  }
                 </p>
               </div>
             </div>
 
-            {/* SWITCHER DE VISÃO: SUPER ADMIN vs ADMIN COMUM */}
-            <div className="bg-slate-950/80 p-1 rounded-xl border border-slate-800 space-y-1.5">
-              <div className="flex items-center text-[10px] font-bold text-slate-400 px-2 pt-1">
-                <span>Modo de Visualização:</span>
-              </div>
-              <div className="grid grid-cols-2 gap-1">
-                <button
-                  onClick={() => handleToggleViewMode('super_admin')}
-                  className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase transition-all flex items-center justify-center gap-1 ${
-                    isSuperAdminView 
-                      ? 'bg-amber-500 text-slate-950 shadow-xs' 
-                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
-                  }`}
-                >
-                  <span>👑</span> Super Admin
-                </button>
-                <button
-                  onClick={() => handleToggleViewMode('tenant_admin')}
-                  className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase transition-all flex items-center justify-center gap-1 ${
-                    !isSuperAdminView 
-                      ? 'bg-blue-600 text-white shadow-xs' 
-                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
-                  }`}
-                >
-                  <span>🏢</span> Admin Comum
-                </button>
-              </div>
-
-              {/* Seletor de Empresa para simulação */}
-              {!isSuperAdminView && organizations.length > 0 && (
-                <div className="pt-1.5 px-1">
-                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                    Simulando Empresa:
-                  </label>
-                  <select
-                    value={simulatedOrgId}
-                    onChange={(e) => handleSelectSimulatedOrg(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
-                  >
-                    {organizations.map(org => (
-                      <option key={org.id} value={org.id}>
-                        {org.nome} ({org.slug})
-                      </option>
-                    ))}
-                  </select>
+            {/* SWITCHER DE VISÃO: EXCLUSIVO DO PROGRAMADOR MASTER (peboorba@gmail.com) */}
+            {isMasterProgrammer && (
+              <div className="bg-slate-950/80 p-1 rounded-xl border border-slate-800 space-y-1.5">
+                <div className="flex items-center text-[10px] font-bold text-slate-400 px-2 pt-1">
+                  <span>Modo de Visualização:</span>
                 </div>
-              )}
-            </div>
+                <div className="grid grid-cols-2 gap-1">
+                  <button
+                    onClick={() => handleToggleViewMode('super_admin')}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase transition-all flex items-center justify-center gap-1 ${
+                      isSuperAdminView 
+                        ? 'bg-amber-500 text-slate-950 shadow-xs' 
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    }`}
+                  >
+                    <span>👑</span> Super Admin
+                  </button>
+                  <button
+                    onClick={() => handleToggleViewMode('tenant_admin')}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-black uppercase transition-all flex items-center justify-center gap-1 ${
+                      !isSuperAdminView 
+                        ? 'bg-blue-600 text-white shadow-xs' 
+                        : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    }`}
+                  >
+                    <span>🏢</span> Admin Comum
+                  </button>
+                </div>
+
+                {/* Seletor de Empresa para simulação */}
+                {!isSuperAdminView && organizations.length > 0 && (
+                  <div className="pt-1.5 px-1">
+                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Simulando Empresa:
+                    </label>
+                    <select
+                      value={simulatedOrgId}
+                      onChange={(e) => handleSelectSimulatedOrg(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold"
+                    >
+                      {organizations.map(org => (
+                        <option key={org.id} value={org.id}>
+                          {org.nome} ({org.slug})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Nav Items */}
@@ -375,10 +381,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
         {/* Footer Actions */}
         <div className="pt-5 border-t border-slate-800 space-y-2.5">
           <div className="flex items-center space-x-3 px-3 py-2 bg-slate-800/60 rounded-xl">
-            <Shield size={18} className={isSuperAdminView ? 'text-amber-400' : 'text-blue-400'} />
+            <Shield size={18} className={isMasterProgrammer && !isSuperAdminView ? 'text-blue-400' : 'text-amber-400'} />
             <div className="truncate">
               <p className="text-xs font-bold text-slate-200 truncate">
-                {isSuperAdminView ? '👑 Super Admin' : '🏢 Admin Comum'}
+                {isMasterProgrammer
+                  ? (isSuperAdminView ? '👑 Super Admin (Master)' : '🏢 Admin Comum (Simulado)')
+                  : '👑 Super Admin'
+                }
               </p>
               <p className="text-[10px] text-slate-400 truncate">{userEmail || 'Sessão Ativa'}</p>
             </div>
@@ -397,12 +406,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
       {/* Main Content Container */}
       <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         
-        {/* BANNER FLUTUANTE DE SIMULAÇÃO (QUANDO EM MODO ADMIN COMUM) */}
-        {!isSuperAdminView && (
+        {/* BANNER FLUTUANTE DE SIMULAÇÃO (EXCLUSIVO DO PROGRAMADOR MASTER EM MODO SIMULADO) */}
+        {isMasterProgrammer && !isSuperAdminView && (
           <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white px-6 py-2.5 flex flex-col sm:flex-row items-center justify-between shadow-md text-xs font-bold flex-shrink-0 gap-2 border-b border-blue-400/30 animate-in slide-in-from-top-2">
             <div className="flex items-center gap-2 text-center sm:text-left">
               <span className="px-2 py-0.5 bg-white text-blue-900 rounded text-[10px] font-black uppercase tracking-wider shadow-xs">
-                Modo Simulação
+                Modo Simulação (Dev)
               </span>
               <span>Visualizando painel como <b>Admin Comum</b> da empresa: <u className="decoration-amber-300">{currentSimulatedOrg?.nome || 'Organização'}</u></span>
             </div>
@@ -421,25 +430,35 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
             <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
               <span>Painel Administrativo UAI Fix</span>
               <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                isSuperAdminView ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-blue-100 text-blue-800 border border-blue-200'
+                isMasterProgrammer && !isSuperAdminView
+                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                  : 'bg-amber-100 text-amber-800 border border-amber-300'
               }`}>
-                {isSuperAdminView ? 'Visão Super Admin (360º)' : `Visão Admin: ${currentSimulatedOrg?.nome || 'Tenant'}`}
+                {isMasterProgrammer 
+                  ? (isSuperAdminView ? 'Visão Super Admin (360º)' : `Visão Admin: ${currentSimulatedOrg?.nome || 'Tenant'}`)
+                  : 'Gestão Central UAI Fix'
+                }
               </span>
             </h2>
             <p className="text-xs text-slate-500">
-              {isSuperAdminView 
-                ? 'Governança centralizada de todas as empresas parceiras, equipes e métricas globais'
-                : 'Gestão operacional exclusiva dos chamados e equipe técnica da sua organização'
+              {isMasterProgrammer
+                ? (isSuperAdminView 
+                    ? 'Governança centralizada de todas as empresas parceiras, equipes e métricas globais'
+                    : 'Gestão operacional exclusiva dos chamados e equipe técnica da sua organização'
+                  )
+                : 'Gestão centralizada de ordens de serviço, relatórios, equipe técnica e atendimento'
               }
             </p>
           </div>
           <div className="flex items-center space-x-3">
-            <button
-              onClick={() => handleToggleViewMode(isSuperAdminView ? 'tenant_admin' : 'super_admin')}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-all flex items-center gap-1.5 shadow-2xs"
-            >
-              <span>{isSuperAdminView ? '🏢 Simular Admin Comum' : '👑 Ver como Super Admin'}</span>
-            </button>
+            {isMasterProgrammer && (
+              <button
+                onClick={() => handleToggleViewMode(isSuperAdminView ? 'tenant_admin' : 'super_admin')}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-all flex items-center gap-1.5 shadow-2xs"
+              >
+                <span>{isSuperAdminView ? '🏢 Simular Admin Comum' : '👑 Ver como Super Admin'}</span>
+              </button>
+            )}
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Online
