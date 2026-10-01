@@ -14,20 +14,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [userType, setUserType] = useState<string | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [loadingUserType, setLoadingUserType] = useState(true);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [userEmail, setUserEmail] = useState<string>('');
 
   useEffect(() => {
     const fetchUserType = async (user: any, retryCount = 0) => {
       if (!user) {
         setUserType(null);
+        setIsSuperAdmin(false);
+        setUserEmail('');
         setLoadingUserType(false);
         return;
       }
+
+      const emailNormalized = (user.email || '').toLowerCase().trim();
+      setUserEmail(emailNormalized);
 
       setLoadingUserType(true);
       try {
         const { data, error } = await supabase
           .from('users')
-          .select('tipo')
+          .select('tipo, is_super_admin, email')
           .eq('uuid', user.id)
           .maybeSingle();
 
@@ -36,7 +43,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           throw error;
         }
 
+        const isSuper = data?.is_super_admin === true || emailNormalized === 'peboorba@gmail.com' || (data?.email?.toLowerCase().trim() === 'peboorba@gmail.com');
         setUserType(data?.tipo || null);
+        setIsSuperAdmin(isSuper);
         setLoadingUserType(false);
       } catch (error: any) {
         console.error(`Error fetching user type (attempt ${retryCount + 1}):`, error.message || error);
@@ -48,6 +57,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         }
 
         setUserType(null);
+        setIsSuperAdmin(emailNormalized === 'peboorba@gmail.com');
         setLoadingUserType(false);
       }
     };
@@ -206,6 +216,24 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           )}
 
 
+
+          {isSuperAdmin && (
+            <div className="mx-2 my-4 p-3 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-amber-500/40 text-white shadow-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                  <span>👑</span> Super Admin
+                </span>
+                <span className="text-[9px] font-bold text-slate-400 truncate max-w-[110px]">{userEmail}</span>
+              </div>
+              <button
+                onClick={() => navigate('/admin/dashboard')}
+                className="w-full py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+              >
+                <LayoutDashboard size={14} className="text-slate-950" />
+                <span>Acessar /admin</span>
+              </button>
+            </div>
+          )}
 
           {isManager && (
             <>
