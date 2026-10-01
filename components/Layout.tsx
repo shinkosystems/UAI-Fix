@@ -28,36 +28,27 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       }
 
       const emailNormalized = (user.email || '').toLowerCase().trim();
+      const isSuper = emailNormalized === 'peboorba@gmail.com';
       setUserEmail(emailNormalized);
+      setIsSuperAdmin(isSuper);
 
       setLoadingUserType(true);
       try {
         const { data, error } = await supabase
           .from('users')
-          .select('tipo, is_super_admin, email')
+          .select('tipo, email')
           .eq('uuid', user.id)
           .maybeSingle();
 
         if (error) {
-          console.error(`Supabase error fetching user type (attempt ${retryCount + 1}):`, error.message || error);
-          throw error;
+          console.warn(`Supabase aviso ao buscar tipo de usuario:`, error.message || error);
         }
 
-        const isSuper = data?.is_super_admin === true || emailNormalized === 'peboorba@gmail.com' || (data?.email?.toLowerCase().trim() === 'peboorba@gmail.com');
         setUserType(data?.tipo || null);
-        setIsSuperAdmin(isSuper);
         setLoadingUserType(false);
       } catch (error: any) {
-        console.error(`Error fetching user type (attempt ${retryCount + 1}):`, error.message || error);
-
-        if (retryCount < 2) {
-          console.log(`Retrying user type fetch in 1.5s...`);
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          return fetchUserType(user, retryCount + 1);
-        }
-
+        console.warn(`Erro ao buscar tipo de usuario:`, error.message || error);
         setUserType(null);
-        setIsSuperAdmin(emailNormalized === 'peboorba@gmail.com');
         setLoadingUserType(false);
       }
     };
