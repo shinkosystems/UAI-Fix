@@ -29,6 +29,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     return localStorage.getItem('uai_active_simulated_org_id') || '';
   });
 
+  const SUPER_ADMIN_EMAILS = [
+    'peboorba@gmail.com',
+    'joubertlima@gmail.com',
+    'telmo.mateus@gmail.com',
+    'cainhomo57@gmail.com'
+  ];
+
   useEffect(() => {
     const verifyAccess = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -40,7 +47,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
       const emailNorm = (session.user.email || '').toLowerCase().trim();
       setUserEmail(emailNorm);
 
-      const isSuper = emailNorm === 'peboorba@gmail.com';
+      const isSuper = SUPER_ADMIN_EMAILS.includes(emailNorm);
       setIsActualSuperAdmin(isSuper);
 
       // Buscar lista de organizações para o switcher

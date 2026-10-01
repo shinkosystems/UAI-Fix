@@ -7,7 +7,12 @@ interface AdminGuardProps {
   children: React.ReactNode;
 }
 
-const SUPER_ADMIN_EMAILS = ['peboorba@gmail.com'];
+const SUPER_ADMIN_EMAILS = [
+  'peboorba@gmail.com',
+  'joubertlima@gmail.com',
+  'telmo.mateus@gmail.com',
+  'cainhomo57@gmail.com'
+];
 
 export const AdminGuard: React.FC<AdminGuardProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
