@@ -102,6 +102,12 @@ const App: React.FC = () => {
           element={!session ? <Login /> : <Navigate to="/home" replace />}
         />
 
+        {/* Redirect exato para /admin */}
+        <Route
+          path="/admin"
+          element={<Navigate to="/admin/dashboard" replace />}
+        />
+
         {/* Admin Portal Protected Routes (Requer perfil de Gestor/Admin) */}
         <Route
           path="/admin/*"
