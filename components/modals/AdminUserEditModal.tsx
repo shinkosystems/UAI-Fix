@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
-import { User, City, Estado, Geral } from '../../types';
-import { X, Save, Loader2, User as UserIcon, Mail, Phone, MapPin, Shield, CheckCircle, AlertCircle, Search, FileText, Briefcase, Check } from 'lucide-react';
+import { User, City, Estado, Geral, Organization } from '../../types';
+import { X, Save, Loader2, User as UserIcon, Mail, Phone, MapPin, Shield, CheckCircle, AlertCircle, Search, FileText, Briefcase, Check, Building2 } from 'lucide-react';
 import { SearchableSelect } from '../SearchableSelect';
 import { formatPhone, formatCpf, formatCep } from '../../utils/masks';
 import { getOrProvisionCity } from '../../utils/cityHelper';
@@ -31,6 +31,7 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
   const [availableServices, setAvailableServices] = useState<Geral[]>([]);
   const [loadingServices, setLoadingServices] = useState(false);
   const [serviceSearchTerm, setServiceSearchTerm] = useState('');
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
 
   // Form state
   const [nome, setNome] = useState('');
@@ -43,6 +44,12 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
   const [fotoperfil, setFotoperfil] = useState('');
   const [biografia, setBiografia] = useState('');
   const [selectedActivities, setSelectedActivities] = useState<number[]>([]);
+
+  // Multi-Tenant & Corporativo
+  const [organizationId, setOrganizationId] = useState<string | ''>('');
+  const [cargo, setCargo] = useState('');
+  const [departamento, setDepartamento] = useState('');
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   // Address fields
   const [cep, setCep] = useState('');
@@ -86,8 +93,23 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
       }
     };
 
+    const fetchOrganizations = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('organizations')
+          .select('*')
+          .order('nome', { ascending: true });
+        if (!error && data) {
+          setOrganizations(data);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar organizações:', err);
+      }
+    };
+
     fetchStates();
     fetchServices();
+    fetchOrganizations();
   }, []);
 
   // Fetch cities when state changes
@@ -129,6 +151,12 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
       setFotoperfil(user.fotoperfil || '');
       setBiografia(user.biografia || '');
       setSelectedActivities(Array.isArray(user.atividade) ? user.atividade : []);
+
+      // Multi-Tenant & Corporativo
+      setOrganizationId(user.organization_id || '');
+      setCargo(user.cargo || '');
+      setDepartamento(user.departamento || '');
+      setIsSuperAdmin(user.is_super_admin === true);
 
       setCep(formatCep(user.cep));
       setRua(user.rua || '');
@@ -223,6 +251,9 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
       const cleanPhone = whatsapp.replace(/\D/g, '');
       const cleanCpf = cpf.replace(/\D/g, '');
 
+      const normTipo = tipo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const isClient = normTipo === 'consumidor' || normTipo === 'cliente';
+
       const updateData: Partial<User> = {
         nome: nome.trim(),
         email: email.trim(),
@@ -234,6 +265,10 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
         fotoperfil: fotoperfil.trim(),
         biografia: biografia.trim(),
         atividade: selectedActivities,
+        organization_id: isClient ? null : (organizationId || null),
+        cargo: cargo.trim() || undefined,
+        departamento: departamento.trim() || undefined,
+        is_super_admin: isSuperAdmin,
         cep: cep.trim(),
         rua: rua.trim(),
         numero: numero.trim(),
@@ -491,6 +526,69 @@ export const AdminUserEditModal: React.FC<AdminUserEditModalProps> = ({
                   onChange={(val) => setAtivo(val === 'true')}
                 />
               </div>
+
+              {/* Vínculo Corporativo & Multi-Tenant (exceto para clientes) */}
+              {tipo.toLowerCase() !== 'consumidor' && tipo.toLowerCase() !== 'cliente' && (
+                <div className="md:col-span-2 pt-3 border-t border-slate-200 mt-2 space-y-3 bg-amber-50/40 p-4 rounded-2xl border border-amber-200/50">
+                  <div className="flex items-center gap-2">
+                    <Building2 size={16} className="text-amber-600" />
+                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Vínculo Corporativo & Equipe</h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Empresa / Organização *</label>
+                      <select
+                        value={organizationId}
+                        onChange={(e) => setOrganizationId(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                      >
+                        <option value="">Sem organização vinculada</option>
+                        {organizations.map((org) => (
+                          <option key={org.id} value={org.id}>
+                            {org.nome} ({org.slug})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Cargo Funcional</label>
+                      <input
+                        type="text"
+                        value={cargo}
+                        onChange={(e) => setCargo(e.target.value)}
+                        placeholder="Ex: Técnico Eletricista Sênior"
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Departamento / Setor</label>
+                      <input
+                        type="text"
+                        value={departamento}
+                        onChange={(e) => setDepartamento(e.target.value)}
+                        placeholder="Ex: Manutenção Predial"
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-4">
+                      <input
+                        type="checkbox"
+                        id="super_admin_toggle"
+                        checked={isSuperAdmin}
+                        onChange={(e) => setIsSuperAdmin(e.target.checked)}
+                        className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300"
+                      />
+                      <label htmlFor="super_admin_toggle" className="text-xs font-bold text-slate-800 cursor-pointer">
+                        Super Admin UAI Fix (Acesso Total /admin)
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
