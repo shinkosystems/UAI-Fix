@@ -34,6 +34,25 @@ export interface City {
   estado?: Estado;
 }
 
+export interface Organization {
+  id: string; // uuid
+  nome: string;
+  slug: string;
+  cnpj?: string | null;
+  razao_social?: string | null;
+  email_contato?: string | null;
+  telefone_contato?: string | null;
+  logo_url?: string | null;
+  cor_primaria?: string;
+  limite_colaboradores?: number;
+  limite_chamados_mes?: number;
+  plano?: 'starter' | 'pro' | 'enterprise' | string;
+  ativo?: boolean;
+  metadata?: Record<string, any>;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface User {
   id: number;
   nome: string;
@@ -42,6 +61,13 @@ export interface User {
   uuid: string;
   tipo: string;
   sexo: string; // Added field to match DB constraint
+
+  // Multi-Tenant & Organização
+  organization_id?: string | null;
+  is_super_admin?: boolean;
+  cargo?: string;
+  departamento?: string;
+  organization?: Organization;
 
   origem?: string; // e.g., 'google', 'instagram', 'whatsapp', 'indicacao', 'balcao', 'organico', 'outros'
   utm_source?: string;
@@ -121,6 +147,13 @@ export interface Chave {
   // Execution Photos
   fotoantes?: string[];
   fotodepois?: string[];
+  // Multi-Tenant & Organização
+  organization_id?: string | null;
+  prioridade?: 'baixa' | 'media' | 'alta' | 'urgente' | string;
+  categoria?: string | null;
+  sla_limite?: string | null;
+  organization?: Organization;
+
   // Origem e Tracking
   origem?: string;
   oculto?: boolean;
