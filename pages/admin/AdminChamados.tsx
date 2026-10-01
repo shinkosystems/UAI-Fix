@@ -3,13 +3,17 @@ import { supabase } from '../../supabaseClient';
 import { 
   Search, Filter, Eye, Clock, CheckCircle2, AlertTriangle, 
   RefreshCw, User, Calendar, MapPin, Tag, ChevronRight, X,
-  Trash2, EyeOff, Loader2
+  Trash2, EyeOff, Loader2, Building2, Flame, ShieldAlert, Clock4
 } from 'lucide-react';
-import { ChamadoExtended, getOriginBadgeConfig } from '../../types';
+import { ChamadoExtended, getOriginBadgeConfig, Organization } from '../../types';
 import ProfessionalOrderModal from '../../components/modals/ProfessionalOrderModal';
 
 const AdminChamados: React.FC = () => {
   const [tickets, setTickets] = useState<ChamadoExtended[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [selectedOrgFilter, setSelectedOrgFilter] = useState<string>(() => {
+    return localStorage.getItem('active_tenant_filter') || 'todas';
+  });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('todos');
@@ -62,14 +66,19 @@ const AdminChamados: React.FC = () => {
         if (c.cidade) cityIds.add(Number(c.cidade));
       });
 
-      const [usersRes, servicesRes, orcRes, planRes, avalRes, agendaRes] = await Promise.all([
+      const [usersRes, servicesRes, orcRes, planRes, avalRes, agendaRes, orgsRes] = await Promise.all([
         userUuids.size > 0 ? supabase.from('users').select('*').in('uuid', Array.from(userUuids)) : { data: [] },
         serviceIds.size > 0 ? supabase.from('geral').select('*').in('id', Array.from(serviceIds)) : { data: [] },
         chaveIds.length > 0 ? supabase.from('orcamentos').select('*').in('chave', chaveIds).order('created_at', { ascending: false }) : { data: [] },
         chaveIds.length > 0 ? supabase.from('planejamento').select('*').in('chave', chaveIds).order('created_at', { ascending: false }) : { data: [] },
         chaveIds.length > 0 ? supabase.from('avaliacoes').select('*').in('chave', chaveIds) : { data: [] },
-        chaveIds.length > 0 ? supabase.from('agenda').select('*').in('chave', chaveIds) : { data: [] }
+        chaveIds.length > 0 ? supabase.from('agenda').select('*').in('chave', chaveIds) : { data: [] },
+        supabase.from('organizations').select('*').order('nome', { ascending: true })
       ]);
+
+      setOrganizations(orgsRes.data || []);
+      const orgsMap: Record<string, Organization> = {};
+      orgsRes.data?.forEach((o: any) => orgsMap[o.id] = o);
 
       const usersMap: Record<string, any> = {};
       usersRes.data?.forEach((u: any) => {
@@ -147,7 +156,8 @@ const AdminChamados: React.FC = () => {
           orcamentos: orcMap[c.id] || [],
           planejamento: planMap[c.id] || [],
           avaliacao: avalMap[c.id],
-          agenda: agendaMap[c.id] || []
+          agenda: agendaMap[c.id] || [],
+          organization: c.organization_id ? orgsMap[c.organization_id] : undefined
         };
       });
 
@@ -250,11 +260,46 @@ const AdminChamados: React.FC = () => {
     } else if (selectedStatus === 'recusado') {
       matchesStatus = ['recusado', 'reprovado', 'cancelado'].includes(status);
     } else if (selectedStatus !== 'todos') {
-      matchesStatus = status === selectedStatus;
-    }
+    const matchesOrg = selectedOrgFilter === 'todas' || t.organization_id === selectedOrgFilter;
 
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesOrg;
   });
+
+  const getPriorityBadge = (prioridade?: string) => {
+    const p = (prioridade || 'media').toLowerCase();
+    switch (p) {
+      case 'urgente':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase bg-rose-600 text-white shadow-xs animate-pulse">
+            <Flame size={10} /> Urgente
+          </span>
+        );
+      case 'alta':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border border-amber-300">
+            Alta
+          </span>
+        );
+      case 'media':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-50 text-blue-700 border border-blue-200">
+            Média
+          </span>
+        );
+      case 'baixa':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium uppercase bg-slate-100 text-slate-600">
+            Baixa
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium uppercase bg-slate-100 text-slate-600">
+            {prioridade}
+          </span>
+        );
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     const s = (status || '').toLowerCase();
@@ -287,8 +332,13 @@ const AdminChamados: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Gestão Central de Chamados</h1>
-          <p className="text-xs text-slate-500 mt-1">Supervisão de todas as ordens de serviço solicitadas na plataforma</p>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
+            Gestão Central de Chamados & Tarefas
+            <span className="bg-amber-100 text-amber-800 text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-300/60">
+              Multi-Tenant
+            </span>
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">Supervisão e roteamento de todas as ordens de serviço por empresa parceira</p>
         </div>
         <button
           onClick={fetchChamados}
@@ -300,22 +350,47 @@ const AdminChamados: React.FC = () => {
       </div>
 
       {/* Filters Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row gap-4 justify-between items-center">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row gap-4 justify-between items-center">
         
-        {/* Search Input */}
-        <div className="relative w-full md:w-80">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por Código Único, ID, Cliente ou Prestador..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-all"
-          />
+        <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+          {/* Search Input */}
+          <div className="relative w-full sm:w-64">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar por Código, ID, Cliente..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:border-blue-500 transition-all"
+            />
+          </div>
+
+          {/* Organization Filter */}
+          <div className="w-full sm:w-56">
+            <select
+              value={selectedOrgFilter}
+              onChange={(e) => {
+                setSelectedOrgFilter(e.target.value);
+                if (e.target.value === 'todas') {
+                  localStorage.removeItem('active_tenant_filter');
+                } else {
+                  localStorage.setItem('active_tenant_filter', e.target.value);
+                }
+              }}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="todas">🏢 Todas as Empresas</option>
+              {organizations.map(org => (
+                <option key={org.id} value={org.id}>
+                  {org.nome} ({org.slug})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Status Filter Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-2 md:pb-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full lg:w-auto pb-2 lg:pb-0">
           {[
             { id: 'todos', label: 'Todos' },
             { id: 'solicitado', label: 'Solicitado' },
@@ -348,6 +423,7 @@ const AdminChamados: React.FC = () => {
             <thead>
               <tr className="bg-slate-50 text-slate-500 font-bold text-xs border-b border-slate-200">
                 <th className="p-4">Código Único</th>
+                <th className="p-4">Empresa / Prioridade</th>
                 <th className="p-4">Origem</th>
                 <th className="p-4">Data</th>
                 <th className="p-4">Status</th>
@@ -358,13 +434,13 @@ const AdminChamados: React.FC = () => {
             <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
+                  <td colSpan={7} className="p-8 text-center text-slate-400">
                     Carregando ordens de serviço...
                   </td>
                 </tr>
               ) : filteredTickets.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-slate-400">
+                  <td colSpan={7} className="p-8 text-center text-slate-400">
                     Nenhum chamado encontrado com os filtros aplicados.
                   </td>
                 </tr>
@@ -384,6 +460,17 @@ const AdminChamados: React.FC = () => {
                           Oculto
                         </span>
                       )}
+                    </td>
+                    <td className="p-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1 text-[11px] font-bold text-slate-800 truncate max-w-[150px]">
+                          <Building2 size={12} className="text-amber-600 flex-shrink-0" />
+                          <span className="truncate">{t.organization?.nome || 'UAI Fix Matriz'}</span>
+                        </div>
+                        <div>
+                          {getPriorityBadge(t.prioridade)}
+                        </div>
+                      </div>
                     </td>
                     <td className="p-4">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${originCfg.badgeBg}`}>
