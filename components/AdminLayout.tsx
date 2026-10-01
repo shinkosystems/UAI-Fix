@@ -33,7 +33,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     'peboorba@gmail.com',
     'joubertlima@gmail.com',
     'telmo.mateus@gmail.com',
-    'cainhomo57@gmail.com'
+    'cainhomo57@gmail.com',
+    'caio@gmail.com'
   ];
 
   useEffect(() => {

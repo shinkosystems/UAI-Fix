@@ -11,7 +11,8 @@ const SUPER_ADMIN_EMAILS = [
   'peboorba@gmail.com',
   'joubertlima@gmail.com',
   'telmo.mateus@gmail.com',
-  'cainhomo57@gmail.com'
+  'cainhomo57@gmail.com',
+  'caio@gmail.com'
 ];
 
 export const AdminGuard: React.FC<AdminGuardProps> = ({ children }) => {
