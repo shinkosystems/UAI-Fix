@@ -7,6 +7,8 @@ interface AdminGuardProps {
   children: React.ReactNode;
 }
 
+const SUPER_ADMIN_EMAILS = ['peboorba@gmail.com'];
+
 export const AdminGuard: React.FC<AdminGuardProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -28,9 +30,12 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({ children }) => {
           return;
         }
 
+        const userEmail = (session.user.email || '').toLowerCase().trim();
+        const isCanonicalSuperAdmin = SUPER_ADMIN_EMAILS.includes(userEmail);
+
         const { data, error } = await supabase
           .from('users')
-          .select('tipo, is_super_admin')
+          .select('tipo, is_super_admin, email')
           .eq('uuid', session.user.id)
           .maybeSingle();
 
@@ -45,8 +50,11 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({ children }) => {
           .replace(/[\u0300-\u036f]/g, '')
           .trim();
 
-        // Gestores, Admins ou Super Administradores da UAI Fix possuem acesso ao painel
-        const hasAccess = data?.is_super_admin === true || normRole === 'gestor' || normRole === 'admin' || normRole === 'super_admin';
+        const dbUserEmail = (data?.email || userEmail).toLowerCase().trim();
+        const isSuperAdminUser = (data?.is_super_admin === true || normRole === 'super_admin') && SUPER_ADMIN_EMAILS.includes(dbUserEmail);
+
+        // Acesso ao portal /admin restrito ao Super Admin autorizado (peboorba@gmail.com) ou gestores autorizados
+        const hasAccess = isCanonicalSuperAdmin || isSuperAdminUser || normRole === 'gestor' || normRole === 'admin';
 
         if (isMounted) {
           setIsAuthenticated(true);

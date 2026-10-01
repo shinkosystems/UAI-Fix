@@ -30,9 +30,10 @@ A plataforma **UAI Fix** opera com segregação estrita de papéis e responsabil
 
 O Super Administrador é o usuário executivo responsável pela governança geral da plataforma, credenciamento de empresas clientes, monitoramento macro de ordens de serviço e saúde operacional do ecossistema.
 
-### 1.1. Acesso ao Portal `/admin`
+### 1.1. Acesso ao Portal `/admin` & Regra de Restrição por E-mail
 - Acesse via menu lateral ou navegando para `/#/admin/dashboard`.
-- Caso o usuário não tenha privilégios de Super Admin (`is_super_admin = true` ou `tipo IN ('admin', 'super_admin')`), o componente `AdminGuard` bloqueia o acesso e redireciona para a Home.
+- **Restrição de Governança Estrita:** O papel de Super Administrador global é restrito canonicamente ao e-mail executivo: **`peboorba@gmail.com`**.
+- Caso o usuário autenticado não seja `peboorba@gmail.com` (ou não possua privilégios explícitos validados por RLS), o componente `AdminGuard` bloqueia instantaneamente o acesso e redireciona para a Home.
 
 ### 1.2. Gestão de Organizações (Empresas Clientes)
 - **Caminho:** `/admin/organizations`
