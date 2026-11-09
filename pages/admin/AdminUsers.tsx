@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../supabaseClient';
-import { Search, Users, UserCheck, Shield, Mail, Phone, MapPin, RefreshCw, Edit2, Building2, Briefcase, Sparkles } from 'lucide-react';
+import { Search, Users, UserCheck, Shield, Mail, Phone, MapPin, RefreshCw, Edit2, Building2, Briefcase, Sparkles, FileSpreadsheet } from 'lucide-react';
 import { User, Organization, Geral } from '../../types';
 import AdminUserEditModal from '../../components/modals/AdminUserEditModal';
+import AdminImportParceirasModal from '../../components/modals/AdminImportParceirasModal';
 
 const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
@@ -19,6 +20,7 @@ const AdminUsers: React.FC = () => {
   // Modal State
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -163,13 +165,22 @@ const AdminUsers: React.FC = () => {
           </h1>
           <p className="text-xs text-slate-500 mt-1">Gerencie colaboradores por organização, cargos, permissões e especialidades técnicas habilitadas.</p>
         </div>
-        <button
-          onClick={fetchData}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all shadow-xs cursor-pointer"
-        >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          Atualizar Lista
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-amber-500/20 active:scale-95 cursor-pointer"
+          >
+            <FileSpreadsheet size={15} />
+            Importar Planilha de Parceira
+          </button>
+          <button
+            onClick={fetchData}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all shadow-xs cursor-pointer"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Atualizar Lista
+          </button>
+        </div>
       </div>
 
       {/* Filters Bar */}
@@ -379,6 +390,13 @@ const AdminUsers: React.FC = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onUserUpdated={handleUserUpdated}
+      />
+
+      {/* Onboarding em Lote de Parceira Modal */}
+      <AdminImportParceirasModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={fetchData}
       />
 
     </div>

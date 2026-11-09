@@ -58,12 +58,23 @@ const AdminRelatorios: React.FC = () => {
         recursosAlocados: plan?.recursos || [],
         dataExecucao: plan?.execucao || ''
       },
+      empresaParceira: {
+        nome: (ticket as any).empresa_nome || ticket.clienteData?.empresa_nome || undefined
+      },
       financeiro: {
         precoTotal: budget?.preco || 0,
         formaPagamento: budget?.tipopagmto || 'PIX',
         parcelas: budget?.parcelas || 1,
         notaFiscal: budget?.notafiscal || false,
-        observacoes: budget?.observacaocliente || ''
+        observacoes: budget?.observacaocliente || '',
+        maoDeObraHh: budget?.hh || 0,
+        custoFixo: budget?.custofixo || 0,
+        custoVariavel: budget?.custo_variavel || 0,
+        deslocamento: budget?.custo_deslocamento || 0,
+        taxaPlataforma: budget?.taxa_plataforma || 0,
+        taxaGateway: budget?.taxa_pagamento || 0,
+        lucroParceira: budget?.lucro || 0,
+        imposto: budget?.imposto || 0
       },
       execucao: {
         fotoAntes: ticket.fotoantes || [],

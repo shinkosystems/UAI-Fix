@@ -105,6 +105,22 @@ export interface User {
   // FIX: Added optional 'ativo' property to User interface.
   ativo?: boolean;
   biografia?: string; // Campo para o texto "Sobre" do profissional
+  empresa_id?: number | null; // ID da empresa parceira vinculada
+  empresa_nome?: string | null; // Nome da empresa parceira vinculada
+}
+
+export interface EmpresaParceira {
+  id: number;
+  razao_social: string;
+  nome_fantasia?: string | null;
+  cnpj?: string | null;
+  setor?: string | null;
+  email?: string | null;
+  whatsapp?: string | null;
+  data_criacao?: string | null;
+  ativa?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Avaliacao {
@@ -144,6 +160,7 @@ export interface Chave {
   gestor_responsavel?: string | null; // Gestor responsável pela OS
   chave_vinculada_id?: number | null; // ID da OS vinculada
   chave_vinculada_codigo?: string | null; // Código único da OS vinculada
+  empresa_id?: number | null; // ID da empresa parceira responsável
   // Execution Photos
   fotoantes?: string[];
   fotodepois?: string[];
