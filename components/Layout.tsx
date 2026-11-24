@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText, ShoppingBag, PlayCircle, CalendarCheck, MessageSquare, LayoutDashboard, GitFork, Shield } from 'lucide-react';
+import { Home, Search, Calendar, User, LogOut, Settings, Menu, X, FileText, ShoppingBag, PlayCircle, CalendarCheck, MessageSquare, LayoutDashboard, GitFork, Shield, Briefcase } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface LayoutProps {
@@ -84,7 +84,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Regras de visibilidade de itens de menu
   const showMyOrders = !loadingUserType && (normType === 'consumidor');
-  const showTicketManagement = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista' || normType === 'profissional');
+  const showTicketManagement = !loadingUserType && (normType === 'gestor' || normType === 'planejista' || normType === 'orcamentista' || normType === 'profissional' || normType === 'colaborador');
+  const showWorkspace = !loadingUserType && (normType === 'colaborador' || normType === 'profissional' || normType === 'planejista' || normType === 'orcamentista' || normType === 'gestor');
   const showAgenda = !loadingUserType && normType !== '';
   const showSearch = !loadingUserType && (normType === 'consumidor');
 
@@ -195,6 +196,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <User size={20} />
             <span>Meu Perfil</span>
           </button>
+
+          {showWorkspace && (
+            <button
+              onClick={() => navigate('/workspace')}
+              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${isActive('/workspace')}`}
+            >
+              <Briefcase size={20} />
+              <span>Workspace</span>
+            </button>
+          )}
 
           {showTicketManagement && (
             <button

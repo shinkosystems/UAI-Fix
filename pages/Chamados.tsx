@@ -110,7 +110,7 @@ const Chamados: React.FC = () => {
         { id: 'historico', label: 'Histórico', icon: History, color: 'text-gray-500' }
     ];
 
-    const isProfessional = currentUserRole === 'profissional';
+    const isProfessional = currentUserRole === 'profissional' || currentUserRole === 'colaborador';
     const isGestor = currentUserRole === 'gestor';
     const isPlanejista = currentUserRole === 'planejista';
     const isOrcamentista = currentUserRole === 'orcamentista';
@@ -167,8 +167,6 @@ const Chamados: React.FC = () => {
 
     useEffect(() => {
         fetchUserRole();
-        fetchData();
-        fetchProfessionals();
         const handleClickOutside = (event: MouseEvent) => {
             if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) setShowNotifications(false);
         };
@@ -208,25 +206,35 @@ const Chamados: React.FC = () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
             setCurrentUserId(user.id);
-            const { data: userData } = await supabase.from('users').select('tipo').eq('uuid', user.id).single();
+            const { data: userData } = await supabase
+                .from('users')
+                .select('tipo, organization_id, is_super_admin, email')
+                .eq('uuid', user.id)
+                .single();
             if (userData) {
                 const normalizedRole = (userData.tipo || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                const isSuper = Boolean(userData.is_super_admin || (user.email || '').toLowerCase().trim() === 'peboorba@gmail.com');
+                const orgScope = !isSuper ? (userData.organization_id || null) : null;
                 setCurrentUserRole(normalizedRole);
-                fetchNotifications(normalizedRole, user.id);
+                fetchNotifications(normalizedRole, user.id, orgScope);
+                fetchData(orgScope);
+                fetchProfessionals(orgScope);
             }
         }
     };
 
-    const fetchNotifications = async (role: string, uuid: string) => {
+    const fetchNotifications = async (role: string, uuid: string, orgScope: string | null = null) => {
         let notifs: NotificationItem[] = [];
         try {
             if (['planejista', 'orcamentista', 'gestor'].includes(role)) {
-                const { data } = await supabase
+                let nq = supabase
                     .from('chaves')
                     .select(`id, created_at, chaveunica, status, geral (nome)`)
                     .in('status', ['pendente', 'analise'])
                     .order('created_at', { ascending: false })
                     .limit(10);
+                if (orgScope) nq = nq.eq('organization_id', orgScope);
+                const { data } = await nq;
 
                 if (data) {
                     notifs = data.map((item: any) => ({
@@ -245,10 +253,12 @@ const Chamados: React.FC = () => {
 
     const handleNotificationClick = (notif: NotificationItem) => { setShowNotifications(false); navigate('/chamados'); };
 
-    const fetchData = async () => {
+    const fetchData = async (orgScope: string | null = null) => {
         setLoading(true);
         try {
-            const { data: chavesData, error: chavesError } = await supabase.from('chaves').select('*').order('created_at', { ascending: false });
+            let cq = supabase.from('chaves').select('*').order('created_at', { ascending: false });
+            if (orgScope) cq = cq.eq('organization_id', orgScope);
+            const { data: chavesData, error: chavesError } = await cq;
             if (chavesError) throw chavesError;
             if (!chavesData) { setTickets([]); return; }
             const chaveIds = chavesData.map(c => c.id);
@@ -306,12 +316,14 @@ const Chamados: React.FC = () => {
         } catch (error) { console.error(error); } finally { setLoading(false); }
     };
 
-    const fetchProfessionals = async () => {
-        const { data } = await supabase
+    const fetchProfessionals = async (orgScope: string | null = null) => {
+        let pq = supabase
             .from('users')
             .select('uuid, nome, fotoperfil, whatsapp, cidade, atividade, cidades(cidade)')
             .ilike('tipo', 'profissional')
             .eq('ativo', true);
+        if (orgScope) pq = pq.eq('organization_id', orgScope);
+        const { data } = await pq;
         if (data) setProfessionals(data as unknown as User[]);
     };
 

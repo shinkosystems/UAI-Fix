@@ -81,14 +81,16 @@ const Search: React.FC = () => {
         }
 
         let cityId: number | null = null;
+        let userOrgId: string | null = null;
         if (currentUuid) {
           const { data: userData } = await supabase
             .from('users')
-            .select('cidade, nome, tipo')
+            .select('cidade, nome, tipo, organization_id')
             .eq('uuid', currentUuid)
             .single();
           
           if (userData) {
+            userOrgId = userData.organization_id || null;
             if (userData.cidade) {
               cityId = userData.cidade;
               setUserCityId(userData.cidade);
@@ -100,11 +102,14 @@ const Search: React.FC = () => {
           }
         }
 
-        // Fetch Categories and Services in parallel
-        const [catsRes, servicesRes] = await Promise.all([
-          supabase.from('geral').select('*').eq('primaria', true).eq('ativa', true).order('nome', { ascending: true }),
-          supabase.from('geral').select('*').eq('primaria', false).eq('ativa', true).order('nome', { ascending: true })
-        ]);
+        // Fetch Categories and Services in parallel ([UAIFIX-FE-06]: clientes sem org veem apenas catálogo global)
+        let catsQuery = supabase.from('geral').select('*').eq('primaria', true).eq('ativa', true).order('nome', { ascending: true });
+        let servsQuery = supabase.from('geral').select('*').eq('primaria', false).eq('ativa', true).order('nome', { ascending: true });
+        if (!userOrgId) {
+          catsQuery = catsQuery.is('organization_id', null);
+          servsQuery = servsQuery.is('organization_id', null);
+        }
+        const [catsRes, servicesRes] = await Promise.all([catsQuery, servsQuery]);
 
         const cats = catsRes.data || [];
         const servs = servicesRes.data || [];

@@ -31,26 +31,32 @@ const SubCategory: React.FC = () => {
              if (demoUsers && demoUsers.length > 0) currentUuid = demoUsers[0].uuid;
         }
 
+        let userOrgId: string | null = null;
         if (currentUuid) {
             const { data: userData } = await supabase
                 .from('users')
-                .select('cidade')
+                .select('cidade, organization_id')
                 .eq('uuid', currentUuid)
                 .single();
             
             if (userData?.cidade) {
                 setUserCityId(userData.cidade);
             }
+            userOrgId = userData?.organization_id || null;
         }
 
-        // 2. Fetch SubCategories
-        const { data, error } = await supabase
+        // 2. Fetch SubCategories ([UAIFIX-FE-06]: Clientes sem organização veem apenas catálogo global transparente)
+        let subQuery = supabase
             .from('geral')
             .select('*')
             .eq('primaria', false)
             .eq('dependencia', id)
             .eq('ativa', true)
             .order('nome', { ascending: true });
+        if (!userOrgId) {
+            subQuery = subQuery.is('organization_id', null);
+        }
+        const { data, error } = await subQuery;
 
         if (error) console.error(error);
         else {

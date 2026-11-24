@@ -117,11 +117,13 @@ const Home: React.FC = () => {
         if (demoUsers && demoUsers.length > 0) userUuid = demoUsers[0].uuid;
       }
 
+      let homeUserOrgId: string | null = null;
       if (userUuid) {
         setCurrentUserUuid(userUuid);
         const { data: userData } = await supabase.from('users').select('*').eq('uuid', userUuid).maybeSingle();
 
         if (userData) {
+          homeUserOrgId = userData.organization_id || null;
           const tipoRaw = userData.tipo || '';
           const normType = tipoRaw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
           setUserType(tipoRaw);
@@ -242,8 +244,12 @@ const Home: React.FC = () => {
         }
       }
 
-      // 4. CATEGORIAS
-      const { data: catData } = await supabase.from('geral').select('*').eq('primaria', true).eq('ativa', true).order('id', { ascending: true });
+      // 4. CATEGORIAS ([UAIFIX-FE-06]: clientes sem org veem apenas catálogo global transparente)
+      let catQuery = supabase.from('geral').select('*').eq('primaria', true).eq('ativa', true).order('id', { ascending: true });
+      if (!homeUserOrgId) {
+        catQuery = catQuery.is('organization_id', null);
+      }
+      const { data: catData } = await catQuery;
       setCategories(catData || []);
 
       // 5. PROFISSIONAIS ELITE

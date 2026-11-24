@@ -270,6 +270,7 @@ const Planning: React.FC = () => {
                 .insert({
                     cliente: currentUser.uuid,
                     profissional: null,
+                    organization_id: currentUser.organization_id || null,
                     chaveunica: uniqueKey,
                     status: 'pendente',
                     atividade: parseInt(paramServiceId),

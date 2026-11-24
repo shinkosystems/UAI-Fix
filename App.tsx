@@ -16,6 +16,7 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Chamados from './pages/Chamados';
+import CollaboratorWorkspace from './pages/CollaboratorWorkspace';
 import ClientOrders from './pages/ClientOrders';
 import CalendarPage from './pages/Calendar';
 import Execution from './pages/Execution';
@@ -160,6 +161,7 @@ const App: React.FC = () => {
                     } 
                   />
                   <Route path="chamados" element={<Chamados />} />
+                  <Route path="workspace" element={<CollaboratorWorkspace />} />
                   <Route path="orders" element={<ClientOrders />} />
                   <Route path="fluxo" element={<AdminFluxoServico />} />
 
